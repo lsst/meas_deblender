@@ -371,9 +371,9 @@ def t1091main(dr, opt, conf, proc, patargs={}, rundeblendargs={}, pool=None):
         threshold = 2.
         
         schema = cat.getSchema()
-        psfkey = schema.find("deblend.deblended-as-psf").key
-        fluxkey = schema.find('deblend.psf-flux').key
-        centerkey = schema.find('deblend.psf-center').key
+        psfkey = schema.find("deblend.deblendeda-psf").key
+        fluxkey = schema.find('deblend.psfflux').key
+        centerkey = schema.find('deblend.psfcenter').key
 
         keep = []
         for i,(parent,kids,dkids) in enumerate(fams):
@@ -439,8 +439,8 @@ def t1091main(dr, opt, conf, proc, patargs={}, rundeblendargs={}, pool=None):
     if opt.drop_faint_psf:
         faint = opt.drop_faint_psf
         schema = cat.getSchema()
-        psfkey = schema.find("deblend.deblended-as-psf").key
-        fluxkey = schema.find('deblend.psf-flux').key
+        psfkey = schema.find("deblend.deblendedaspsf").key
+        fluxkey = schema.find('deblend.psfflux').key
 
         for parent,kids,dropkids in fams:
             rmkids = []

@@ -205,8 +205,8 @@ def plotDeblendFamily(*args, **kwargs):
 # Preprocessing: returns _mockSources for the parent and kids
 def plotDeblendFamilyPre(mi, parent, kids, dkids, srcs, sigma1, ellipses=True, maskbit=None, **kwargs):
     schema = srcs.getSchema()
-    psfkey = schema.find("deblend.deblended-as-psf").key
-    fluxkey = schema.find('deblend.psf-flux').key
+    psfkey = schema.find("deblend.deblendedaspsf").key
+    fluxkey = schema.find('deblend.psfflux').key
     xkey = schema.find('centroid.naive.x').key
     ykey = schema.find('centroid.naive.y').key
     flagKeys = [(schema.find(keynm).key, nm)
