@@ -1,7 +1,3 @@
-import pylab as plt
-
-
-
 import math
 import numpy as np
 
@@ -262,6 +258,10 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm, i
     # into the model
     R2 = R1 + psfimg.getWidth()/2.
 
+    import lsstDebug
+    debugPlots = lsstDebug.Info(__name__).plots
+    debugPsf = lsstDebug.Info(__name__).psf
+
     pbb = psfimg.getBBox(afwImage.PARENT)
     pbb.clip(fbb)
     px0,py0 = psfimg.getX0(), psfimg.getY0()
@@ -291,161 +291,11 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm, i
     for pk2,pkF2 in zip(peaks, peaksF):
         if pk2 == pk:
             continue
-        # Cut out the postage stamp we are going to fit.
-        stamp = img.Factory(img, stampbb, afwImage.PARENT, True)
-        assert(stamp.getBBox(afwImage.PARENT) == stampbb)
-
-        # find other peaks within range...
-        otherpeaks = []
-        for j,pk2 in enumerate(peaks):
-            if j == pki:
-                continue
-            if pk.getF().distanceSquared(pk2.getF()) > R2**2:
-                continue
-            opsfimg = psf.computeImage(pk2.getF())
-            otherpeaks.append(opsfimg)
-        log.logdebug('%i other peaks within range' % len(otherpeaks))
-
-        # Now we are going to do a least-squares fit for the flux
-        # in this PSF, plus a decenter term, a linear sky, and
-        # fluxes of nearby sources (assumed point sources).  Build
-        # up the matrix...
-        # Number of terms -- PSF flux, constant, X, Y, + other PSF fluxes
-        NT1 = 4 + len(otherpeaks)
-        # + PSF dx, dy
-        NT2 = NT1 + 2
-        # Number of pixels -- at most
-        NP = (1 + yhi - ylo) * (1 + xhi - xlo)
-        # indices of terms
-        I_psf = 0
-        # start of other psf fluxes
-        I_opsf = 4
-        I_dx = NT1 + 0
-        I_dy = NT1 + 1
-        # Matrix, rhs and weight
-        A = np.zeros((NP, NT2))
-        b = np.zeros(NP)
-        w = np.zeros(NP)
-        # pixel indices
-        ipixes = np.zeros((NP,2), dtype=int)
-        ipix = 0
-        sumr = 0.
-        # for each postage stamp pixel...
-        for y in range(ylo, yhi+1):
-            for x in range(xlo, xhi+1):
-                xy = afwGeom.Point2I(x,y)
-                # within the parent footprint?
-                if not fp.contains(xy):
-                    stamp.set0(x, y, 0.)
-                    continue
-                # is it within the radius we're going to fit (ie,
-                # circle inscribed in the postage stamp square)?
-                R = np.hypot(x - cx, y - cy)
-                if R > R1:
-                    stamp.set0(x, y, 0.)
-                    continue
-                # Get the PSF contribution at this pixel
-                if pbb.contains(xy):
-                    p = psfimg.get0(x,y)
-                else:
-                    p = 0
-
-                v = varimg.get0(x,y)
-                if v == 0:
-                    # This pixel must not have been set... why?
-                    continue
-
-                # Get the decenter (dx,dy) terms at this pixel
-                # FIXME: we do symmetric finite difference; should
-                # probably use the sinc-shifted PSF instead!
-                if (pbb.contains(afwGeom.Point2I(x-1,y)) and
-                    pbb.contains(afwGeom.Point2I(x+1,y))):
-                    dx = (psfimg.get0(x+1,y) - psfimg.get0(x-1,y)) / 2.
-                else:
-                    dx = 0.
-                if (pbb.contains(afwGeom.Point2I(x,y-1)) and
-                    pbb.contains(afwGeom.Point2I(x,y+1))):
-                    dy = (psfimg.get0(x,y+1) - psfimg.get0(x,y-1)) / 2.
-                else:
-                    dy = 0.
-                # Ramp down weights for pixels between R0 and R1.
-                rw = 1.
-                if R > R0:
-                    rw = (R - R0) / (R1 - R0)
-                # PSF flux
-                A[ipix,I_psf] = p
-                # constant sky
-                A[ipix,1] = 1.
-                # linear sky
-                A[ipix,2] = x-cx
-                A[ipix,3] = y-cy
-                # decentered PSF
-                A[ipix,I_dx] = dx
-                A[ipix,I_dy] = dy
-                # other nearby peak PSFs
-                ipixes[ipix,:] = (x-xlo,y-ylo)
-                for j,opsf in enumerate(otherpeaks):
-                    obbox = opsf.getBBox(afwImage.PARENT)
-                    if obbox.contains(afwGeom.Point2I(x,y)):
-                        A[ipix, I_opsf + j] = opsf.get0(x, y)
-                b[ipix] = img.get0(x, y)
-                # weight = ramp weight * ( 1 / image variance )
-                w[ipix] = np.sqrt(rw / v)
-                sumr += rw
-                ipix += 1
-
-        # NP: actual number of pixels within range
-        NP = ipix
-        A = A[:NP,:]
-        b = b[:NP]
-        w = w[:NP]
-        ipixes = ipixes[:NP,:]
-        Aw  = A * w[:,np.newaxis]
-        bw  = b * w
-        # We do fits without and with the decenter terms.
-        # Since the dx,dy terms are at the end of the matrix,
-        # we can do that just by trimming off those elements.
-        #
-        # The SVD can fail if there are NaNs in the matrices; this should really be handled upstream
-        try:
-            X1,r1,rank1,s1 = np.linalg.lstsq(Aw[:,:NT1], bw)
-        except np.linalg.LinAlgError, e:
-            log.log(log.WARN, "Failed to fit PSF to child [no decenter]: %s" % e)
-            pkres.out_of_bounds = True
-            continue
-        try:
-            X2,r2,rank2,s2 = np.linalg.lstsq(Aw, bw)
-        except np.linalg.LinAlgError, e:
-            log.log(log.WARN, "Failed to fit PSF to child [with decenter]: %s" % e)
-            pkres.out_of_bounds = True
-            continue
-
-        #print 'X1', X1
-        #print 'X2', X2
-        #print 'ranks', rank1, rank2
-        #print 'r', r1, r2
-        # r is weighted chi-squared = sum over pixels:  ramp * (model - data)**2/sigma**2
-        if len(r1) > 0:
-            chisq1 = r1[0]
-        else:
-            chisq1 = 1e30
-        if len(r2) > 0:
-            chisq2 = r2[0]
-        else:
-            chisq2 = 1e30
-
-        dof1 = sumr - len(X1)
-        dof2 = sumr - len(X2)
-        #print 'Chi-squareds', chisq1, chisq2
-        #print 'Degrees of freedom', dof1, dof2
-        # This can happen if we're very close to the edge (?)
-        if dof1 <= 0 or dof2 <= 0:
-            log.logdebug('Skipping this peak: bad DOF %g, %g' % (dof1, dof2))
-            pkres.out_of_bounds = True
+        if pkF.distanceSquared(pkF2) > R2**2:
             continue
         opsfimg = psf.computeImage(pkF2.getX(), pkF2.getY())
         otherpeaks.append(opsfimg)
-    log.logdebug('%i other peaks within range' % len(otherpeaks))
+        log.logdebug('%i other peaks within range' % len(otherpeaks))
 
     # Now we are going to do a least-squares fit for the flux
     # in this PSF, plus a decenter term, a linear sky, and
@@ -463,6 +313,7 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm, i
     I_opsf = 4
     I_dx = NT1 + 0
     I_dy = NT1 + 1
+
 
     # Build the matrix "A", rhs "b" and weight "w".
 
@@ -586,30 +437,40 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm, i
     Aw  = A * w[:,np.newaxis]
     bw  = b * w
 
-    # plt.clf()
-    # N = NT2 + 2
-    # R,C = 2, (N+1) / 2
-    # for i in range(NT2):
-    #     im1 = np.zeros((1+yhi-ylo, 1+xhi-xlo))
-    #     im1[ipixes[:,1], ipixes[:,0]] = A[:, i]
-    #     plt.subplot(R, C, i+1)
-    #     plt.imshow(im1, interpolation='nearest', origin='lower')
-    # 
-    # plt.subplot(R, C, NT2+1)
-    # im1 = np.zeros((1+yhi-ylo, 1+xhi-xlo))
-    # im1[ipixes[:,1], ipixes[:,0]] = b
-    # plt.imshow(im1, interpolation='nearest', origin='lower')
-    # plt.subplot(R, C, NT2+2)
-    # im1 = np.zeros((1+yhi-ylo, 1+xhi-xlo))
-    # im1[ipixes[:,1], ipixes[:,0]] = w
-    # plt.imshow(im1, interpolation='nearest', origin='lower')
-    # plt.savefig('A.png')
+    if debugPlots:
+        import pylab as plt
+        plt.clf()
+        N = NT2 + 2
+        R,C = 2, (N+1) / 2
+        for i in range(NT2):
+            im1 = np.zeros((1+yhi-ylo, 1+xhi-xlo))
+            im1[ipixes[:,1], ipixes[:,0]] = A[:, i]
+            plt.subplot(R, C, i+1)
+            plt.imshow(im1, interpolation='nearest', origin='lower')
+
+        plt.subplot(R, C, NT2+1)
+        im1 = np.zeros((1+yhi-ylo, 1+xhi-xlo))
+        im1[ipixes[:,1], ipixes[:,0]] = b
+        plt.imshow(im1, interpolation='nearest', origin='lower')
+        plt.subplot(R, C, NT2+2)
+        im1 = np.zeros((1+yhi-ylo, 1+xhi-xlo))
+        im1[ipixes[:,1], ipixes[:,0]] = w
+        plt.imshow(im1, interpolation='nearest', origin='lower')
+        plt.savefig('A.png')
 
     # We do fits with and without the decenter terms.
     # Since the dx,dy terms are at the end of the matrix,
     # we can do that just by trimming off those elements.
-    X1,r1,rank1,s1 = np.linalg.lstsq(Aw[:,:NT1], bw)
-    X2,r2,rank2,s2 = np.linalg.lstsq(Aw, bw)
+    #
+    # The SVD can fail if there are NaNs in the matrices; this should really be handled upstream
+    try:
+        X1,r1,rank1,s1 = np.linalg.lstsq(Aw[:,:NT1], bw)
+        X2,r2,rank2,s2 = np.linalg.lstsq(Aw, bw)
+    except np.linalg.LinAlgError, e:
+        log.log(log.WARN, "Failed to fit PSF to child: %s" % e)
+        pkres.out_of_bounds = True
+        return
+
     #print 'X1', X1
     #print 'X2', X2
     #print 'ranks', rank1, rank2
@@ -717,6 +578,36 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm, i
         log.logdebug('Keeping unshifted PSF model')
     #A = A[:,:NT1]
     ispsf = (ispsf1 or ispsf2)
+
+    # Save the PSF models in images for posterity.
+    if debugPsf:
+        SW,SH = 1+xhi-xlo, 1+yhi-ylo
+        psfmod = afwImage.ImageF(SW,SH)
+        psfmod.setXY0(xlo,ylo)
+        psfderivmodm = afwImage.MaskedImageF(SW,SH)
+        psfderivmod = psfderivmodm.getImage()
+        psfderivmod.setXY0(xlo,ylo)
+        model = afwImage.ImageF(SW,SH)
+        model.setXY0(xlo,ylo)
+        for i in range(len(Xpsf)):
+            V = A[:,i]*Xpsf[i]
+            for (x,y),v in zip(ipixes, A[:,i]*Xpsf[i]):
+                ix,iy = int(x),int(y)
+                model.set(ix, iy, model.get(ix,iy) + float(v))
+                if i in [I_psf, I_dx, I_dy]:
+                    psfderivmod.set(ix, iy, psfderivmod.get(ix,iy) + float(v))
+        for ii in range(NP):
+            x,y = ipixes[ii,:]
+            psfmod.set(int(x),int(y), float(A[ii, I_psf] * Xpsf[I_psf]))
+        modelfp = afwDet.Footprint()
+        for (x,y) in ipixes:
+            modelfp.addSpan(int(y+ylo), int(x+xlo), int(x+xlo))
+        modelfp.normalize()
+
+        pkres.psf0img = psfimg
+        pkres.psfimg = psfmod
+        pkres.psfderivimg = psfderivmod
+        pkres.model = model
 
     # Save things we learned about this peak for posterity...
     pkres.R0 = R0
