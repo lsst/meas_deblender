@@ -46,12 +46,15 @@ class FitPsfTestCase(unittest.TestCase):
         print 'BBox', img.getBBox(afwImage.PARENT)
 
         pk = afwDet.Peak(20., 30.)
+        pkF = pk.getF()
         pk2 = afwDet.Peak(23., 33.)
         pk3 = afwDet.Peak(92., 50.)
         peaks = []
         peaks.append(pk)
         peaks.append(pk2)
         peaks.append(pk3)
+
+        peaksF = [p.getF() for p in peaks]
 
         ibb = img.getBBox(afwImage.PARENT)
         iext = [ibb.getMinX(), ibb.getMaxX(), ibb.getMinY(), ibb.getMaxY()]
@@ -92,7 +95,7 @@ class FitPsfTestCase(unittest.TestCase):
         log = pexLogging.Log(pexLogging.Log.getDefaultLog(), 'tests.fit_psf', loglvl)
 
         cpsf = CachingPsf(psf1)
-        _fit_psf(fp, fmask, pk, pkres, fbb, peaks, log, cpsf, psffwhm, img, varimg,
+        _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, cpsf, psffwhm, img, varimg,
                  psf_chisq_cut1, psf_chisq_cut2, psf_chisq_cut2b)
         for k in dir(pkres):
             if k.startswith('__'):
@@ -101,7 +104,7 @@ class FitPsfTestCase(unittest.TestCase):
 
 
         cpsf = CachingPsf(psf2)
-        _fit_psf(fp, fmask, pk, pkres, fbb, peaks, log, cpsf, psffwhm, img, varimg,
+        _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, cpsf, psffwhm, img, varimg,
                  psf_chisq_cut1, psf_chisq_cut2, psf_chisq_cut2b)
         for k in dir(pkres):
             if k.startswith('__'):
@@ -109,7 +112,7 @@ class FitPsfTestCase(unittest.TestCase):
             print '  ', k, getattr(pkres, k)
 
 
-        _fit_psf(fp, fmask, pk3, pkres, fbb, peaks, log, cpsf, psffwhm, img, varimg,
+        _fit_psf(fp, fmask, pk3, pk3.getF(), pkres, fbb, peaks, peaksF, log, cpsf, psffwhm, img, varimg,
                  psf_chisq_cut1, psf_chisq_cut2, psf_chisq_cut2b)
         for k in dir(pkres):
             if k.startswith('__'):
