@@ -196,8 +196,22 @@ deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 apportionFlux(MaskedImageT const& img,
 			  det::Footprint const& foot,
 			  std::vector<MaskedImagePtrT> timgs,
-			  ImagePtrT sumimg) {
+			  ImagePtrT sumimg,
+			  bool assignStrayFlux,
+			  std::vector<bool> const& ispsf,
+			  std::vector<int>  const& pkx,
+			  std::vector<int>  const& pky,
+			  std::vector<boost::shared_ptr<typename det::HeavyFootprint<ImagePixelT,MaskPixelT,VariancePixelT> > > & strays
+	) {
+
+	typedef typename det::Footprint::SpanList SpanList;
+	typedef typename det::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT> HeavyFootprint;
+	typedef typename boost::shared_ptr< HeavyFootprint > HeavyFootprintPtr;
+
 	std::vector<MaskedImagePtrT> portions;
+	std::vector<det::Footprint::Ptr > strayfoot;
+	std::vector<std::vector<ImagePixelT> > straypix;
+
 	int ix0 = img.getX0();
 	int iy0 = img.getY0();
 	geom::Box2I fbb = foot.getBBox();
@@ -226,6 +240,10 @@ apportionFlux(MaskedImageT const& img,
 		MaskedImagePtrT port(new MaskedImageT(timg->getDimensions()));
 		port->setXY0(timg->getXY0());
 		portions.push_back(port);
+
+		strayfoot.push_back(det::Footprint::Ptr());
+		straypix.push_back(std::vector<ImagePixelT>());
+
 		geom::Box2I tbb = timg->getBBox(image::PARENT);
 		int tx0 = tbb.getMinX();
 		int ty0 = tbb.getMinY();
@@ -249,6 +267,134 @@ apportionFlux(MaskedImageT const& img,
 			}
 		}
 	}
+
+	if (assignStrayFlux) {
+		if ((ispsf.size() > 0) && (ispsf.size() != timgs.size())) {
+			// Bail out!
+			assert(0);
+		}
+		if (pkx.size() != timgs.size()) {
+			// Bail out!
+			assert(0);
+		}
+		if (pky.size() != timgs.size()) {
+			// Bail out!
+			assert(0);
+		}
+
+		// Go through the (parent) Footprint looking for pixels that are
+		// not claimed by any templates, and positive.
+		const SpanList spans = foot.getSpans();
+		for (SpanList::const_iterator s = spans.begin(); s < spans.end(); s++) {
+			int y = (*s)->getY();
+			int x0 = (*s)->getX0();
+			typename ImageT::x_iterator sumptr =
+				sumimg->row_begin(y - sy0) + (x0 - sx0);
+			//typename MaskedImageT::x_iterator inptr =
+			//img.row_begin(y - iy0) + (x0 - ix0);
+			typename ImageT::x_iterator inptr =
+				img.getImage()->row_begin(y - iy0) + (x0 - ix0);
+
+			for (int x = x0; x <= (*s)->getX1(); ++x, ++sumptr, ++inptr) {
+				if ((*sumptr > 0) || (*inptr) <= 0) {
+					continue;
+				}
+				//printf("Pixel at (%i,%i) has stray flux: %g\n", x, y, (float)*inptr);
+				// Split the stray flux by 1/r^2 ...
+				double isum = 0.0;
+				for (int i=0; i<timgs.size(); ++i) {
+					int dx, dy;
+					// Skip deblended-as-PSF templates (?)
+					if (ispsf.size() && ispsf[i]) {
+						continue;
+					}
+					dx = pkx[i] - x;
+					dy = pky[i] - y;
+					isum += 1. / (1. + dx*dx + dy*dy);
+				}
+				//printf("isum = %g\n", isum);
+
+				// Drop very small contributions...
+				const double strayclip = 0.001;
+
+				double isum2 = 0.0;
+				for (int i=0; i<timgs.size(); ++i) {
+					int dx, dy;
+					// Skip deblended-as-PSF templates (?)
+					if (ispsf.size() && ispsf[i]) {
+						continue;
+					}
+					dx = pkx[i] - x;
+					dy = pky[i] - y;
+					double c;
+					c = 1. / (1. + dx*dx + dy*dy);
+					if (c < (isum * strayclip)) {
+						continue;
+					}
+					isum2 += c;
+				}
+				//printf("isum2 = %g\n", isum2);
+
+				// DEBUG
+				double sump = 0.0;
+
+				for (int i=0; i<timgs.size(); ++i) {
+					int dx, dy;
+					if (ispsf.size() && ispsf[i]) {
+						continue;
+					}
+					dx = pkx[i] - x;
+					dy = pky[i] - y;
+					double c;
+					c = 1. / (1. + dx*dx + dy*dy);
+					if (c < (isum * strayclip)) {
+						continue;
+					}
+
+					// the stray portion to give to template i
+					double p = c / isum2;
+					sump += p;
+					p *= (*inptr);
+					/*
+					 geom::Box2I pbb = portions[i]->getBBox(image::PARENT);
+					 if (pbb.contains(geom::Point2I(x, y))) {
+					 // add it in
+					 portions[i]->getImage()->set0(x, y, p);
+					 } else {
+					 */
+					if (1) {
+						if (!strayfoot[i]) {
+							strayfoot[i] = det::Footprint::Ptr(new det::Footprint());
+						}
+						strayfoot[i]->addSpan(y, x, x);
+						straypix[i].push_back(p);
+					}
+				}
+				//printf("allocated fraction %g of stray flux\n", sump);
+			}
+		}
+	}
+
+	for (size_t i=0; i<timgs.size(); ++i) {
+		if (!strayfoot[i]) {
+			strays.push_back(HeavyFootprintPtr());
+		} else {
+			/// Hmm, this is a little bit dangerous: we're assuming that
+			/// the HeavyFootprint stores its pixels in the same order that
+			/// we iterate over them above (ie, lexicographic).
+			HeavyFootprintPtr heavy(new HeavyFootprint(*strayfoot[i]));
+			ndarray::Array<ImagePixelT,1,1> himg = heavy->getImageArray();
+			typename std::vector<ImagePixelT>::const_iterator spix;
+			typename ndarray::Array<ImagePixelT,1,1>::Iterator hpix;
+			for (spix = straypix[i].begin(), hpix = himg.begin();
+				 spix != straypix[i].end();
+				 ++spix, ++hpix) {
+				*hpix = *spix;
+			}
+			strays.push_back(heavy);
+		}
+	}
+
 	return portions;
 }
 
@@ -295,18 +441,24 @@ symmetrizeFootprint(
 	// lower_bound returns the first position where "target" could be inserted;
 	// ie, the first Span larger than "target".  The Span containing "target"
 	// should be peakspan-1.
+	det::Span::Ptr sp;
 	if (peakspan == spans.begin()) {
-		log.warnf("Failed to find span containing (%i,%i): before the beginning of this footprint", cx, cy);
-		return det::Footprint::Ptr();
-	}
-	peakspan--;
-	det::Span::Ptr sp = *peakspan;
-	if (!(sp->contains(cx,cy))) {
-		geom::Box2I fbb = foot.getBBox();
-		log.warnf("Failed to find span containing (%i,%i): nearest is %i, [%i,%i].  Footprint bbox is [%i,%i],[%i,%i]",
-				  cx, cy, sp->getY(), sp->getX0(), sp->getX1(),
-				  fbb.getMinX(), fbb.getMaxX(), fbb.getMinY(), fbb.getMaxY());
-		return det::Footprint::Ptr();
+		sp = *peakspan;
+		if (!sp->contains(cx, cy)) {
+			log.warnf("Failed to find span containing (%i,%i): before the beginning of this footprint", cx, cy);
+			return det::Footprint::Ptr();
+		}
+	} else {
+		peakspan--;
+		sp = *peakspan;
+
+		if (!(sp->contains(cx,cy))) {
+			geom::Box2I fbb = foot.getBBox();
+			log.warnf("Failed to find span containing (%i,%i): nearest is %i, [%i,%i].  Footprint bbox is [%i,%i],[%i,%i]",
+					  cx, cy, sp->getY(), sp->getX0(), sp->getX1(),
+					  fbb.getMinX(), fbb.getMaxX(), fbb.getMinY(), fbb.getMaxY());
+			return det::Footprint::Ptr();
+		}
 	}
 	assert(sp->contains(cx,cy));
 	log.debugf("Span containing (%i,%i): (x=[%i,%i], y=%i)",
@@ -538,6 +690,43 @@ buildSymmetricTemplate(
 
 	return std::pair<MaskedImagePtrT, FootprintPtrT>(rimg, sfoot);
 }
+
+
+template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+boost::shared_ptr<typename det::HeavyFootprint<ImagePixelT,MaskPixelT,VariancePixelT> >
+deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
+mergeHeavyFootprints(HeavyFootprintT const& h1,
+					 HeavyFootprintT const& h2) {
+
+	// Merge the Footprints (by merging the Spans)
+	det::Footprint foot(h1);
+	det::Footprint::SpanList spans = h2.getSpans();
+	for (det::Footprint::SpanList::iterator sp = spans.begin();
+		 sp != spans.end(); ++sp) {
+		foot.addSpan(**sp);
+	}
+
+	// Find the union bounding-box
+	geom::Box2I bbox(h1.getBBox());
+	bbox.include(h2.getBBox());
+	//printf("bbox: %i %i %i %i\n", bbox.getMinX(), bbox.getMaxX(), bbox.getMinY(), bbox.getMaxY());
+	
+	// Create union-bb-sized images and insert the heavies
+	image::MaskedImage<ImagePixelT,MaskPixelT,VariancePixelT> im1(bbox);
+	image::MaskedImage<ImagePixelT,MaskPixelT,VariancePixelT> im2(bbox);
+
+	geom::Box2I bb = im1.getBBox(image::PARENT);
+	//printf("im1 bbox: %i %i %i %i\n", bbox.getMinX(), bbox.getMaxX(), bbox.getMinY(), bbox.getMaxY());
+
+	h1.insert(im1);
+	h2.insert(im2);
+	// Add the pixels
+	im1 += im2;
+
+	// Build new HeavyFootprint from the merged spans and summed pixels.
+	return HeavyFootprintPtr(new HeavyFootprintT(foot, im1));
+}
+
 
 // Instantiate
 template class deblend::BaselineUtils<float>;
