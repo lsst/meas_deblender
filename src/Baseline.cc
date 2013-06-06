@@ -697,7 +697,6 @@ boost::shared_ptr<typename det::HeavyFootprint<ImagePixelT,MaskPixelT,VariancePi
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 mergeHeavyFootprints(HeavyFootprintT const& h1,
 					 HeavyFootprintT const& h2) {
-
 	// Merge the Footprints (by merging the Spans)
 	det::Footprint foot(h1);
 	det::Footprint::SpanList spans = h2.getSpans();
@@ -705,19 +704,15 @@ mergeHeavyFootprints(HeavyFootprintT const& h1,
 		 sp != spans.end(); ++sp) {
 		foot.addSpan(**sp);
 	}
+	foot.normalize();
 
 	// Find the union bounding-box
 	geom::Box2I bbox(h1.getBBox());
 	bbox.include(h2.getBBox());
-	//printf("bbox: %i %i %i %i\n", bbox.getMinX(), bbox.getMaxX(), bbox.getMinY(), bbox.getMaxY());
 	
 	// Create union-bb-sized images and insert the heavies
 	image::MaskedImage<ImagePixelT,MaskPixelT,VariancePixelT> im1(bbox);
 	image::MaskedImage<ImagePixelT,MaskPixelT,VariancePixelT> im2(bbox);
-
-	geom::Box2I bb = im1.getBBox(image::PARENT);
-	//printf("im1 bbox: %i %i %i %i\n", bbox.getMinX(), bbox.getMaxX(), bbox.getMinY(), bbox.getMaxY());
-
 	h1.insert(im1);
 	h2.insert(im2);
 	// Add the pixels

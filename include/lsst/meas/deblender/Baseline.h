@@ -83,7 +83,6 @@ namespace lsst {
                     return std::vector<boost::shared_ptr<typename lsst::afw::detection::HeavyFootprint<ImagePixelT,MaskPixelT,VariancePixelT> > >();
                 };
 
-
                 /*** This should move to HeavyFootprint.cc ***/
                 static
                 boost::shared_ptr<lsst::afw::detection::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT> >

@@ -229,8 +229,9 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     strayflux = butils.getEmptyStrayFluxList()
     ports = butils.apportionFlux(maskedImage, fp, tmimgs, sumimg,
                                  findStrayFlux, dpsf, pkx, pky, strayflux)
+    
     ii = 0
-    for (pk, pkres, stray) in zip(peaks, res.peaks, strayflux):
+    for j, (pk, pkres) in enumerate(zip(peaks, res.peaks)):
         if pkres.out_of_bounds:
             continue
         pkres.mportion = ports[ii]
@@ -238,12 +239,16 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         ii += 1
         heavy = afwDet.makeHeavyFootprint(pkres.tfoot, pkres.mportion)
         heavy.getPeaks().push_back(pk)
+
+        # NOTE that due to a swig bug (https://github.com/swig/swig/issues/59)
+        # we CANNOT iterate over "strayflux", but must index into it.
+        stray = strayflux[j]
+        
         pkres.heavy = heavy
         pkres.stray = stray
-        # print 'Stray:', stray
+
         if stray:
             pkres.heavy2 = butils.mergeHeavyFootprints(heavy, stray)
-            pkres.heavy2.getPeaks().push_back(pk)
         else:
             pkres.heavy2 = heavy
 
