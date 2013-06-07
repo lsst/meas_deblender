@@ -33,7 +33,8 @@ def deblend(footprint, maskedImage, psf, psffwhm,
             maxNumberOfPeaks=0,
             dropTinyFootprints=True,
             findStrayFlux=True,
-            assignStrayFlux=True
+            assignStrayFlux=True,
+            strayFluxToPointSources='necessary',
             ):
     '''
     Deblend a single ``footprint`` in a ``maskedImage``.
@@ -58,6 +59,11 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     import lsst.meas.deblender as deb
     butils = deb.BaselineUtilsF
 
+    validStrayPtSrc = ['never', 'necessary', 'always']
+    if not strayFluxToPointSources in validStrayPtSrc:
+        raise ValueError(('strayFluxToPointSources: value \"%s\" not in the set of allowed values: '
+                          % strayFluxToPointSources) + str(validStrayPtSrc))
+    
     if log is None:
         import lsst.pex.logging as pexLogging
         loglvl = pexLogging.Log.INFO
@@ -90,14 +96,9 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         pkres.pki = pki
         res.peaks.append(pkres)
 
-    #print 'Initial mask planes:'
-    #mask.printMaskPlanes()
     for nm in ['SYMM_1SIG', 'SYMM_3SIG', 'MONOTONIC_1SIG']:
         bit = mask.addMaskPlane(nm)
         val = mask.getPlaneBitMask(nm)
-        #print 'Added', nm, '=', val
-    #print 'New mask planes:'
-    #mask.printMaskPlanes()
 
     imbb = img.getBBox(afwImage.PARENT)
     bb = fp.getBBox()
@@ -171,6 +172,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         pkres.tfoot = tfoot
 
     tmimgs = []
+    tfoots = []
     dpsf = []
     pkxy = []
     pkx = []
@@ -180,6 +182,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         if pkres.out_of_bounds:
             continue
         tmimgs.append(pkres.tmimg)
+        tfoots.append(pkres.tfoot)
         # for stray flux...
         dpsf.append(pkres.deblend_as_psf)
         pk = pkres.peak
@@ -230,8 +233,14 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     strayopts = 0
     if findStrayFlux:
         strayopts |= butils.ASSIGN_STRAYFLUX
-        strayopts |= butils.STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY
-    ports = butils.apportionFlux(maskedImage, fp, tmimgs, sumimg,
+        if strayFluxToPointSources == 'necessary':
+            strayopts |= butils.STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY
+        elif strayFluxToPointSources == 'always':
+            strayopts |= butils.STRAYFLUX_TO_POINT_SOURCES_ALWAYS
+            
+    strayopts |= butils.STRAYFLUX_R_TO_FOOTPRINT
+    
+    ports = butils.apportionFlux(maskedImage, fp, tmimgs, tfoots, sumimg,
                                  dpsf, pkx, pky, strayflux, strayopts)
     
     ii = 0
@@ -583,7 +592,8 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
     # Since the dx,dy terms are at the end of the matrix,
     # we can do that just by trimming off those elements.
     #
-    # The SVD can fail if there are NaNs in the matrices; this should really be handled upstream
+    # The SVD can fail if there are NaNs in the matrices; this should
+    # really be handled upstream
     try:
         # NT1 is number of terms without dx,dy;
         # X1 is the result without decenter
@@ -653,7 +663,6 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
 
         # yuck!  Update the PSF terms in the least-squares fit matrix.
         Ab = A[:,:NT1]
-        #oldpsfrow = A[:, I_psf]
 
         sx1,sx2,sx3,sx4 = _overlap(xlo, xhi, px0, px1)
         sy1,sy2,sy3,sy4 = _overlap(ylo, yhi, py0, py1)
@@ -663,7 +672,6 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         xx,yy = np.arange(xlo, xhi+1), np.arange(ylo, yhi+1)
         inpsf = np.outer((yy >= py0) * (yy <= py1), (xx >= px0) * (xx <= px1))
         Ab[inpsf[valid], I_psf] = psfsub[vsub]
-        #shiftedpsfrow = Ab[:, I_psf]
 
         Aw  = Ab * w[:,np.newaxis]
         # re-solve...
@@ -682,12 +690,10 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         q2 = qb
         X2 = Xb
         log.logdebug('shifted PSF: new chisq/dof = %g; good? %s' % (qb, ispsf2))
-        #A[:,I_psf] = oldpsfrow
 
     # Which one do we keep?
     if (((ispsf1 and ispsf2) and (q2 < q1)) or
         (ispsf2 and not ispsf1)):
-        #A[:,I_psf] = shiftedpsfrow
         Xpsf = X2
         chisq = chisq2
         dof = dof2
@@ -700,7 +706,7 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         chisq = chisq1
         dof = dof1
         log.logdebug('Keeping unshifted PSF model')
-    #A = A[:,:NT1]
+
     ispsf = (ispsf1 or ispsf2)
 
     # Save the PSF models in images for posterity.
@@ -763,27 +769,9 @@ def _fit_psf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
             modelfp.addSpan(int(y+ylo), int(x+xlo), int(x+xlo))
         modelfp.normalize()
 
+        # Instantiate the PSF model and clip it to modelfp.
         psfimg = psf.computeImage(cx, cy)
-
         SW,SH = 1+xhi-xlo, 1+yhi-ylo
-        # psfmod = afwImage.MaskedImageF(SW,SH)
-        # psfmod.setXY0(xlo,ylo)
-        # pbb = psfimg.getBBox(afwImage.PARENT)
-        # px0,py0 = pbb.getMinX(), pbb.getMinY()
-        # px1,py1 = pbb.getMaxX(), pbb.getMaxY()
-        # sx1,sx2,sx3,sx4 = _overlap(xlo, xhi, px0, px1)
-        # sy1,sy2,sy3,sy4 = _overlap(ylo, yhi, py0, py1)
-        # psfmod.getImage().getArray()[sy1 - ylo: sy2 - ylo, sx1 - xlo: sx2 - xlo] = (
-        #     psfimg.getArray()[sy3 + ylo-py0: sy4 + ylo-py0, sx3 + xlo-px0: sx4 + xlo-px0]) * Xpsf[I_psf]
-
-        ## baseline.py creates the "heavy" from tfoot and mportion,
-        ## where mportion is the same shape as the psfmod, so for that
-        ## all to be consistent we need to make the "tfoot" and "tmimg"
-        ## match up -- either clip tmimg to tfoot, or make "tfoot" a box
-        ## rather than a circle.
-        #pkres.tmimg = psfmod
-        #pkres.tfoot = modelfp
-
         psfmod = afwImage.MaskedImageF(SW,SH)
         psfmod.setXY0(xlo,ylo)
         # Scale by fit flux.
