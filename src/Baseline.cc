@@ -212,7 +212,8 @@ apportionFlux(MaskedImageT const& img,
 	std::vector<det::Footprint::Ptr > strayfoot;
 	std::vector<std::vector<ImagePixelT> > straypix;
 
-    pexLog::Log log(pexLog::Log::getDefaultLog(), "lsst.meas.deblender.apportionFlux", pexLog::Log::INFO);
+    pexLog::Log log(pexLog::Log::getDefaultLog(),
+					"lsst.meas.deblender.apportionFlux");
 	bool findStrayFlux = (strayFluxOptions & ASSIGN_STRAYFLUX);
 
 	int ix0 = img.getX0();
@@ -588,9 +589,8 @@ symmetrizeFootprint(
 	const SpanList spans = foot.getSpans();
     assert(foot.isNormalized());
 
-    pexLog::Log log(pexLog::Log::getDefaultLog(), "lsst.meas.deblender",
-					//pexLog::Log::DEBUG);
-					pexLog::Log::INFO);
+    pexLog::Log log(pexLog::Log::getDefaultLog(),
+					"lsst.meas.deblender.symmetrizeFootprint");
 
 	/*
 	 // compute correct answer dumbly
@@ -833,7 +833,8 @@ buildSymmetricTemplate(
 	if (!sfoot) {
 		return std::pair<MaskedImagePtrT, FootprintPtrT>(MaskedImagePtrT(), sfoot);
 	}
-    pexLog::Log log(pexLog::Log::getDefaultLog(), "lsst.meas.deblender", pexLog::Log::INFO);
+    pexLog::Log log(pexLog::Log::getDefaultLog(),
+					"lsst.meas.deblender.symmetricFootprint");
 
     // The result image will be at most as large as the footprint
 	geom::Box2I fbb = foot.getBBox();
