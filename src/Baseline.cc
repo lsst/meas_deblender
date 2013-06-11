@@ -319,7 +319,7 @@ apportionFlux(MaskedImageT const& img,
 
 				if (strayFluxOptions & STRAYFLUX_R_TO_FOOTPRINT) {
 					// By 1/r^2 to nearest pixel within the footprint
-					for (int i=0; i<timgs.size(); ++i) {
+					for (size_t i=0; i<timgs.size(); ++i) {
 						double minr2 = 1e12;
 						const SpanList tspans = tfoots[i]->getSpans();
 						for (SpanList::const_iterator ts = tspans.begin();
@@ -347,7 +347,7 @@ apportionFlux(MaskedImageT const& img,
 
 				} else {
 					// Split the stray flux by 1/r^2 ...
-					for (int i=0; i<timgs.size(); ++i) {
+					for (size_t i=0; i<timgs.size(); ++i) {
 						int dx, dy;
 						dx = pkx[i] - x;
 						dy = pky[i] - y;
@@ -363,7 +363,7 @@ apportionFlux(MaskedImageT const& img,
 				bool ptsrcs = always;
 
 				double csum = 0.;
-				for (int i=0; i<timgs.size(); ++i) {
+				for (size_t i=0; i<timgs.size(); ++i) {
 					// Skip deblended-as-PSF
 					if ((!always) && ispsf.size() && ispsf[i]) {
 						continue;
@@ -378,7 +378,7 @@ apportionFlux(MaskedImageT const& img,
 					ptsrcs = true;
 					//printf("assigning stray flux to point sources\n");
 					// No extended sources -- assign to pt sources
-					for (int i=0; i<timgs.size(); ++i) {
+					for (size_t i=0; i<timgs.size(); ++i) {
 						csum += contrib[i];
 					}
 				}
@@ -389,7 +389,7 @@ apportionFlux(MaskedImageT const& img,
 				//printf("clip: %g\n", strayclip);
 
 				csum = 0.;
-				for (int i=0; i<timgs.size(); ++i) {
+				for (size_t i=0; i<timgs.size(); ++i) {
 					// skip ptsrcs?
 					if ((!ptsrcs) && ispsf.size() && ispsf[i]) {
 						contrib[i] = 0.;
@@ -405,7 +405,7 @@ apportionFlux(MaskedImageT const& img,
 				}
 				//printf("csum = %g (after skipping small)\n", csum);
 
-				for (int i=0; i<timgs.size(); ++i) {
+				for (size_t i=0; i<timgs.size(); ++i) {
 					double c = contrib[i];
 					if (c == 0.) {
 						continue;
@@ -459,26 +459,23 @@ public:
 
 	RelativeSpanIterator() {}
 
-	RelativeSpanIterator(SpanList::const_iterator real,
-						 SpanList arr,
+	RelativeSpanIterator(SpanList::const_iterator const& real,
+						 SpanList const& arr,
 						 int cx, int cy, bool forward=true) 
-		: _cx(cx), _cy(cy), _real(real), _forward(forward)
+		: _real(real), _cx(cx), _cy(cy), _forward(forward)
 		{
 			if (_forward) {
 				_end = arr.end();
 			} else {
 				_end = arr.begin();
 			}
-		}
-
-	// default copy & assignment operators are fine
-
-	/*
-	 RelativeSpanIterator(RelativeSpanIterator const& other)
-	 : _cx(other._cx), _cy(other._cy), _real(other._real),
-	 _forward(other._forward), _end(other._end)
-	 {}
-	 */
+            /*
+             printf("RelativeSpanIterator: real is [%i], end is [%i]\n",
+             (int)(real - arr.begin()), (int)(arr.end() - arr.begin()));
+             printf("forward is %i; _end is %i\n", _forward, (int)(_end - arr.begin()));
+             printf("notDone? %i\n", notDone());
+             */
+        }
 
 	bool operator==(const SpanList::const_iterator & other) {
 		return _real == other;
@@ -507,16 +504,6 @@ public:
 	bool operator!=(RelativeSpanIterator & other) {
 		return !(*this == other);
 	}
-
-	// FIXME -- Need this?
-	/*
-	 const det::Span::Ptr operator*() {
-	 return *_real;
-	 }
-	 SpanList::const_iterator getReal() {
-	 return _real;
-	 }
-	 */
 
 	RelativeSpanIterator operator++() {
 		if (_forward) {
