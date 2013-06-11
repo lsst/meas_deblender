@@ -439,10 +439,21 @@ apportionFlux(MaskedImageT const& img,
 				ndarray::Array<ImagePixelT,1,1> himg = heavy->getImageArray();
 				typename std::vector<ImagePixelT>::const_iterator spix;
 				typename ndarray::Array<ImagePixelT,1,1>::Iterator hpix;
-				for (spix = straypix[i].begin(), hpix = himg.begin();
+
+                /// FIXME -- we just put in zeros for the mask and variance planes.
+				typename ndarray::Array<MaskPixelT,1,1>::Iterator mpix;
+				typename ndarray::Array<VariancePixelT,1,1>::Iterator vpix;
+
+                assert(strayfoot[i]->getNpix() == straypix[i].size());
+
+				for (spix = straypix[i].begin(), hpix = himg.begin(),
+                         mpix = heavy->getMaskArray().begin(),
+                         vpix = heavy->getVarianceArray().begin();
 					 spix != straypix[i].end();
-					 ++spix, ++hpix) {
+					 ++spix, ++hpix, ++mpix, ++vpix) {
 					*hpix = *spix;
+                    *mpix = 0;
+                    *vpix = 0;
 				}
 				strays.push_back(heavy);
 			}
@@ -627,7 +638,6 @@ symmetrizeFootprint(
     pexLog::Log log(pexLog::Log::getDefaultLog(),
 					"lsst.meas.deblender.symmetrizeFootprint");
 
-
 	// Find the Span containing the peak.
 	det::Span::Ptr target(new det::Span(cy, cx, cx));
 	SpanList::const_iterator peakspan =
@@ -775,7 +785,7 @@ symmetrizeFootprint(
 		if (fwd.dxhi() < back.dxhi()) {
 			fwd++;
 			if (fwd == fend) {
-				log.debugf("Stepped to fend\n");
+				log.debugf("Stepped to fend");
 			} else {
 				log.debugf("Stepped forward to span %i, [%i, %i]",
 						   fwd.y(), fwd.x0(), fwd.x1());
@@ -783,7 +793,7 @@ symmetrizeFootprint(
 		} else {
 			back++;
 			if (back == bend) {
-				log.debugf("Stepped to bend\n");
+				log.debugf("Stepped to bend");
 			} else {
 				log.debugf("Stepped backward to span %i, [%i, %i]",
 						   back.y(), back.x0(), back.x1());
@@ -871,10 +881,10 @@ buildSymmetricTemplate(
 			targetimg->set0(fx, fy, pix);
 			targetimg->set0(bx, by, pix);
 
-			// Set the "symm1sig" mask bit for pixels that have
-			// been pulled down by the symmetry constraint, and
-			// the "symm3sig" mask bit for pixels pulled down by 3
-			// sigma.
+			// Set the "symm1sig" mask bit for pixels that have been
+			// pulled down at least 1 sigma by the symmetry
+			// constraint, and the "symm3sig" mask bit for pixels
+			// pulled down by 3 sigma or more.
 			if (pixf >= pix + 1.*sigma1) {
 				targetmask->set0(fx, fy, targetmask->get0(fx, fy) | symm1sig);
 				if (pixf >= pix + 3.*sigma1) {
@@ -890,11 +900,110 @@ buildSymmetricTemplate(
 		}
 	}
 
+
     // Clip the result image to "tbb" (via this deep copy, ugh)
     MaskedImagePtrT rimg(new MaskedImageT(timg, sfoot->getBBox(), image::PARENT, true));
 
 	return std::pair<MaskedImagePtrT, FootprintPtrT>(rimg, sfoot);
 }
+
+template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+bool
+deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
+hasSignificantFluxAtEdge(ImagePtrT img,
+						 det::Footprint::Ptr sfoot,
+						 ImagePixelT thresh) {
+	// ASSUME "sfoot" is a symmetric footprint!!!
+	typedef typename det::Footprint::SpanList SpanList;
+
+    pexLog::Log log(pexLog::Log::getDefaultLog(),
+					"lsst.meas.deblender.hasSignificantFluxAtEdge");
+
+	// Find edge template pixels with significant flux -- perhaps
+	// because their symmetric pixels were outside the footprint?
+	// (clipped by an image edge, etc)
+
+	const SpanList spans = sfoot->getSpans();
+
+	SpanList::const_iterator fwd  = spans.begin();
+	SpanList::const_iterator back = spans.end()-1;
+
+	for (; fwd <= back; fwd++, back--) {
+		// Technically we have to check above and below all pixels
+		// and left and right of the end pixels.  Faster to do
+		// this in image space?  (Inserting footprint into image,
+		// operating on image, re-grabbing footprint, like
+		// growFootprint) Or cache the span starts and ends of a
+		// sliding window of rows?
+		int y = (*fwd)->getY();
+		int x0 = (*fwd)->getX0();
+		int x1 = (*fwd)->getX1();
+		int x;
+		typename ImageT::const_x_iterator xiter;
+		for (xiter = img->x_at(x0,y), x=x0; 
+			 x<=x1; ++x, ++xiter) {
+			if (*xiter < thresh)
+				// not significant
+				continue;
+			// Since the footprint is normalized, all span endpoints
+			// are on the boundary.
+			if ((x != x0) && (x != x1) &&
+				sfoot->contains(geom::Point2I(x, y-1)) &&
+				sfoot->contains(geom::Point2I(x, y+1))) {
+				// not edge
+				continue;
+			}
+			log.debugf("Found significant template-edge pixel: %i,%i = %f",
+					   x, y, (float)*xiter);
+			return true;
+		}
+	}
+	return false;
+}
+
+template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+boost::shared_ptr<det::Footprint>
+deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
+getSignificantEdgePixels(ImagePtrT img,
+						 det::Footprint::Ptr sfoot,
+						 ImagePixelT thresh) {
+	typedef typename det::Footprint::SpanList SpanList;
+    pexLog::Log log(pexLog::Log::getDefaultLog(),
+					"lsst.meas.deblender.getSignificantEdgePixels");
+	const SpanList spans = sfoot->getSpans();
+	SpanList::const_iterator fwd;
+	det::Footprint::Ptr edgepix(new det::Footprint());
+
+	for (fwd = spans.begin(); fwd != spans.end(); fwd++) {
+		int y = (*fwd)->getY();
+		int x0 = (*fwd)->getX0();
+		int x1 = (*fwd)->getX1();
+		int x;
+		typename ImageT::const_x_iterator xiter;
+		for (xiter = img->x_at(x0,y), x=x0; 
+			 x<=x1; ++x, ++xiter) {
+			if (*xiter < thresh)
+				// not significant
+				continue;
+			// Since the footprint is normalized, all span endpoints
+			// are on the boundary.
+			if ((x != x0) && (x != x1) &&
+				sfoot->contains(geom::Point2I(x, y-1)) &&
+				sfoot->contains(geom::Point2I(x, y+1))) {
+				// not edge
+				continue;
+			}
+			log.debugf("Found significant edge pixel: %i,%i = %f",
+					   x, y, (float)*xiter);
+			edgepix->addSpan(y, x, x);
+		}
+	}
+	edgepix->normalize();
+	return edgepix;
+}
+
+
+
 
 
 template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
