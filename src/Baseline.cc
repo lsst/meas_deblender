@@ -829,7 +829,6 @@ buildSymmetricTemplate(
 	int cx = peak.getIx();
 	int cy = peak.getIy();
 
-	printf("
     FootprintPtrT sfoot = symmetrizeFootprint(foot, cx, cy);
 	if (!sfoot) {
 		return std::pair<MaskedImagePtrT, FootprintPtrT>(MaskedImagePtrT(), sfoot);
