@@ -16,24 +16,6 @@ namespace geom = lsst::afw::geom;
 namespace malg = lsst::meas::algorithms;
 namespace pexLog = lsst::pex::logging;
 
-template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
-std::vector<double>
-deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
-fitEllipse(ImageT const& image, double bkgd, double xc, double yc) {
-	double shiftmax = 5.0;
-	malg::detail::SdssShapeImpl shape;
-	bool ok = malg::detail::getAdaptiveMoments(image, bkgd, xc, yc, shiftmax, &shape);
-	assert(ok);
-	std::vector<double> vals;
-	vals.push_back(shape.getX());
-	vals.push_back(shape.getY());
-	vals.push_back(shape.getI0());
-	vals.push_back(shape.getIxx());
-	vals.push_back(shape.getIyy());
-	vals.push_back(shape.getIxy());
-	return vals;
-}
-
 static bool span_ptr_compare(det::Span::Ptr sp1, det::Span::Ptr sp2) {
 	return (*sp1 < *sp2);
 }
@@ -357,8 +339,6 @@ apportionFlux(MaskedImageT const& img,
 
 				// Round 1: 
 				bool always = (strayFluxOptions & STRAYFLUX_TO_POINT_SOURCES_ALWAYS);
-				//printf("always?: %i\n", always);
-
 				// are we going to assign stray flux to ptsrcs?
 				bool ptsrcs = always;
 
@@ -370,24 +350,18 @@ apportionFlux(MaskedImageT const& img,
 					}
 					csum += contrib[i];
 				}
-				//printf("csum = %g\n", csum);
-				//printf("when necessary: %i\n", (strayFluxOptions & STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY));
 				if ((csum == 0.) &&
 					(strayFluxOptions & STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY)) {
-					log.debugf("necessary to assign stray flux to point sources");
-					ptsrcs = true;
-					//printf("assigning stray flux to point sources\n");
 					// No extended sources -- assign to pt sources
+					//log.debugf("necessary to assign stray flux to point sources");
+					ptsrcs = true;
 					for (size_t i=0; i<timgs.size(); ++i) {
 						csum += contrib[i];
 					}
 				}
-				//printf("csum = %g\n", csum);
 
-				// Drop very small contributions...
+				// Drop small contributions...
 				double strayclip = (0.001 * csum);
-				//printf("clip: %g\n", strayclip);
-
 				csum = 0.;
 				for (size_t i=0; i<timgs.size(); ++i) {
 					// skip ptsrcs?
@@ -403,7 +377,6 @@ apportionFlux(MaskedImageT const& img,
 					}
 					csum += contrib[i];
 				}
-				//printf("csum = %g (after skipping small)\n", csum);
 
 				for (size_t i=0; i<timgs.size(); ++i) {
 					double c = contrib[i];
@@ -412,13 +385,6 @@ apportionFlux(MaskedImageT const& img,
 					}
 					// the stray flux to give to template i
 					double p = (c / csum) * (*in_it);
-					/*
-					 // add it in
-					 geom::Box2I pbb = portions[i]->getBBox(image::PARENT);
-					 if (pbb.contains(geom::Point2I(x, y))) {
-					 portions[i]->getImage()->set0(x, y, p);
-					 } else {
-					 */
 					if (!strayfoot[i]) {
 						strayfoot[i] = det::Footprint::Ptr(new det::Footprint());
 					}
@@ -428,6 +394,7 @@ apportionFlux(MaskedImageT const& img,
 			}
 		}
 
+		// Store the stray flux in HeavyFootprints
 		for (size_t i=0; i<timgs.size(); ++i) {
 			if (!strayfoot[i]) {
 				strays.push_back(HeavyFootprintPtr());
@@ -829,7 +796,7 @@ buildSymmetricTemplate(
 	det::Peak const& peak,
 	double sigma1,
 	bool minZero,
-	bool patchOob) {
+	bool patchEdge) {
 
 	typedef typename MaskedImageT::const_xy_locator xy_loc;
 	typedef typename det::Footprint::SpanList SpanList;
@@ -848,7 +815,7 @@ buildSymmetricTemplate(
 
 	// does this footprint touch an EDGE?
 	bool touchesEdge = false;
-	if (patchOob) {
+	if (patchEdge) {
 		log.debugf("Checking footprint for EDGE bits");
 		MaskPtrT mask = img.getMask();
 		bool edge = false;
@@ -875,13 +842,8 @@ buildSymmetricTemplate(
 		if (edge) {
 			log.debugf("Footprint includes an EDGE pixel.");
 			touchesEdge = true;
-			// ???
-			// Build a fake SpanList containing all the original
-			// spans, plus the portion of their mirrors that would
-			// fall outside the image bounds.
 		}
 	}
-	
 
     // The result image:
 	MaskedImagePtrT timg(new MaskedImageT(sfoot->getBBox()));
@@ -966,17 +928,8 @@ buildSymmetricTemplate(
 
 		// New template image
 		MaskedImagePtrT timg2(new MaskedImageT(bb));
-		// copy pixels within sfoot
-		for (fwd = spans.begin(); fwd != spans.end(); ++fwd) {
-			int y = (*fwd)->getY();
-			int x0 = (*fwd)->getX0();
-			int x1 = (*fwd)->getX1();
-			typename MaskedImageT::x_iterator initer  = timg ->x_at(x0 - timg ->getX0(), y - timg ->getY0());
-			typename MaskedImageT::x_iterator outiter = timg2->x_at(x0 - timg2->getX0(), y - timg2->getY0());
-			for (int x=x0; x<=x1; ++x, ++outiter, ++initer) {
-				*outiter = *initer;
-			}
-		}
+		copyWithinFootprint(*sfoot, timg, timg2);
+
 		// copy original 'img' pixels for the portion of spans whose
 		// mirrors are out of bounds.
 		for (fwd = ospans.begin(); fwd != ospans.end(); ++fwd) {
@@ -1010,10 +963,7 @@ buildSymmetricTemplate(
 		}
 		sfoot->normalize();
 		timg = timg2;
-
 	}
-
-
 
 	return std::pair<MaskedImagePtrT, FootprintPtrT>(timg, sfoot);
 }
@@ -1040,12 +990,11 @@ hasSignificantFluxAtEdge(ImagePtrT img,
 	SpanList::const_iterator back = spans.end()-1;
 
 	for (; fwd <= back; fwd++, back--) {
-		// Technically we have to check above and below all pixels
-		// and left and right of the end pixels.  Faster to do
-		// this in image space?  (Inserting footprint into image,
-		// operating on image, re-grabbing footprint, like
-		// growFootprint) Or cache the span starts and ends of a
-		// sliding window of rows?
+		// We have to check above and below all pixels and left and
+		// right of the end pixels.  Faster to do this in image space?
+		// (Inserting footprint into image, operating on image,
+		// re-grabbing footprint, like growFootprint) Or cache the
+		// span starts and ends of a sliding window of rows?
 		int y = (*fwd)->getY();
 		int x0 = (*fwd)->getX0();
 		int x1 = (*fwd)->getX1();
@@ -1145,6 +1094,53 @@ mergeHeavyFootprints(HeavyFootprintT const& h1,
 
 	// Build new HeavyFootprint from the merged spans and summed pixels.
 	return HeavyFootprintPtr(new HeavyFootprintT(foot, im1));
+}
+
+
+template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+void
+deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
+copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
+					ImagePtrT const input,
+					ImagePtrT output) {
+	det::Footprint::SpanList spans = foot.getSpans();
+	for (det::Footprint::SpanList::iterator sp = spans.begin();
+		 sp != spans.end(); ++sp) {
+		int y  = (*sp)->getY();
+		int x0 = (*sp)->getX0();
+		int x1 = (*sp)->getX1();
+		typename ImageT::const_x_iterator initer = input->x_at(
+			x0 - input->getX0(), y - input->getY0());
+		typename ImageT::const_x_iterator inend = input->x_at(
+			x1 - input->getX0(), y - input->getY0());
+		typename ImageT::x_iterator outiter = output->x_at(
+			x0 - output->getX0(), y - output->getY0());
+		for (; initer <= inend; ++initer, ++outiter) {
+			*outiter = *initer;
+		}
+	}
+}
+template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+void
+deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
+copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
+					MaskedImagePtrT const input,
+					MaskedImagePtrT output) {
+	det::Footprint::SpanList spans = foot.getSpans();
+	for (det::Footprint::SpanList::iterator sp = spans.begin();
+		 sp != spans.end(); ++sp) {
+		int y  = (*sp)->getY();
+		int x0 = (*sp)->getX0();
+		int x1 = (*sp)->getX1();
+		int x;
+		typename MaskedImageT::const_x_iterator initer = input->x_at(
+			x0 - input->getX0(), y - input->getY0());
+		typename MaskedImageT::x_iterator outiter = output->x_at(
+			x0 - output->getX0(), y - output->getY0());
+		for (x=x0; x<=x1; ++x, ++initer, ++outiter) {
+			*outiter = *initer;
+		}
+	}
 }
 
 

@@ -34,10 +34,6 @@ namespace lsst {
 
                 typedef typename boost::shared_ptr<lsst::afw::detection::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT> > HeavyFootprintPtr;
 
-                static std::vector<double>
-                fitEllipse(ImageT const& img,
-                           double bkgd, double xc, double yc);
-
                 static
                 lsst::afw::detection::Footprint::Ptr
                 symmetrizeFootprint(lsst::afw::detection::Footprint const& foot,
@@ -50,7 +46,7 @@ namespace lsst {
                                        lsst::afw::detection::Peak const& pk,
                                        double sigma1,
                                        bool minZero,
-                                       bool patchOob);
+                                       bool patchEdges);
 
                 static void
                 medianFilter(MaskedImageT const& img,
@@ -111,6 +107,18 @@ namespace lsst {
                 mergeHeavyFootprints(
                     lsst::afw::detection::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT> const& h1,
                     lsst::afw::detection::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT> const& h2);
+
+                static
+                void
+                copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
+                                    ImagePtrT const input,
+                                    ImagePtrT output);
+                static
+                void
+                copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
+                                    MaskedImagePtrT const input,
+                                    MaskedImagePtrT output);
+
 
             };
         }
