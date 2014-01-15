@@ -1331,52 +1331,42 @@ mergeHeavyFootprints(HeavyFootprintT const& h1,
  *foot*; ie, the footprint is totally contained within the images.
  ***/
 template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+template<typename ImageOrMaskedImageT>
 void
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
-                    ImagePtrT const input,
-                    ImagePtrT output) {
+                    PTR(ImageOrMaskedImageT) const input,
+                    PTR(ImageOrMaskedImageT) output) {
     det::Footprint::SpanList spans = foot.getSpans();
     for (det::Footprint::SpanList::iterator sp = spans.begin();
          sp != spans.end(); ++sp) {
         int y  = (*sp)->getY();
         int x0 = (*sp)->getX0();
         int x1 = (*sp)->getX1();
-        typename ImageT::const_x_iterator initer = input->x_at(
-            x0 - input->getX0(), y - input->getY0());
-        typename ImageT::const_x_iterator inend = input->x_at(
-            x1 - input->getX0(), y - input->getY0());
-        typename ImageT::x_iterator outiter = output->x_at(
+        typename ImageOrMaskedImageT::const_x_iterator initer = input->x_at(
+            x0 - input->getX0(),  y - input->getY0());
+        typename ImageOrMaskedImageT::x_iterator outiter = output->x_at(
             x0 - output->getX0(), y - output->getY0());
-        for (; initer <= inend; ++initer, ++outiter) {
+        for (int x=x0; x <= x1; ++x, ++initer, ++outiter) {
             *outiter = *initer;
         }
     }
 }
-template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
-void
-deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
-copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
-                    MaskedImagePtrT const input,
-                    MaskedImagePtrT output) {
-    det::Footprint::SpanList spans = foot.getSpans();
-    for (det::Footprint::SpanList::iterator sp = spans.begin();
-         sp != spans.end(); ++sp) {
-        int y  = (*sp)->getY();
-        int x0 = (*sp)->getX0();
-        int x1 = (*sp)->getX1();
-        int x;
-        typename MaskedImageT::const_x_iterator initer = input->x_at(
-            x0 - input->getX0(), y - input->getY0());
-        typename MaskedImageT::x_iterator outiter = output->x_at(
-            x0 - output->getX0(), y - output->getY0());
-        for (x=x0; x<=x1; ++x, ++initer, ++outiter) {
-            *outiter = *initer;
-        }
-    }
-}
-
 
 // Instantiate
 template class deblend::BaselineUtils<float>;
+
+template
+void 
+deblend::BaselineUtils<float>::
+copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
+                    PTR(lsst::afw::image::Image<float>) const input,
+                    PTR(lsst::afw::image::Image<float>) output);
+
+template
+void 
+deblend::BaselineUtils<float>::
+copyWithinFootprint(lsst::afw::detection::Footprint const& foot,
+                    PTR(lsst::afw::image::MaskedImage<float>) const input,
+                    PTR(lsst::afw::image::MaskedImage<float>) output);
 

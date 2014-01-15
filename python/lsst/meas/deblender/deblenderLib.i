@@ -48,7 +48,23 @@ using namespace lsst::afw::detection;
 
 %include "lsst/meas/deblender/Baseline.h"
 
+%extend lsst::meas::deblender::BaselineUtils<T> {
+  %template(copyWithinFootprintImage)       copyWithinFootprint<lsst::afw::image::Image<T> >;
+  %template(copyWithinFootprintMaskedImage) copyWithinFootprint<lsst::afw::image::MaskedImage<T> >;
+};
+
+/*
+%extend lsst::meas::deblender::BaselineUtils {
+    %template(copyWithinFootprintImageF)       copyWithinFootprint< lsst::afw::image::Image<float> >;
+    %template(copyWithinFootprintMaskedImageF) copyWithinFootprint< lsst::afw::image::MaskedImage<float> >;
+ };
+ */
+
 %template(BaselineUtilsF) lsst::meas::deblender::BaselineUtils<float>;
+
+//%template(BaselineUtilsFcopyWithinFootprintImage) lsst::meas::deblender::BaselineUtils<float>::copyWithinFootprint<lsst::afw::image::Image<float> >;
+//%template(BaselineUtilsFcopyWithinFootprintMaskedImage) lsst::meas::deblender::BaselineUtils<float>::copyWithinFootprint<lsst::afw::image::MaskedImage<float> >;
+
 
 %template(pairMaskedImageFPtrAndFootprintPtr) std::pair<lsst::meas::deblender::BaselineUtils<float>::MaskedImagePtrT, lsst::meas::deblender::BaselineUtils<float>::FootprintPtrT>;
 
