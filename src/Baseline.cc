@@ -257,7 +257,6 @@ makeMonotonic(
     }
 }
 
-
 template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
 void
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
