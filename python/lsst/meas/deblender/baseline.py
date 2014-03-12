@@ -142,6 +142,8 @@ class PerPeak(object):
 
         if strayFlux:
             if self.strayFlux is not None:
+                heavy.normalize()
+                self.strayFlux.normalize()
                 heavy = afwDet.mergeHeavyFootprintsF(heavy, self.strayFlux)
 
         return heavy
