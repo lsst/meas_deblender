@@ -375,12 +375,26 @@ def makeplots(butler, dataId, ps):
 
 
 if __name__ == '__main__':
-    # butler = dafPersist.Butler(os.path.join(os.environ["SUPRIME_DATA_DIR"],
-    #                                        "rerun", "dstn", "foo"))
-    # dataId = dict(visit=905518, ccd=31)
-    butler = dafPersist.Butler(os.path.join(os.environ["SUPRIME_DATA_DIR"],
-                                            "rerun", "dstn", "deb"))
-    dataId = dict(visit=905516, ccd=22)
+    import optparse
+    import sys
+
+    parser = optparse.OptionParser()
+    parser.add_option('--data', help='Data dir, default $SUPRIME_DATA_DIR/rerun/RERUN')
+    parser.add_option('--rerun', help='Rerun name, default %default', default='dstn/deb')
+    parser.add_option('--visit', help='Visit number, default %default', default=905516, type=int)
+    parser.add_option('--ccd', help='CCD number, default %default', default=22, type=int)
+    opt,args = parser.parse_args()
+
+    if len(args):
+        parser.print_help()
+        sys.exit(-1)
+
+    if not opt.data:
+        opt.data = os.path.join(os.environ['SUPRIME_DATA_DIR'],
+                                'rerun', opt.rerun)
+
+    butler = dafPersist.Butler(opt.data)
+    dataId = dict(visit=opt.visit, ccd=opt.ccd)
     ps = PlotSequence('deb')
 
     makeplots(butler, dataId, ps)
