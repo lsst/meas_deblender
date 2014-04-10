@@ -40,7 +40,7 @@ class DeblendAndMeasureConfig(pexConfig.Config):
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
                                                       doc = "Include HeavyFootprint data in source table?")
 
-    sourceOutputFile = pexConfig.Field(dtype=str, default=None, doc="Write sources to given filename (default: use butler)")
+    sourceOutputFile = pexConfig.Field(dtype=str, default=None, doc="Write sources to given filename (default: use butler)", optional=True)
 
     deblend = pexConfig.ConfigurableField(
         target = SourceDeblendTask,

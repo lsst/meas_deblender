@@ -141,8 +141,6 @@ class PerPeak(object):
             return None
         heavy = afwDet.makeHeavyFootprint(self.templateFootprint,
                                           self.fluxPortion)
-        heavy.getPeaks().push_back(self.peak)
-
         if strayFlux:
             if self.strayFlux is not None:
                 t0 = time.clock()
@@ -150,14 +148,12 @@ class PerPeak(object):
                 print 'heavy.normalize():', time.clock()-t0
                 t0 = time.clock()
                 self.strayFlux.normalize()
-                print 'strayFlux.normalize():', time.clock()-t0
+                print 'stray.normalize():', time.clock()-t0
                 t0 = time.clock()
                 print 'before mergeHeavyFootprints: N peaks', len(heavy.getPeaks()), len(self.strayFlux.getPeaks())
                 heavy = afwDet.mergeHeavyFootprintsF(heavy, self.strayFlux)
                 print 'mergeHeavyFootprints:', time.clock()-t0
-
                 print 'N peaks:', len(heavy.getPeaks())
-                
 
         return heavy
 
@@ -508,21 +504,20 @@ def deblend(footprint, maskedImage, psf, psffwhm,
             stray = None
         pkres.setStrayFlux(stray)
 
-    # Set each child footprint to contain only its single peak.
-    print 'Setting all child footprint PeakLists...'
+    # Set child footprints to contain the right number of peaks.
     for j, (pk, pkres) in enumerate(zip(peaks, res.peaks)):
         if pkres.skip:
             continue
 
-        for foot in [pkres.templateFootprint, pkres.strayFlux,
-                     pkres.origFootprint]:
+        for foot,add in [(pkres.templateFootprint, True),
+                         (pkres.origFootprint, True),
+                         (pkres.strayFlux, False)]:
             if foot is None:
                 continue
             pks = foot.getPeaks()
             pks.clear()
-            #print 'Peak:', pk
-            pks.push_back(pk)
-            print 'Footprint:', len(foot.getPeaks()), 'peaks'
+            if add:
+                pks.push_back(pk)
 
     return res
 
