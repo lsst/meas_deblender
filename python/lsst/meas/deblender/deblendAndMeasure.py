@@ -39,6 +39,9 @@ class DeblendAndMeasureConfig(pexConfig.Config):
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
                                                       doc = "Include HeavyFootprint data in source table?")
+
+    sourceOutputFile = pexConfig.Field(dtype=str, default=None, doc="Write sources to given filename (default: use butler)")
+
     deblend = pexConfig.ConfigurableField(
         target = SourceDeblendTask,
         doc = "Split blended sources into their components",
@@ -73,13 +76,32 @@ class DeblendAndMeasureTask(pipeBase.CmdLineTask):
         print 'Calexp:', calexp
         print 'srcs:', srcs
 
+        print 'Dropping deblending children from source list...'
+        srcs = srcs.copy()
+        print len(srcs), 'sources'
+        todel = []
+        for i,src in enumerate(srcs):
+            if src.getParent() != 0:
+                todel.append(i)
+        print len(todel), 'children to delete'
+        for i in reversed(todel):
+            del srcs[i]
+        print len(srcs), 'sources'
+
         if self.config.doDeblend:
             self.deblend.run(calexp, srcs, calexp.getPsf())
         
         if self.config.doMeasurement:
             self.measurement.run(calexp, srcs)
 
-
+        if srcs is not None and self.config.doWriteSources:
+            sourceWriteFlags = (0 if self.config.doWriteHeavyFootprintsInSources
+                                else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS)
+            print 'Writing "src" outputs'
+            if self.config.sourceOutputFile:
+                srcs.writeFits(self.config.sourceOutputFile, flags=sourceWriteFlags)
+            else:
+                dataRef.put(srcs, 'src', flags=sourceWriteFlags)
 
 if __name__ == '__main__':
     DeblendAndMeasureTask.parseAndRun()
