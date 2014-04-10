@@ -9,6 +9,7 @@ import lsst.daf.persistence as dafPersist
 import lsst.afw.detection as afwDet
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
+import lsst.afw.table as afwTable
 import lsst.pex.logging as pexLogging
 from lsst.meas.deblender.baseline import *
 from lsst.meas.deblender import BaselineUtilsF as butils
@@ -80,10 +81,13 @@ def bb_to_xy(bb, margin=0):
     return [x0,x0,x1,x1,x0], [y0,y1,y1,y0,y0]
 
 
-def makeplots(butler, dataId, ps):
+def makeplots(butler, dataId, ps, sources=None):
     calexp = butler.get("calexp", **dataId)
-    ss = butler.get('src', **dataId)
-    
+    if sources is None:
+        ss = butler.get('src', **dataId)
+    else:
+        ss = sources
+
     #print 'Sources', ss
     #print 'Calexp', calexp
     #print dir(ss)
@@ -383,6 +387,9 @@ if __name__ == '__main__':
     parser.add_option('--rerun', help='Rerun name, default %default', default='dstn/deb')
     parser.add_option('--visit', help='Visit number, default %default', default=905516, type=int)
     parser.add_option('--ccd', help='CCD number, default %default', default=22, type=int)
+    parser.add_option('--sources', help='Read sources file', type=str)
+    parsre.add_option('--hdu', help='With --sources, HDU to read; default %default',
+                      type=int, default=2)
     opt,args = parser.parse_args()
 
     if len(args):
@@ -397,4 +404,10 @@ if __name__ == '__main__':
     dataId = dict(visit=opt.visit, ccd=opt.ccd)
     ps = PlotSequence('deb')
 
-    makeplots(butler, dataId, ps)
+    sources = None
+    if opt.sources:
+        flags = 0
+        srcs = afwTable.SourceCatalog.readFits(opt.sources, opt.hdu, flags)
+        print 'Read sources from', opt.sources, ':', srcs
+
+    makeplots(butler, dataId, ps, sources=sources)
