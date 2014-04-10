@@ -61,12 +61,6 @@ class DeblendAndMeasureTask(pipeBase.CmdLineTask):
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
-        self.algMetadata = dafBase.PropertyList()
-        if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
-        if self.config.doMeasurement:
-            self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
     def run(self, dataRef):
@@ -76,17 +70,31 @@ class DeblendAndMeasureTask(pipeBase.CmdLineTask):
         print 'Calexp:', calexp
         print 'srcs:', srcs
 
-        print 'Dropping deblending children from source list...'
-        srcs = srcs.copy()
-        print len(srcs), 'sources'
-        todel = []
-        for i,src in enumerate(srcs):
-            if src.getParent() != 0:
-                todel.append(i)
-        print len(todel), 'children to delete'
-        for i in reversed(todel):
-            del srcs[i]
-        print len(srcs), 'sources'
+        ## FIXME -- this whole mapping business is very fragile -- it
+        ## seems to fail, eg, if you don't set "-c
+        ## doMeasurement=False" when creating the input 'srcs' list.
+
+        mapper = afwTable.SchemaMapper(srcs.getSchema())
+        # map all the existing fields
+        mapper.addMinimalSchema(srcs.getSchema(), True)
+        schema = mapper.getOutputSchema()
+        self.algMetadata = dafBase.PropertyList()
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
+        self.schema = schema
+
+        parents = []
+        for src in srcs:
+            if src.getParent() == 0:
+                parents.append(src)
+
+        outsources = afwTable.SourceCatalog(schema)
+        outsources.reserve(len(parents))
+        outsources.extend(parents, mapper=mapper)
+        srcs = outsources
+        print len(srcs), 'sources before deblending'
 
         if self.config.doDeblend:
             self.deblend.run(calexp, srcs, calexp.getPsf())

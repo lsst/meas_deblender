@@ -108,7 +108,9 @@ class PerPeak(object):
         # debug -- a copy of the original symmetric template
         self.origTemplate = None
         self.origFootprint = None
+        # MaskedImage
         self.rampedTemplate = None
+        # MaskedImage
         self.medianFilteredTemplate = None
 
         # when least-squares fitting templates, the template weight.
@@ -150,6 +152,7 @@ class PerPeak(object):
                 self.strayFlux.normalize()
                 print 'strayFlux.normalize():', time.clock()-t0
                 t0 = time.clock()
+                print 'before mergeHeavyFootprints: N peaks', len(heavy.getPeaks()), len(self.strayFlux.getPeaks())
                 heavy = afwDet.mergeHeavyFootprintsF(heavy, self.strayFlux)
                 print 'mergeHeavyFootprints:', time.clock()-t0
 
@@ -338,6 +341,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         # (in this case, a nested pair)
         t1, tfoot = S[0], S[1]
         del S
+        print 'footprint has', len(tfoot.getPeaks()), 'peaks'
 
         if t1 is None:
             log.logdebug(('Peak %i at (%i,%i): failed to build symmetric ' +
@@ -350,6 +354,8 @@ def deblend(footprint, maskedImage, psf, psffwhm,
 
         # possibly save the original symmetric template
         pkres.setOrigTemplate(t1, tfoot)
+        print 'Orig template:'
+        print 'footprint has', len(tfoot.getPeaks()), 'peaks'
 
         if rampFluxAtEdge:
             log.logdebug('Checking for significant flux at edge: sigma1=%g' % sigma1)
@@ -364,6 +370,8 @@ def deblend(footprint, maskedImage, psf, psffwhm,
                 pkres.setPatched()
             t1 = t2
             tfoot = tfoot2
+            print 'Using ramped footprint'
+            print 'footprint has', len(tfoot.getPeaks()), 'peaks'
                 
         if medianSmoothTemplate:
             filtsize = medianFilterHalfsize * 2 + 1
@@ -375,6 +383,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
                 butils.medianFilter(inimg, t1, medianFilterHalfsize)
                 # possible save this median-filtered template
                 pkres.setMedianFilteredTemplate(t1, tfoot)
+                print 'footprint has', len(tfoot.getPeaks()), 'peaks'
             else:
                 log.logdebug(('Not median-filtering template %i: size '
                               + '%i x %i smaller than required %i x %i') %
@@ -387,11 +396,15 @@ def deblend(footprint, maskedImage, psf, psffwhm,
 
         if clipFootprintToNonzero:
             print 'Before clipping to non-zero:', tfoot.getBBox()
+            print 'footprint has', len(tfoot.getPeaks()), 'peaks'
             tfoot.clipToNonzeroF(t1.getImage())
             tfoot.normalize()
             print 'After clipping to non-zero:', tfoot.getBBox()
+            print 'footprint has', len(tfoot.getPeaks()), 'peaks'
 
+        print 'Regular setTemplate...'
         pkres.setTemplate(t1, tfoot)
+        print 'Regular setTemplate done'
 
     # Prepare inputs to "apportionFlux" call.
     # template maskedImages
@@ -494,7 +507,23 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         else:
             stray = None
         pkres.setStrayFlux(stray)
-            
+
+    # Set each child footprint to contain only its single peak.
+    print 'Setting all child footprint PeakLists...'
+    for j, (pk, pkres) in enumerate(zip(peaks, res.peaks)):
+        if pkres.skip:
+            continue
+
+        for foot in [pkres.templateFootprint, pkres.strayFlux,
+                     pkres.origFootprint]:
+            if foot is None:
+                continue
+            pks = foot.getPeaks()
+            pks.clear()
+            #print 'Peak:', pk
+            pks.push_back(pk)
+            print 'Footprint:', len(foot.getPeaks()), 'peaks'
+
     return res
 
 class CachingPsf(object):
@@ -996,7 +1025,9 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         # Save it as our template.
         fpcopy.clipToNonzeroF(psfmod.getImage())
         fpcopy.normalize()
+        print 'Deblending as PSF; setting template'
         pkres.setTemplate(psfmod, fpcopy)
+        print 'Deblending as PSF; set template'
 
         # DEBUG
         pkres.setPsfTemplate(psfmod, fpcopy)

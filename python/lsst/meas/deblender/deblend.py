@@ -239,7 +239,7 @@ class SourceDeblendTask(pipeBase.Task):
 
                 print 'getFluxPortion...'
                 heavy = peak.getFluxPortion()
-                print '(got)'
+                print 'getFluxPortion: N peaks', len(heavy.getPeaks())
                 if heavy is None:
                     # This can happen for children >= maxNumberOfPeaks
                     self.log.logdebug('Skipping peak at (%i,%i), child %i of %i: no flux portion'
