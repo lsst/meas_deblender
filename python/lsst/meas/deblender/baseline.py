@@ -143,15 +143,9 @@ class PerPeak(object):
                                           self.fluxPortion)
         if strayFlux:
             if self.strayFlux is not None:
-                t0 = time.clock()
                 heavy.normalize()
-                print 'heavy.normalize():', time.clock()-t0
-                t0 = time.clock()
                 self.strayFlux.normalize()
-                print 'stray.normalize():', time.clock()-t0
-                t0 = time.clock()
                 heavy = afwDet.mergeHeavyFootprintsF(heavy, self.strayFlux)
-                print 'mergeHeavyFootprints:', time.clock()-t0
 
         return heavy
 
@@ -996,11 +990,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         # Clip the Footprint to the PSF model image bbox.
         fpcopy = afwDet.Footprint(fp)
         psfbb = psfimg.getBBox(afwImage.PARENT)
-        print 'Deblending as PSF.'
-        print 'Footprint bbox:', fpcopy.getBBox()
-        print 'PSF bbox:', psfbb
         fpcopy.clipTo(psfbb)
-        print 'Clipped footprint bbox:', fpcopy.getBBox()
         bb = fpcopy.getBBox()
         
         # Copy the part of the PSF model within the clipped footprint.
