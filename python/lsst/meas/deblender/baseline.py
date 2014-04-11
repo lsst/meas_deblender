@@ -225,6 +225,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
             findStrayFlux=True,
             assignStrayFlux=True,
             strayFluxToPointSources='necessary',
+            strayFluxAssignment='r-to-peak',
             rampFluxAtEdge=False,
             patchEdges=False,
             tinyFootprintSize=2,
@@ -257,10 +258,15 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     butils = deb.BaselineUtilsF
 
     validStrayPtSrc = ['never', 'necessary', 'always']
+    validStrayAssign = ['r-to-peak', 'r-to-footprint', 'nearest-footprint']
     if not strayFluxToPointSources in validStrayPtSrc:
         raise ValueError((('strayFluxToPointSources: value \"%s\" not in the '
                            + 'set of allowed values: ')
                            % strayFluxToPointSources) + str(validStrayPtSrc))
+    if not strayFluxAssignment in validStrayAssign:
+        raise ValueError((('strayFluxAssignment: value \"%s\" not in the '
+                           + 'set of allowed values: ')
+                           % strayFluxAssignment) + str(validStrayAssign))
     
     if log is None:
         import lsst.pex.logging as pexLogging
@@ -279,8 +285,6 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     peaks = fp.getPeaks()
     if maxNumberOfPeaks > 0:
         peaks = peaks[:maxNumberOfPeaks]
-    print 'maxNumberOfPeaks:', maxNumberOfPeaks
-    print 'Peaks:', len(peaks)
 
     # Pull out the image bounds of the parent Footprint
     imbb = img.getBBox(afwImage.PARENT)
@@ -316,7 +320,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     log.logdebug(('Creating templates for footprint at x0,y0,W,H = ' +
                   '(%i,%i, %i,%i)') % (x0,y0,W,H))
     for peaki,pkres in enumerate(res.peaks):
-        print 'Deblending peak', peaki, 'of', len(res.peaks)
+        log.logdebug('Deblending peak %i of %i' % (peaki, len(res.peaks)))
         if pkres.skip or pkres.deblendedAsPsf:
             continue
         pk = pkres.peak
@@ -334,7 +338,6 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         # (in this case, a nested pair)
         t1, tfoot = S[0], S[1]
         del S
-        print 'footprint has', len(tfoot.getPeaks()), 'peaks'
 
         if t1 is None:
             log.logdebug(('Peak %i at (%i,%i): failed to build symmetric ' +
@@ -383,10 +386,8 @@ def deblend(footprint, maskedImage, psf, psffwhm,
             butils.makeMonotonic(t1, pk)
 
         if clipFootprintToNonzero:
-            print 'Before clipping to non-zero:', tfoot.getBBox()
             tfoot.clipToNonzeroF(t1.getImage())
             tfoot.normalize()
-            print 'After clipping to non-zero:', tfoot.getBBox()
 
         pkres.setTemplate(t1, tfoot)
 
@@ -403,11 +404,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     # indices of valid templates
     ibi = [] 
 
-    print 'Parent footprint bounding-box:', fp.getBBox()
-    print 'Parent footprint N spans:', len(fp.getSpans())
-
     for peaki,pkres in enumerate(res.peaks):
-        print 'Preparing peak', peaki, 'for apportionFlux'
         if pkres.skip:
             continue
         tmimgs.append(pkres.templateMaskedImage)
@@ -420,7 +417,6 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         ibi.append(pkres.pki)
 
     if weightTemplates:
-        print 'Computing weights for', len(tmimgs), 'templates'
         # Reweight the templates by doing a least-squares fit to the image
         A = np.zeros((W * H, len(tmimgs)))
         b = img.getArray()[y0:y1+1, x0:x1+1].ravel()
@@ -451,8 +447,9 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     
     # Now apportion flux according to the templates
     log.logdebug('Apportioning flux among %i templates' % len(tmimgs))
-    sumimg = afwImage.ImageF(bb.getDimensions())
-    sumimg.setXY0(bb.getMinX(), bb.getMinY())
+    sumimg = afwImage.ImageF(bb)
+    #.getDimensions())
+    #sumimg.setXY0(bb.getMinX(), bb.getMinY())
 
     strayflux = afwDet.HeavyFootprintPtrListF()
 
@@ -463,21 +460,24 @@ def deblend(footprint, maskedImage, psf, psffwhm,
             strayopts |= butils.STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY
         elif strayFluxToPointSources == 'always':
             strayopts |= butils.STRAYFLUX_TO_POINT_SOURCES_ALWAYS
-    strayopts |= butils.STRAYFLUX_R_TO_FOOTPRINT
-    
-    print 'apportionFlux...'
+
+        if strayFluxAssignment == 'r-to-peak':
+            # this is the default
+            pass
+        elif strayFluxAssignment == 'r-to-footprint':
+            strayopts |= butils.STRAYFLUX_R_TO_FOOTPRINT
+        elif strayFluxAssignment == 'nearest-footprint':
+            strayopts |= butils.STRAYFLUX_NEAREST_FOOTPRINT
+
     portions = butils.apportionFlux(maskedImage, fp, tmimgs, tfoots, sumimg,
                                     dpsf, pkx, pky, strayflux, strayopts,
                                     clipStrayFluxFraction)
-    print 'done apportionFlux'
-    print 'getTemplateSum'
     if getTemplateSum:
         res.setTemplateSum(sumimg)
         
     # Save the apportioned fluxes
     ii = 0
     for j, (pk, pkres) in enumerate(zip(peaks, res.peaks)):
-        print 'Saving flux portion and stray flux for peak', j
         if pkres.skip:
             continue
         pkres.setFluxPortion(portions[ii])
@@ -490,6 +490,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
             stray = strayflux[j]
         else:
             stray = None
+
         pkres.setStrayFlux(stray)
 
     # Set child footprints to contain the right number of peaks.

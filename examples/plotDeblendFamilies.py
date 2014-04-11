@@ -81,7 +81,7 @@ def bb_to_xy(bb, margin=0):
     return [x0,x0,x1,x1,x0], [y0,y1,y1,y0,y0]
 
 
-def makeplots(butler, dataId, ps, sources=None):
+def makeplots(butler, dataId, ps, sources=None, pids=None):
     calexp = butler.get("calexp", **dataId)
     if sources is None:
         ss = butler.get('src', **dataId)
@@ -129,19 +129,20 @@ def makeplots(butler, dataId, ps, sources=None):
     
     
     for ifam,(p,kids) in enumerate(families.items()):
-    
-        if len(kids) < 5:
-            print 'Skipping family with', len(kids)
-            continue
-
-        print 'ifam', ifam
-    
-        if ifam != 18:
-            print 'skipping'
-            continue
 
         parent = srcs[p]
+        pid = parent.getId() & 0xffff
+        if len(pids) and not pid in pids:
+            continue
     
+        # if len(kids) < 5:
+        #     print 'Skipping family with', len(kids)
+        #     continue
+        # print 'ifam', ifam
+        # if ifam != 18:
+        #     print 'skipping'
+        #     continue
+
         print 'Parent', parent
         print 'Kids', kids
     
@@ -388,8 +389,10 @@ if __name__ == '__main__':
     parser.add_option('--visit', help='Visit number, default %default', default=905516, type=int)
     parser.add_option('--ccd', help='CCD number, default %default', default=22, type=int)
     parser.add_option('--sources', help='Read sources file', type=str)
-    parsre.add_option('--hdu', help='With --sources, HDU to read; default %default',
+    parser.add_option('--hdu', help='With --sources, HDU to read; default %default',
                       type=int, default=2)
+    parser.add_option('--pid', '-p', action='append', default=[], type=int,
+                      help='Deblend a specific parent ID')
     opt,args = parser.parse_args()
 
     if len(args):
@@ -400,6 +403,7 @@ if __name__ == '__main__':
         opt.data = os.path.join(os.environ['SUPRIME_DATA_DIR'],
                                 'rerun', opt.rerun)
 
+    print 'Data directory:', opt.data
     butler = dafPersist.Butler(opt.data)
     dataId = dict(visit=opt.visit, ccd=opt.ccd)
     ps = PlotSequence('deb')
@@ -407,7 +411,7 @@ if __name__ == '__main__':
     sources = None
     if opt.sources:
         flags = 0
-        srcs = afwTable.SourceCatalog.readFits(opt.sources, opt.hdu, flags)
-        print 'Read sources from', opt.sources, ':', srcs
+        sources = afwTable.SourceCatalog.readFits(opt.sources, opt.hdu, flags)
+        print 'Read sources from', opt.sources, ':', sources
 
-    makeplots(butler, dataId, ps, sources=sources)
+    makeplots(butler, dataId, ps, sources=sources, pids=opt.pid)
