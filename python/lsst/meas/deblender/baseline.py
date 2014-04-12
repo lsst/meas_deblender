@@ -777,11 +777,12 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
     rw = np.ones_like(RR)
     ii = (RR > R0**2)
     rr = np.sqrt(RR[ii])
-    rw[ii] = 1. - ((rr - R0) / (R1 - R0))
+    rw[ii] = np.maximum(0, 1. - ((rr - R0) / (R1 - R0)))
     w = np.sqrt(rw[valid] / var_sub[valid])
     # save the effective number of pixels
     sumr = np.sum(rw[valid])
-    del rw
+    print 'sumr =', sumr
+
     del ii
 
     Aw  = A * w[:,np.newaxis]
@@ -824,6 +825,9 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         pkres.setPsfFitFailed()
         return
 
+    print 'r1', r1
+    print 'r2', r2
+
     # r is weighted chi-squared = sum over pixels: ramp * (model -
     # data)**2/sigma**2
     if len(r1) > 0:
@@ -836,6 +840,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         chisq2 = 1e30
     dof1 = sumr - len(X1)
     dof2 = sumr - len(X2)
+    print 'dof1, dof2', dof1, dof2
 
     # This can happen if we're very close to the edge (?)
     if dof1 <= 0 or dof2 <= 0:
@@ -894,11 +899,13 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         Aw  = Ab * w[:,np.newaxis]
         # re-solve...
         Xb,rb,rankb,sb = np.linalg.lstsq(Aw, bw)
+        print 'rb', rb
         if len(rb) > 0:
             chisqb = rb[0]
         else:
             chisqb = 1e30
         dofb = sumr - len(Xb)
+        print 'dofb', dofb
         qb = chisqb / dofb
         ispsf2 = (qb < psfChisqCut2b)
         q2 = qb
@@ -913,6 +920,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         Xpsf = X2
         chisq = chisq2
         dof = dof2
+        print 'dof', dof
         log.logdebug('Keeping shifted-PSF model')
         cx += dx
         cy += dy
@@ -922,6 +930,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         Xpsf = X1
         chisq = chisq1
         dof = dof1
+        print 'dof', dof
         log.logdebug('Keeping unshifted PSF model')
 
     ispsf = (ispsf1 or ispsf2)
@@ -961,6 +970,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
         ww = np.zeros(valid.shape, np.float)
         ww[valid] = w
         pkres.psfFitDebugWeight = ww # numpy
+        pkres.psfFitDebugRampWeight = rw
 
 
 
@@ -969,6 +979,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf,
     pkres.psfFitR1 = R1
     pkres.psfFitStampExtent = (xlo, xhi, ylo, yhi)
     pkres.psfFitCenter = (cx,cy)
+    print 'saving chisq,dof', chisq, dof
     pkres.psfFitBest = (chisq, dof)
     pkres.psfFitParams = Xpsf
     pkres.psfFitFlux = Xpsf[I_psf]
