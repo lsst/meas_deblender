@@ -130,6 +130,20 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
 
     plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9,
                         hspace=0.2, wspace=0.3)
+
+    sig1 = np.sqrt(np.median(calexp.getMaskedImage().getVariance().getArray().ravel()))
+    pp = (img / np.sqrt(calexp.getMaskedImage().getVariance().getArray())).ravel()
+    plt.clf()
+    lo,hi = -4,4
+    n,b,p = plt.hist(img.ravel() / sig1, 100, range=(lo,hi), histtype='step', color='b')
+    plt.hist(pp, 100, range=(lo,hi), histtype='step', color='g')
+    xx = np.linspace(lo,hi, 200)
+    yy = 1./(np.sqrt(2.*np.pi)) * np.exp(-0.5 * xx**2)
+    yy *= sum(n) * (b[1]-b[0])
+    plt.plot(xx, yy, 'k-', alpha=0.5)
+    plt.xlim(lo,hi)
+    plt.title('image-wide sig1: %.1f' % sig1)
+    ps.savefig()
     
     for ifam,(p,kids) in enumerate(families.items()):
 
