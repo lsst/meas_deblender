@@ -1070,7 +1070,9 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
     Sbox = afwGeom.Box2I(afwGeom.Point2I(-S, -S), afwGeom.Extent2I(2*S+1, 2*S+1))
     if not Sbox.contains(pbb):
         # clip PSF image
-        psfim = psfim.Factory(psfim, Sbox, afwImage.PARENT, True)
+        intersection = afwGeom.Box2I(Sbox)
+        Sbox.clip(pbb)
+        psfim = psfim.Factory(psfim, intersection, afwImage.PARENT, True)
         pbb = psfim.getBBox()
     px0 = pbb.getMinX()
     px1 = pbb.getMaxX()
