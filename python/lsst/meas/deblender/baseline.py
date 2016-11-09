@@ -57,6 +57,7 @@ class PerFootprint(object):
             pkres = PerPeak()
             pkres.peak = pk
             pkres.pki = pki
+            pkres.peakId = pk.get('id')
             self.peaks.append(pkres)
 
         self.templateSum = None
@@ -99,6 +100,8 @@ class PerPeak(object):
         self.psfFitBigDecenter = False
         # was the fit with decenter better?
         self.psfFitWithDecenter = False
+        # peak id
+        self.peakId = 0
         #
         self.psfFitR0 = None
         self.psfFitR1 = None
@@ -156,7 +159,7 @@ class PerPeak(object):
         chisq, dof = self.psfFitBest
         return dof
 
-    def getFluxPortion(self, strayFlux=True):
+    def getFluxPortion(self, strayFlux=True, writeTemplate=False):
         """!
         Return a HeavyFootprint containing the flux apportioned to this peak.
 
@@ -164,7 +167,10 @@ class PerPeak(object):
         """
         if self.templateFootprint is None or self.fluxPortion is None:
             return None
-        heavy = afwDet.makeHeavyFootprint(self.templateFootprint, self.fluxPortion)
+        if writeTemplate is False:
+            heavy = afwDet.makeHeavyFootprint(self.templateFootprint, self.fluxPortion)
+        else:
+            heavy = afwDet.makeHeavyFootprint(self.templateFootprint, afwImage.MaskedImageF(self.templateImage))
         if strayFlux:
             if self.strayFlux is not None:
                 heavy.normalize()

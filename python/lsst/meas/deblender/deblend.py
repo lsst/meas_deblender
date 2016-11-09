@@ -132,6 +132,9 @@ class SourceDeblendConfig(pexConf.Config):
                                         "degenerate).  If one of the objects has been labeled as a PSF it "
                                         "will be removed, otherwise the template with the lowest value will "
                                         "be removed."))
+    writeTemplates = pexConf.Field(dtype=bool, default=False,
+                                   doc=("If True, write the templates in the HeavyFootprint instead of "
+                                        "the deblended image"))
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -198,6 +201,9 @@ class SourceDeblendTask(pipeBase.Task):
                                          doc='Parent footprint covered too many pixels')
         self.maskedKey = schema.addField('deblend_masked', type='Flag',
                                          doc='Parent footprint was predominantly masked')
+        if self.config.writeTemplates:
+            self.peakIdKey = schema.addField('deblend_peakId', type=int,
+                                            doc='peak id used to match peak in footprint to child SourceRecord')
 
         if self.config.catchFailures:
             self.deblendFailedKey = schema.addField('deblend_failed', type='Flag',
@@ -337,7 +343,7 @@ class SourceDeblendTask(pipeBase.Task):
             kids = []
             nchild = 0
             for j, peak in enumerate(res.peaks):
-                heavy = peak.getFluxPortion()
+                heavy = peak.getFluxPortion(writeTemplate=self.config.writeTemplates)
                 if heavy is None or peak.skip:
                     src.set(self.deblendSkippedKey, True)
                     if not self.config.propagateAllPeaks:
@@ -377,6 +383,8 @@ class SourceDeblendTask(pipeBase.Task):
                     child.set(self.psfFluxKey, peak.psfFitFlux)
                 child.set(self.deblendRampedTemplateKey, peak.hasRampedTemplate)
                 child.set(self.deblendPatchedTemplateKey, peak.patched)
+                if self.config.writeTemplates:
+                    child.set(self.peakIdKey, peak.peakId)
                 kids.append(child)
 
             # Child footprints may extend beyond the full extent of their parent's which
