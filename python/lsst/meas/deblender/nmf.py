@@ -1,4 +1,7 @@
-# Temporary file to test the NMF algorithm
+# Temporary file to test NMF algorithms.
+# Some of these functions and classes are likely to remain if
+# NMF is a viable solution.
+# Otherwise the entire module will be junked without merging to master
 
 from collections import OrderedDict
 import logging
@@ -6,108 +9,19 @@ import logging
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.sparse
 from astropy.table import Table as ApTable
 
 import lsst.log as log
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
-from lsst.meas.deblender.baseline import newDeblend
-from lsst.meas.deblender import plugins as debPlugins
+from .baseline import newDeblend
+from . import plugins as debPlugins
+from . import utils as debUtils
 
-logger = logging.getLogger()
-
-def get_footprint_arr(src):
-    """Get the border and filled in arrays of a footprint
-    """
-    if hasattr(src, "getFootprint"):
-        footprint = src.getFootprint()
-    else:
-        footprint = src
-    spans = footprint.getSpans()
-    bbox = footprint.getBBox()
-    minX = bbox.getMinX()
-    minY = bbox.getMinY()
-    filled = np.ma.array(np.zeros((bbox.getHeight(), bbox.getWidth()), dtype=bool))
-    border = np.ma.array(np.zeros((bbox.getHeight(), bbox.getWidth()), dtype=bool))
-    
-    if filled.shape[0] ==0:
-        return border, filled
-    
-    for n,span in enumerate(spans):
-        y = span.getY();
-        filled[y-minY, span.getMinX()-minX:span.getMaxX()-minX] = 1
-        border[y-minY,span.getMinX()-minX] = 1
-        border[y-minY,span.getMaxX()-minX-1] = 1
-    border[0] = filled[0]
-    border[-1] = filled[-1]
-    for n,row in enumerate(border[:-1]):
-        border[n] = border[n] | (filled[n] & ((filled[n]^filled[n-1])|(filled[n]^filled[n+1])))
-    border.mask = ~border[:]
-    filled.mask = ~filled[:]
-    return border, filled
-
-def zscale(img, contrast=0.25, samples=500):
-    """Calculate minimum and maximum pixel values
-    """
-    ravel = img.ravel()
-    if len(ravel) > samples:
-        imsort = np.sort(np.random.choice(ravel, size=samples))
-    else:
-        imsort = np.sort(ravel)
-
-    n = len(imsort)
-    idx = np.arange(n)
-
-    med = imsort[n/2]
-    w = 0.25
-    i_lo, i_hi = int((0.5-w)*n), int((0.5+w)*n)
-    p = np.polyfit(idx[i_lo:i_hi], imsort[i_lo:i_hi], 1)
-    slope, intercept = p
-
-    z1 = med - (slope/contrast)*(n/2-n*w)
-    z2 = med + (slope/contrast)*(n/2-n*w)
-
-    return z1, z2
-
-def get_peak_footprint(peak):
-    """Get the border of a footprint for a given peak as an array, with its bounding box.
-    """
-    template_footprint = peak.templateFootprint
-    bbox = template_footprint.getBBox()
-    minX = bbox.getMinX()
-    minY = bbox.getMinY()
-    maxX = bbox.getMaxX()
-    maxY = bbox.getMaxY()
-
-    border, filled = get_footprint_arr(template_footprint)
-    return border, minX, minY, maxX, maxY
-
-def DEPRECATEDextract_deblended_img(src, img, x0, y0):
-    footprint = src.getFootprint()
-    bbox = footprint.getBBox()
-    minX = bbox.getMinX()
-    minY = bbox.getMinY()
-    maxX = bbox.getMaxX()
-    maxY = bbox.getMaxY()
-    img_footprint = img[minY-y0:maxY-y0, minX-x0:maxX-x0]
-    return img_footprint, minX, minY, maxX, maxY
-
-def getRelativeSlices(bbox, refBbox):
-    """Get the slice to clip an image from its bounding box
-    """
-    xmin = bbox.getMinX()-refBbox.getMinX()
-    ymin = bbox.getMinY()-refBbox.getMinY()
-    xmax = xmin+bbox.getWidth()
-    ymax = ymin+bbox.getHeight()
-    return slice(xmin, xmax), slice(ymin, ymax)
-
-def extractImage(img, bbox):
-    """Extract an array from a maskedImage based on the bounding box
-    """
-    refBbox = img.getBBox()
-    xslice, yslice = getRelativeSlices(bbox, refBbox)
-    return img.getImage().getArray()[yslice, xslice]
+logging.basicConfig()
+logger = logging.getLogger("lsst.meas.deblender")
 
 def buildNmfData(calexps, footprint):
     """Build NMF data matrix
@@ -127,12 +41,12 @@ def buildNmfData(calexps, footprint):
     xmax = xmin+bbox.getWidth()
     ymin = bbox.getMinY()-y0
     ymax = ymin+bbox.getHeight()
-    
     bandCount = len(calexps)
     pixelCount = (ymax-ymin)*(xmax-xmin)
+    
+    # Add the image in each filter as a row in data
     data = np.zeros((bandCount, pixelCount), dtype=np.float64)
     mask = np.zeros((bandCount, pixelCount), dtype=np.int64)
-    
     for n, (f,calexp) in enumerate(calexps.items()):
         img, m, var = calexp.getMaskedImage().getArrays()
         data[n] = img[ymin:ymax, xmin:xmax].flatten()
@@ -140,8 +54,8 @@ def buildNmfData(calexps, footprint):
     
     return data, mask
 
-def createInitWH(debResult, footprint, filters, includeBkg=True):
-    """Use the deblender results to estimate the initial conditions for intensity of the peaks
+def createInitWH(data, debResult, footprint, includeBkg=True, fillZero=False):
+    """Use the deblender symmetric templates to estimate the initial conditions for intensity of the peaks
     """
     bbox = footprint.getBBox()
     peakCount = len(debResult.peaks)
@@ -151,17 +65,22 @@ def createInitWH(debResult, footprint, filters, includeBkg=True):
     W = np.zeros((len(debResult.filters), peakCount))
     for p,pk in enumerate(debResult.peaks):
         fpPixels = np.zeros((len(debResult.filters),bbox.getArea()))
-        for n,f in enumerate(filters):
+        for n,f in enumerate(debResult.filters):
             peak = pk.deblendedPeaks[f]
             bbox = footprint.getBBox()
             Htemplate = np.zeros((bbox.getHeight(), bbox.getWidth()))
-            xslice, yslice = getRelativeSlices(peak.templateFootprint.getBBox(), bbox)
+            xslice, yslice = debUtils.getRelativeSlices(peak.templateFootprint.getBBox(), bbox)
             Htemplate[yslice, xslice] = peak.templateImage.getArray()
             fpPixels[n,:] = Htemplate.flatten()
-        sed = np.max(fpPixels, axis=1)
-        fpPixels = (fpPixels.T / sed).T
-        H[p,:] = np.sum(fpPixels, axis=0)/np.sum(sed)
-        W[:,p] = sed
+        H[p,:] = np.mean(fpPixels, axis=0)
+    # If a multiplicative algorithm is used, pixels with zero intensity will never change
+    # Introducing a very small non-zero value outside the footprint allows the algorithm slightly
+    # more flexibility
+    if fillZero:
+        H[H==0] = 1e-9
+    # Solve for W using the pseudo inverse, in case H is singular
+    W = np.dot(data, np.linalg.pinv(H))
+    # It is possible to create a separate object to dump all of the background pixels.
     if includeBkg:
         W[:,-1] = 0
         pkIntensity = np.sum(H[:-1,:], axis=0)
@@ -179,13 +98,14 @@ def plotSeds(W):
     plt.ylabel("Flux")
     plt.show()
 
-def plotIntensities(H, W, fp, fidx=0, vmin=None, vmax=None, showBkg=False):
+def plotIntensities(W, H, fp, fidx=0, vmin=None, vmax=None):
     """Plot the template image for each source
+    
+    Multiply each row in H (pixel intensities for a single source) by the SED for filter ``fidx`` and
+    plot the result.
     """
     t=[]
     N = H.shape[0]
-    if not showBkg:
-        N = N-1
     for n in range(N):
         template = W[fidx,n]*H[n,:].reshape(fp.getBBox().getHeight(),fp.getBBox().getWidth())
         if n<H.shape[0]-1:
@@ -193,6 +113,102 @@ def plotIntensities(H, W, fp, fidx=0, vmin=None, vmax=None, showBkg=False):
         plt.imshow(template, interpolation='none', cmap='inferno', vmin=vmin, vmax=vmax)
         plt.show()
         t.append(template)
+
+def loadCalExps(filters, filename):
+    """Load calexps for testing the deblender.
+    
+    This function is only for testing and will be removed before merging.
+    Given a list of filters and a filename template, load a set of calibrated exposures.
+    """
+    calexps = OrderedDict()
+    vminDict = OrderedDict()
+    vmaxDict = OrderedDict()
+    for f in filters:
+        logger.info("Loading filter {0}".format(f))
+        calexps[f] = afwImage.ExposureF(filename.format("calexp",f))
+        vminDict[f], vmaxDict[f] = debUtils.zscale(calexps[f].getMaskedImage().getImage().getArray())
+    x0 = calexps[filters[0]].getX0()
+    y0 = calexps[filters[0]].getY0()
+    return calexps, vminDict, vmaxDict
+
+def loadMergedDetections(filename):
+    """Load mergedDet catalog ``filename``
+    
+    This function is for testing only and will be removed before merging.
+    """
+    mergedDet = afwTable.SourceCatalog.readFits(filename)
+    columns = []
+    names = []
+    for col in mergedDet.getSchema().getNames():
+        names.append(col)
+        columns.append(mergedDet.columns.get(col))
+    columns.append([len(src.getFootprint().getPeaks()) for src in mergedDet])
+    names.append("peaks")
+    mergedTable = ApTable(columns, names=tuple(names))
+
+    logger.info("Total parents: {0}".format(len(mergedTable)))
+    logger.info("Unblended sources: {0}".format(np.sum(mergedTable['peaks']==1)))
+    logger.info("Sources with multiple peaks: {0}".format(np.sum(mergedTable['peaks']>1)))
+    return mergedDet, mergedTable
+
+def loadSimCatalog(filename):
+    """Load a catalog of galaxies generated by galsim
+    
+    This can be used to ensure that the deblender is correctly deblending objects
+    """
+    cat = afwTable.BaseCatalog.readFits(filename)
+    columns = []
+    names = []
+    for col in cat.getSchema().getNames():
+        names.append(col)
+        columns.append(cat.columns.get(col))
+    catTable = ApTable(columns, names=tuple(names))
+    return cat, catTable
+
+def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, display=True, filt=None,
+        **kwargs):
+    """Load the parent footprint and peaks, and (optionally) display the image and footprint border
+    """
+    idx = np.where(condition)[0][parentIdx]
+    src = mergedDet[idx]
+    fp = src.getFootprint()
+    bbox = fp.getBBox()
+    peaks = fp.getPeaks()
+    
+    if display:
+        if "interpolation" not in kwargs:
+            kwargs["interpolation"] = 'none'
+        if "cmap" not in kwargs:
+            kwargs["cmap"] = "inferno"
+        
+        img = debUtils.extractImage(calexps[filt].getMaskedImage(), bbox)
+        plt.imshow(img, **kwargs)
+        border, filled = debUtils.getFootprintArray(src)
+        plt.imshow(border, interpolation='none', cmap='cool')
+
+        px = [peak.getIx()-bbox.getMinX() for peak in fp.getPeaks()]
+        py = [peak.getIy()-bbox.getMinY() for peak in fp.getPeaks()]
+        plt.plot(px, py, "rx")
+        plt.xlim(0,img.shape[1]-1)
+        plt.ylim(0,img.shape[0]-1)
+        plt.show()
+    return fp, peaks
+
+def initNMFparams(calexps, fp, fillZero=False, includeBkg=True):
+    """Create the initial data, SED, and Intensity matrices using the current deblender
+    
+    The SED estimate is the value of the peak in each filter, and the intensity is the normalized
+    template for each source.
+    """
+    plugins = [debPlugins.DeblenderPlugin(debPlugins.buildSymmetricTemplates)]
+    footprints = [fp]*len(calexps.keys())
+    maskedImages = [calexp.getMaskedImage() for f, calexp in calexps.items()]
+    psfs = [calexp.getPsf() for f, calexp in calexps.items()]
+    fwhm = [psf.computeShape().getDeterminantRadius() * 2.35 for psf in psfs]
+    debResult = newDeblend(plugins, footprints, maskedImages, psfs, fwhm, filters=calexps.keys())
+    data, mask = buildNmfData(calexps, fp)
+    W, H = createInitWH(data, debResult, fp, fillZero=fillZero, includeBkg=includeBkg)
+    return data, mask, W, H, debResult
 
 def getPeakSymmetryOperator(row, shape, px, py):
     """Build the operator to symmetrize a single row in H, the intensities of a single peak.
@@ -203,6 +219,7 @@ def getPeakSymmetryOperator(row, shape, px, py):
     if px==center[1] and py==center[0]:
         return np.fliplr(np.eye(np.size(row)))
     
+    # Otherwise, find the bounding box that contains the minimum number of pixels needed to symmetrize
     if py<(shape[0]-1)/2.:
         ymin = 0
         ymax = 2*py+1
@@ -226,24 +243,24 @@ def getPeakSymmetryOperator(row, shape, px, py):
     fpSize = fpWidth*fpHeight
     tWidth = xmax-xmin
     tHeight = ymax-ymin
-    
     extraWidth = fpWidth-tWidth
     pixels = (tHeight-1)*fpWidth+tWidth
-    subOp = np.eye(pixels,pixels)
     
+    # This is the block of the matrix that symmetrizes intensities at the peak position
+    subOp = np.eye(pixels, pixels)
     for i in range(0,tHeight-1):
         for j in range(extraWidth):
             idx = (i+1)*tWidth+(i*extraWidth)+j
             subOp[idx, idx] = 0
-    
     subOp = np.fliplr(subOp)
+    
     smin = ymin*fpWidth+xmin
     smax = (ymax-1)*fpWidth+xmax
     symmetryOp = np.zeros((fpSize, fpSize))
-    #symmetryOp[:pixels,:pixels] = subOp
     symmetryOp[smin:smax,smin:smax] = subOp
     
-    return symmetryOp
+    # Return a sparse matrix, which greatly speeds up the processing
+    return scipy.sparse.coo_matrix(symmetryOp)
 
 def getSymmetryOperator(H, fp):
     """Build the symmetry operator for an entire intensity matrix H
@@ -256,8 +273,6 @@ def getSymmetryOperator(H, fp):
         py = peak.getIy()-fp.getBBox().getMinY()
         s = getPeakSymmetryOperator(H[n:], fpShape, px, py)
         symmetryOp.append(s)
-    #bkg = H[-1,:].reshape(fp.getBBox().getHeight(),fp.getBBox().getWidth())
-    #Hsym[-1,:] = np.flipud(np.fliplr(bkg)).flatten()
     return symmetryOp
 
 def getSymmetryDiffOp(H, fp, includeBkg=False):
@@ -269,10 +284,10 @@ def getSymmetryDiffOp(H, fp, includeBkg=False):
     symmetryObj = getSymmetryOperator(H, fp)
     diffOp = []
     for k, sk in enumerate(symmetryObj):
-        diff = np.eye(sk.shape[k]) + np.dot(sk,sk) - 2*sk
+        diff = scipy.sparse.eye(sk.shape[0]) + sk.dot(sk) - 2*sk
         diffOp.append(diff)
     if includeBkg:
-        diffOp.append(np.eye(len(H[-1])))
+        diffOp.append(scipy.sparse.eye(len(H[-1])))
     return diffOp
 
 def getIntensityDiff(H, diffOp):
@@ -283,168 +298,173 @@ def getIntensityDiff(H, diffOp):
     """
     Hdiff = np.zeros(H.shape)
     for k, Hk in enumerate(H):
-        Hdiff[k] = np.dot(diffOp[k], Hk)
+        Hdiff[k] = diffOp[k].dot(Hk)
     return Hdiff
 
-def nmfUpdate(A, W, H, beta, fp, diffOp=None):
-    """Update the SED (W) and intensity (H) matrices
+def multiplicativeUpdate(A, W, H, fp, alpha=0, beta=0, diffOp=None):
+    """Update the SED (W) and intensity (H) matrices using Lee and Seung 2001
+    
+    Use the Lee and Seung multiplicative algorithm, which is basically a gradient descent with
+    step sizes that change based on the current W,H values, guaranteeing that W,H are always positive.
+    
+    For now, alpha is the penalty for the W smoothness constraint and beta is the penalty for symmetry in H
     """
     numerator = np.matmul(A, H.T)
-    denom = np.maximum(np.matmul(np.matmul(W,H), H.T),1e-9)
+    denom = np.matmul(np.matmul(W,H), H.T) + 1e-9 + alpha*W
     W = W * numerator/denom
     
     numerator = np.matmul(W.T,A)
     if diffOp is not None:
         Hdiff = getIntensityDiff(H, diffOp)
-        denom = np.matmul(np.matmul(W.T,W), H)+beta*Hdiff + 1e-9
+        numerator = np.matmul(W.T,A)
+        denom = np.matmul(np.matmul(W.T,W), H) + beta*Hdiff + 1e-9
     else:
         denom = np.matmul(np.matmul(W.T,W), H) + 1e-9
     H = H * numerator/denom
+    
     return W, H
 
-def loadCalExps(filters, filename):
-    """Load calexps for testing the deblender.
+def inverseUpdate(A, W, H, fp):
+    """Exactly solve A=WH for W,H using an inverse.
     
-    This function is only for testing and will be removed before merging.
-    Given a list of filters and a filename template, load a set of calibrated exposures.
+    Currently this method has no constraints, as operations like symmetry and monotonicity are non-linear.
     """
-    calexps = OrderedDict()
-    tables = OrderedDict()
-    vminDict = OrderedDict()
-    vmaxDict = OrderedDict()
-    for f in filters:
-        logging.info("Loading filter {0}".format(f))
-        calexps[f] = afwImage.ExposureF(filename.format("calexp",f))
-        vminDict[f], vmaxDict[f] = zscale(calexps[f].getMaskedImage().getImage().getArray())
-    x0 = calexps[filters[0]].getX0()
-    y0 = calexps[filters[0]].getY0()
-    return calexps, tables, vminDict, vmaxDict
-
-def loadMergedDetections(filename):
-    """Load mergedDet catalog ``filename``
-    
-    This function is for testing only and will be removed before merging.
-    """
-    mergedDet = afwTable.SourceCatalog.readFits(filename)
-    columns = []
-    names = []
-    for col in mergedDet.getSchema().getNames():
-        names.append(col)
-        columns.append(mergedDet.columns.get(col))
-    columns.append([len(src.getFootprint().getPeaks()) for src in mergedDet])
-    names.append("peaks")
-    mergedTable = ApTable(columns, names=tuple(names))
-
-    logging.info("Total parents: {0}".format(len(mergedTable)))
-    logging.info("Unblended sources: {0}".format(np.sum(mergedTable['peaks']==1)))
-    logging.info("Sources with multiple peaks: {0}".format(np.sum(mergedTable['peaks']>1)))
-    return mergedDet, mergedTable
-
-def loadSimCatalog(filename):
-    """Load a catalog of galaxies generated by galsim
-    """
-    cat = afwTable.BaseCatalog.readFits(filename)
-    columns = []
-    names = []
-    for col in cat.getSchema().getNames():
-        names.append(col)
-        columns.append(cat.columns.get(col))
-    catTable = ApTable(columns, names=tuple(names))
-    return cat, catTable
-
-def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, filt, display=True, **kwargs):
-    """Load the parent footprint and peaks, and (optionally) display the image and footprint border
-    """
-    idx = np.where(condition)[0][parentIdx]
-    src = mergedDet[idx]
-    fp = src.getFootprint()
-    bbox = fp.getBBox()
-    peaks = fp.getPeaks()
-    
-    if "interpolation" not in kwargs:
-        kwargs["interpolation"] = 'none'
-    if "cmap" not in kwargs:
-        kwargs["cmap"] = "inferno"
-    
-    if display:
-        img = extractImage(calexps[filt].getMaskedImage(), bbox)
-        plt.imshow(img, **kwargs)
-        border, filled = get_footprint_arr(src)
-        plt.imshow(border, interpolation='none', cmap='cool')
-
-        px = [peak.getIx()-bbox.getMinX() for peak in fp.getPeaks()]
-        py = [peak.getIy()-bbox.getMinY() for peak in fp.getPeaks()]
-        plt.plot(px, py, "rx")
-        plt.xlim(0,img.shape[1]-1)
-        plt.ylim(0,img.shape[0]-1)
-        plt.show()
-    return fp, peaks
-
-def initNMFparams(calexps, fp, filters, filterIdx=0):
-    """Create the initial data, SED, and Intensity matrices using the current deblender
-    
-    The SED estimate is the value of the peak in each filter, and the intensity is the normalized
-    template for each source.
-    """
-    plugins = [debPlugins.DeblenderPlugin(debPlugins.buildSymmetricTemplates)]
-    footprints = [fp]*len(filters)
-    maskedImages = [calexp.getMaskedImage() for f, calexp in calexps.items()]
-    psfs = [calexp.getPsf() for f, calexp in calexps.items()]
-    fwhm = [psf.computeShape().getDeterminantRadius() * 2.35 for psf in psfs]
-    debResult = newDeblend(plugins, footprints, maskedImages, psfs, fwhm, filters=filters)
-    data, mask = buildNmfData(calexps, fp)
-    W, H = createInitWH(debResult, fp, filters)
-    return data, mask, W, H, debResult
-
-def alsDeblend(fp, data, W, H, fidx, beta, includeBkg=False, display=True, verbose=True):
-    """Use ALS to factorize the data into an SED matrix and Intensity matrix
-    
-    Currently this is experimental. One drawback to this method is that (for now) it does not
-    use the symmetry constraint, which still gives reasonable results 
-    """
-    if includeBkg:
-        newW = np.copy(W)
-        newH = np.copy(H)
-    else:
-        newW = np.copy(W[:,:-1])
-        newH = np.copy(H[:-1,:])
-    fpShape = (fp.getBBox().getHeight(), fp.getBBox().getWidth())
-    for i in range(20):
-        newH = np.dot(np.linalg.inv(np.dot(newW.T, newW)+1e-9), np.dot(newW.T, data))
-        newW = np.dot(np.linalg.inv(np.dot(newH, newH.T)+1e-9), np.dot(newH, data.T)).T
-    diff = (np.dot(newW, newH)-data)[fidx].reshape(fpShape)
-    if verbose:
-        logger.info('Pixel range: {0} to {1}'.format(np.min(data), np.max(data)))
-        logger.info('Max difference: {0}'.format(np.max(diff)))
-        logger.info('Residual difference {0:.1f}%'.format(100*np.abs(np.sum(diff)/np.sum(data[fidx]))))
-    if display:
-        plotIntensities(newH, newW, fp, fidx, showBkg=True)
-        plotSeds(newW)
-        plt.imshow(diff, interpolation='none', cmap='inferno')
-        plt.show()
+    newH = np.dot(np.linalg.inv(np.dot(W.T, W)+1e-9), np.dot(W.T, A))
+    newW = np.dot(np.linalg.inv(np.dot(newH, newH.T)+1e-9), np.dot(newH, A.T)).T
     return newW, newH
 
-def multiplicativeDeblend(fp, data, W, H, fidx, beta, includeBkg=True, display=True, verbose=True):
-    if includeBkg:
-        newW = np.copy(W)
-        newH = np.copy(H)
-    else:
-        newW = np.copy(W[:,:-1])
-        newH = np.copy(H[:-1,:])
-    diffOp = getSymmetryDiffOp(newH, fp, includeBkg=includeBkg)
+def compareMeasToSim(fp, W, H, realTable, filters, vminDict=None, vmaxDict=None, display=False):
+    """Compare measurements to simulated "true" data
+    
+    If running nmf on simulations, this matches the detections to the simulation catalog and
+    compares the measured flux of each object to the simulated flux.
+    """
+    peakCoords = np.array([[peak.getIx(),peak.getIy()] for peak in fp.getPeaks()])
+    refCoords = np.array(list(zip(realTable['x'],realTable['y'])))
+    idx, d2 = debUtils.query_reference(peakCoords, refCoords, kdtree=None, 
+            pool_size=None, separation=3, radec=False)
     fpShape = (fp.getBBox().getHeight(), fp.getBBox().getWidth())
+    for k in range(len(W)-1):
+        logger.info("Object {0} at ({1},{2})".format(k, fp.getPeaks()[k].getIx(), fp.getPeaks()[k].getIx()))
+        for fidx, f in enumerate(filters):
+            w = W[fidx,k]
+            h = H[k].reshape(fpShape)
+            theory = w*h
+            measFlux = np.sum(theory)
+            realFlux = realTable[idx][k]['flux_'+f]
+            logger.info("Filter {0}: flux={1}, real={2}, error={3:.2f}%".format(
+                f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
+            if display:
+                kwargs = {}
+                if vminDict is not None:
+                    kwargs["vmin"] = vminDict[f]
+                if vmaxDict is not None:
+                    kwargs["vmax"] = vmaxDict[f]*10
+                plt.imshow(theory, interpolation='none', cmap='inferno', **kwargs)
+                plt.show()
 
-    for i in range(200):
-        newW, newH = nmfUpdate(data, newW, newH, beta, fp, diffOp)
+class MulticolorCalExp:
+    """Container for the objects needed for the NMF deblender
+    """
+    def __init__(self, filters, imgFilename, mergedDetFilename, simFilename=None):
+        self.filters = filters
+        self.loadFiles(imgFilename, mergedDetFilename, simFilename)
+    
+    def loadFiles(self, imgFilename=None, mergedDetFilename=None, simFilename=None):
+        """Load images in each filter, the merged catalog and (optionally) a sim catalog
+        """
+        if imgFilename is not None:
+            self.imgFilename = imgFilename
+            self.calexps, self.vminDict, self.vmaxDict = loadCalExps(self.filters, imgFilename)
+        if mergedDetFilename is not None:
+            self.mergedDetFilename = mergedDetFilename
+            self.mergedDet, self.mergedTable = loadMergedDetections(mergedDetFilename)
+        if simFilename is not None:
+            self.simFilename = simFilename
+            self.simCat, self.simTable = loadSimCatalog(simFilename)
+        elif not hasattr(self, "simFilename"):
+            self.simFilename = None
+    
+    def getParentFootprint(self, parentIdx=0, condition=None, display=True, imgLimits=True, **displayKwargs):
+        """Get the parent footprint, peaks, and (optionally) display them
+        """
+        if condition is None:
+            condition = slice(0, len(self.mergedTable))
+        if display:
+            if "filt" not in displayKwargs:
+                displayKwargs["filt"] = self.filters[0]
+            if imgLimits:
+                if "vmin" not in displayKwargs:
+                    displayKwargs["vmin"] = self.vminDict[displayKwargs["filt"]]
+                if "vmax" not in displayKwargs:
+                    displayKwargs["vmax"] = 10*self.vmaxDict[displayKwargs["filt"]]
+        self.footprint, self.peaks = getParentFootprint(self.mergedTable, self.mergedDet, self.calexps, 
+                                                        condition, parentIdx, display, **displayKwargs)
+        return self.footprint, self.peaks
+    
+    def initNMFParams(self, fillZero=True, displaySeds=True, displayTemplates=True, imgLimits=True,
+                      includeBkg=True, **displayKwargs):
+        """Initialize the parameters needed for NMF deblending and (optionally) display the results
+        """
+        result = initNMFparams(self.calexps, self.footprint, fillZero=fillZero, includeBkg=includeBkg)
+        self.data, self.mask, self.initW, self.initH, self.debResult = result
+        if displaySeds:
+            plotSeds(self.initW)
+        if displayTemplates:
+            if "fidx" not in displayKwargs:
+                displayKwargs["fidx"] = 0
+            if imgLimits:
+                if "vmin" not in displayKwargs:
+                    displayKwargs["vmin"] = self.vminDict[self.filters[displayKwargs["fidx"]]]
+                if "vmax" not in displayKwargs:
+                    displayKwargs["vmax"] = 10*self.vmaxDict[self.filters[displayKwargs["fidx"]]]
+            plotIntensities(self.initW, self.initH, self.footprint, **displayKwargs)
+        return self.data, self.mask, self.initW, self.initH
+    
+    def getSymmetryDiffOp(self, includeBkg=False):
+        """Create the operator to symmetrize each row in H
+        """
+        self.diffOp = getSymmetryDiffOp(self.initH, self.footprint, includeBkg)
+        return self.diffOp
+    
+    def deblend(self, nmfUpdateFunc=multiplicativeUpdate, displayKwargs=dict(), steps=200,
+                display=True, imgLimits=True, **updateKwargs):
+        """Run the NMF deblender
+        
+        This will always start from self.initW and self.initH, which can be modified before execution
+        """
+        newW = np.copy(self.initW)
+        newH = np.copy(self.initH)
+        fp = self.footprint
+        fpShape = (fp.getBBox().getHeight(), fp.getBBox().getWidth())
 
-    diff = (np.dot(newW, newH)-data)[fidx].reshape(fpShape)
-    if verbose:
-        logger.info('Pixel range: {0} to {1}'.format(np.min(data), np.max(data)))
-        logger.info('Max difference: {0}'.format(np.max(diff)))
-        logger.info('Residual difference {0:.1f}%'.format(100*np.abs(np.sum(diff)/np.sum(data[fidx]))))
-    if display:
-        plotIntensities(newH, newW, fp, fidx, showBkg=True)
-        plotSeds(newW)
-        plt.imshow(diff, interpolation='none', cmap='inferno')
-        plt.show()
-    return newW, newH
+        # Update W and H using the specified update function
+        for i in range(steps):
+            newW, newH = nmfUpdateFunc(self.data, newW, newH, self.footprint, **updateKwargs)
+
+        # Show information about the fit
+        for fidx, f in enumerate(self.debResult.filters):
+            diff = (np.dot(newW, newH)-self.data)[fidx].reshape(fpShape)
+            logger.info('Filter {0}'.format(f))
+            logger.info('Pixel range: {0} to {1}'.format(np.min(self.data), np.max(self.data)))
+            logger.info('Max difference: {0}'.format(np.max(diff)))
+            logger.info('Residual difference {0:.1f}%'.format(
+                100*np.abs(np.sum(diff)/np.sum(self.data[fidx]))))
+        if self.simFilename is not None:
+            compareMeasToSim(fp, newW, newH, self.simTable, self.filters, display=False)
+        
+        # Show the new templates for each object
+        if display:
+            if "fidx" not in displayKwargs:
+                displayKwargs["fidx"] = 0
+            if imgLimits:
+                if "vmin" not in displayKwargs:
+                    displayKwargs["vmin"] = self.vminDict[self.filters[displayKwargs["fidx"]]]
+                if "vmax" not in displayKwargs:
+                    displayKwargs["vmax"] = 10*self.vmaxDict[self.filters[displayKwargs["fidx"]]]
+            plotIntensities(newW, newH, fp, **displayKwargs)
+            plotSeds(newW)
+            plt.imshow(diff, interpolation='none', cmap='inferno')
+            plt.show()
+        
+        return newW, newH
