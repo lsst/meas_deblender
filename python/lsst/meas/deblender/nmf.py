@@ -325,7 +325,7 @@ def getSymmetryDiffOp(H, fp):
         diffOp.append(diff)
     return diffOp
 
-def getIntensityDiff(H, diffOp, offset=0, includeBkg=True):
+def getIntensityDiff(H, diffOp, offset=0, includeBkg=True, bkg=1):
     """Calculate the cost function penalty for non-symmetry
     
     Given a pre-calculated symmetry difference operator, calculate the differential term in
@@ -335,10 +335,11 @@ def getIntensityDiff(H, diffOp, offset=0, includeBkg=True):
     for k in range(len(diffOp)):
         Hdiff[k] = diffOp[k].dot(H[k])
     if includeBkg:
-        bkgOp = (H[-1]-offset)**2
+        bkgOp = bkg*(H[-1]-offset)**2
+        Hdiff[-1] = bkgOp
     return Hdiff
 
-def multiplicativeUpdate(A, W, H, fp, offset, includeBkg, beta=0, diffOp=None):
+def multiplicativeUpdate(A, W, H, fp, offset, includeBkg, beta=0, diffOp=None, bkg=1):
     """Update the SED (W) and intensity (H) matrices using Lee and Seung 2001
     
     Use the Lee and Seung multiplicative algorithm, which is basically a gradient descent with
@@ -354,7 +355,8 @@ def multiplicativeUpdate(A, W, H, fp, offset, includeBkg, beta=0, diffOp=None):
     
     numerator = np.matmul(W.T,A)
     if diffOp is not None:
-        Hdiff = getIntensityDiff(H, diffOp, offset, includeBkg)
+        # Divide the offset by the normalization factor for the background (1/# of filters)
+        Hdiff = getIntensityDiff(H, diffOp, offset*W.shape[0], includeBkg, bkg)
         numerator = np.matmul(W.T,A)
         denom = np.matmul(np.matmul(W.T,W), H) + beta*Hdiff + 1e-9
     else:
