@@ -54,7 +54,7 @@ def buildNmfData(calexps, footprint):
     
     return data, mask
 
-def createInitWH(data, debResult, footprint, includeBkg=True, fillZero=False, normalize=True):
+def createInitWH(data, debResult, footprint, offset=0, includeBkg=True):
     """Use the deblender symmetric templates to estimate the initial conditions for intensity of the peaks
     """
     bbox = footprint.getBBox()
@@ -73,69 +73,74 @@ def createInitWH(data, debResult, footprint, includeBkg=True, fillZero=False, no
             Htemplate[yslice, xslice] = peak.templateImage.getArray()
             fpPixels[n,:] = Htemplate.flatten()
         H[p,:] = np.mean(fpPixels, axis=0)
-    # If a multiplicative algorithm is used, pixels with zero intensity will never change
-    # Introducing a very small non-zero value outside the footprint allows the algorithm slightly
-    # more flexibility
-    # However, when offsetting the data this is not important as the zero offset values can be
-    # used in the iteration
-    if fillZero:
-        H[H==0] = 1e-9
+    
+    # If the background is included then set the last row to be the offset (background) level
+    # This is mandatory for multiplicative to offset the data
+    if includeBkg:
+        H[-1,:] = offset
     # Solve for W using the pseudo inverse, in case H is singular
     W = np.dot(data, np.linalg.pinv(H))
     
     # Normalize the SEDs to one and re-calculate H
-    if normalize:
-        normFactor = np.sum(W, axis=0)
-        # Adjust the norm factor to not divide by zero (even though it is dividing zero by zero)
-        normFactor[normFactor==0] = 1
-        W = W / normFactor
-        H = (H.T * normFactor).T
+    normFactor = np.sum(W, axis=0)
+    # Adjust the norm factor to not divide by zero (even though it is dividing zero by zero)
+    normFactor[normFactor==0] = 1
+    W = W / normFactor
+    H = (H.T * normFactor).T
     
-    # It is possible to create a separate object to dump all of the background pixels.
-    if includeBkg:
-        W[:,-1] = 0
-        pkIntensity = np.sum(H[:-1,:], axis=0)
-        H[-1,:][pkIntensity<1e-2] = 1
     return W, H
 
-def plotSeds(W):
+def plotSeds(W, includeBkg=True):
     """Plot the SEDs for each source
     """
     for col in range(W.shape[1]):
         sed = W[:, col]
         band = range(len(sed))
-        plt.plot(band, sed, '.-')
+        lbl = "Obj {0}".format(col)
+        # Subtract off the offset from each source
+        # Since W is normalized, this only depends on the number of sources, not the offset
+        if includeBkg and col==W.shape[1]-1:
+            sed = sed-1/W.shape[0]
+            lbl = "Bkg"
+        plt.plot(band, sed, '.-', label=lbl)
     plt.xlabel("Filter Number")
     plt.ylabel("Flux")
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
+              fancybox=True, shadow=True, ncol=W.shape[1])
     plt.show()
 
-def reconstructTemplate(W, H, offset, fidx , pkIdx, fp=None, reshape=False):
-    WH = np.dot(W,H)
-    WHk = W[fidx,pkIdx]*H[pkIdx,:]
-    # Fraction of each pixel in the template for source k
-    sumWH = WH[pkIdx,:]
-    sumWH[sumWH==0] = 1 # To avoid dividing 0/0
-    fraction = WHk/sumWH
-    # Fraction of the offset to subtract from the pixels in source k
-    offsetMatrix = offset*fraction
-    template = WHk-offsetMatrix
+def reconstructTemplate(W, H, fidx , pkIdx, offset=0, fp=None, reshape=False, includeBkg=True):
+    """Calculate the template for a single peak for a single filter
+    
+    Use the SED matrix W and intensity matrix H to reconstruct the flux in the image due to
+    the selected peak, in the selected filter. If a background source was included, subtract off the
+    offset that was added to make the data positive.
+    """
+    if fp is not None:
+        fpShape = fp.getBBox().getHeight(),fp.getBBox().getWidth()
+    template = W[fidx,pkIdx]*H[pkIdx,:]
+    if includeBkg and pkIdx==len(H)-1:
+        template = template-offset
     if reshape:
         if fp is None:
             raise ValueError("You must pass a footprint to reshape the template")
-        template = template.reshape(fp.getBBox().getHeight(),fp.getBBox().getWidth())
+        template = template.reshape(fpShape)
     return template
 
-def plotIntensities(W, H, fp, offset=0, fidx=0, vmin=None, vmax=None, useMask=False):
+def plotIntensities(W, H, fp, offset=0, fidx=0, vmin=None, vmax=None, useMask=False, includeBkg=True):
     """Plot the template image for each source
     
     Multiply each row in H (pixel intensities for a single source) by the SED for filter ``fidx`` and
     plot the result.
     """
     for k in range(len(H)):
-        template = reconstructTemplate(W, H, offset, fidx, k, fp, reshape=True)
+        template = reconstructTemplate(W, H, fidx, k, offset, fp, reshape=True, includeBkg=includeBkg)
         # Mask zero pixels (only useful when not using an offset)
         if useMask and k<templates.shape[0]-1:
             template = np.ma.array(template, mask=template==0)
+        plt.title("Object {0}".format(k))
+        if includeBkg and k==len(H)-1:
+            plt.title("Background")
         plt.imshow(template, interpolation='none', cmap='inferno', vmin=vmin, vmax=vmax)
         plt.show()
 
@@ -219,7 +224,7 @@ def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, di
         plt.show()
     return fp, peaks
 
-def initNMFparams(calexps, fp, fillZero=False, includeBkg=True, normalize=True):
+def initNMFparams(calexps, fp, includeBkg=True, offsetData=True):
     """Create the initial data, SED, and Intensity matrices using the current deblender
     
     The SED estimate is the value of the peak in each filter, and the intensity is the normalized
@@ -233,14 +238,13 @@ def initNMFparams(calexps, fp, fillZero=False, includeBkg=True, normalize=True):
     debResult = newDeblend(plugins, footprints, maskedImages, psfs, fwhm, filters=calexps.keys())
     data, mask = buildNmfData(calexps, fp)
     
-    #TODO: fix offsets
-    #data[data<0] = 0
-    if np.sum(data<0) > 0:
+    # If using a multiplicative update, the data must be offset to remove negative values
+    if offsetData and np.sum(data<0) > 0:
         offset = -np.min(data)
         data = data + offset
     else:
         offset=0
-    W, H = createInitWH(data, debResult, fp, fillZero=fillZero, includeBkg=includeBkg, normalize=normalize)
+    W, H = createInitWH(data, debResult, fp, offset=offset, includeBkg=includeBkg)
     return data, mask, W, H, debResult, offset
 
 def getPeakSymmetryOperator(row, shape, px, py):
@@ -308,7 +312,7 @@ def getSymmetryOperator(H, fp):
         symmetryOp.append(s)
     return symmetryOp
 
-def getSymmetryDiffOp(H, fp, includeBkg=False):
+def getSymmetryDiffOp(H, fp):
     """Build the symmetry difference Operator
     
     This creates the pseudo operator $(I-S)^2$, where I is the identity matrix
@@ -319,41 +323,38 @@ def getSymmetryDiffOp(H, fp, includeBkg=False):
     for k, sk in enumerate(symmetryObj):
         diff = scipy.sparse.eye(sk.shape[0]) + sk.dot(sk) - 2*sk
         diffOp.append(diff)
-    if includeBkg:
-        diffOp.append(scipy.sparse.eye(len(H[-1])))
     return diffOp
 
-def getIntensityDiff(H, diffOp):
+def getIntensityDiff(H, diffOp, offset=0, includeBkg=True):
     """Calculate the cost function penalty for non-symmetry
     
     Given a pre-calculated symmetry difference operator, calculate the differential term in
     the cost function to penalize for non-symmetry
     """
     Hdiff = np.zeros(H.shape)
-    for k, Hk in enumerate(H):
-        Hdiff[k] = diffOp[k].dot(Hk)
+    for k in range(len(diffOp)):
+        Hdiff[k] = diffOp[k].dot(H[k])
+    if includeBkg:
+        bkgOp = (H[-1]-offset)**2
     return Hdiff
 
-def multiplicativeUpdate(A, W, H, fp, alpha=0, beta=0, diffOp=None, normalize=True):
+def multiplicativeUpdate(A, W, H, fp, offset, includeBkg, beta=0, diffOp=None):
     """Update the SED (W) and intensity (H) matrices using Lee and Seung 2001
     
     Use the Lee and Seung multiplicative algorithm, which is basically a gradient descent with
     step sizes that change based on the current W,H values, guaranteeing that W,H are always positive.
-    
-    For now, alpha is the penalty for the W smoothness constraint and beta is the penalty for symmetry in H
     """
     numerator = np.matmul(A, H.T)
-    denom = np.matmul(np.matmul(W,H), H.T) + 1e-9 + alpha*W
+    denom = np.matmul(np.matmul(W,H), H.T) + 1e-9 #+ alpha*W
     W = W * numerator/denom
-    if normalize:
-        normFactor = np.sum(np.abs(W), axis=0)
-        # If a column is all zero (for example the background), we can't divide by zero
-        normFactor[normFactor==0] = 1
-        W = W/normFactor
+    # Adjust the norm factor to aoid dividing by zero (even though it is dividing zero by zero)
+    normFactor = np.sum(np.abs(W), axis=0)
+    normFactor[normFactor==0] = 1
+    W = W/normFactor
     
     numerator = np.matmul(W.T,A)
     if diffOp is not None:
-        Hdiff = getIntensityDiff(H, diffOp)
+        Hdiff = getIntensityDiff(H, diffOp, offset, includeBkg)
         numerator = np.matmul(W.T,A)
         denom = np.matmul(np.matmul(W.T,W), H) + beta*Hdiff + 1e-9
     else:
@@ -362,23 +363,28 @@ def multiplicativeUpdate(A, W, H, fp, alpha=0, beta=0, diffOp=None, normalize=Tr
     
     return W, H
 
-def inverseUpdate(A, W, H, fp):
+def inverseUpdate(A, W, H, fp, offset, includeBkg):
     """Exactly solve A=WH for W,H using an inverse.
     
     Currently this method has no constraints, as operations like symmetry and monotonicity are non-linear.
     """
-    newH = np.dot(np.linalg.inv(np.dot(W.T, W)+1e-9), np.dot(W.T, A))
-    newW = np.dot(np.linalg.inv(np.dot(newH, newH.T)+1e-9), np.dot(newH, A.T)).T
-    return newW, newH
+    W = np.dot(np.linalg.inv(np.dot(H, H.T)+1e-9), np.dot(H, A.T)).T
+    normFactor = np.sum(np.abs(W), axis=0)
+    # Adjust the norm factor to aoid dividing by zero (even though it is dividing zero by zero)
+    normFactor[normFactor==0] = 1
+    W = W/normFactor
+    H = np.dot(np.linalg.inv(np.dot(W.T, W)+1e-9), np.dot(W.T, A))
+    return W, H
 
-def gradientDescent(A, W, H, fp, stepW=.001, stepH=.001, alpha=0, beta=0, diffOp=None):
+def gradientDescent(A, W, H, fp, offset, includeBkg, stepW=.001, stepH=.001,
+                    alpha=0, beta=0, diffOp=None):
     """Use gradient descent to update W,H
     """
     WH = np.dot(W,H)
     
     derivH = np.dot(W.T, -A+WH)
     if diffOp is not None:
-        Hdiff = getIntensityDiff(H, diffOp)
+        Hdiff = getIntensityDiff(H, diffOp, offset, includeBkg)
         derivH = derivH + beta*Hdiff
     H = H - stepH*derivH
     
@@ -389,7 +395,7 @@ def gradientDescent(A, W, H, fp, stepW=.001, stepH=.001, alpha=0, beta=0, diffOp
     return W, H
 
 def compareMeasToSim(fp, W, H, realTable, filters, offset=0, vminDict=None, vmaxDict=None,
-                     display=False, ignoreNegative=True):
+                     display=False, includeBkg=True):
     """Compare measurements to simulated "true" data
     
     If running nmf on simulations, this matches the detections to the simulation catalog and
@@ -404,13 +410,11 @@ def compareMeasToSim(fp, W, H, realTable, filters, offset=0, vminDict=None, vmax
     for k in range(len(W)-1):
         logger.info("Object {0} at ({1},{2})".format(k, fp.getPeaks()[k].getIx(), fp.getPeaks()[k].getIx()))
         for fidx, f in enumerate(filters):
-            template = reconstructTemplate(W, H, offset, fidx , pkIdx=k, fp=fp, reshape=True)
-            if ignoreNegative:
-                measFlux = np.sum(template[template>0])
-            else:
-                measFlux = np.sum(template)
+            template = reconstructTemplate(W, H, fidx , pkIdx=k, offset=offset,
+                                           fp=fp, reshape=True, includeBkg=includeBkg)
+            measFlux = np.sum(template)
             realFlux = realTable[idx][k]['flux_'+f]
-            logger.info("Filter {0}: flux={1}, real={2}, error={3:.2f}%".format(
+            logger.info("Filter {0}: flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
                 f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
             if display:
                 kwargs = {}
@@ -425,8 +429,11 @@ def compareMeasToSim(fp, W, H, realTable, filters, offset=0, vminDict=None, vmax
 class MulticolorCalExp:
     """Container for the objects needed for the NMF deblender
     """
-    def __init__(self, filters, imgFilename, mergedDetFilename, simFilename=None):
+    def __init__(self, filters, imgFilename, mergedDetFilename, simFilename=None,
+                 includeBkg=True, offsetData=True):
         self.filters = filters
+        self.includeBkg = includeBkg
+        self.offsetData = offsetData
         self.loadFiles(imgFilename, mergedDetFilename, simFilename)
     
     def loadFiles(self, imgFilename=None, mergedDetFilename=None, simFilename=None):
@@ -461,15 +468,19 @@ class MulticolorCalExp:
                                                         condition, parentIdx, display, **displayKwargs)
         return self.footprint, self.peaks
     
-    def initNMFParams(self, fillZero=True, normalize=True, displaySeds=True, displayTemplates=True,
-                      imgLimits=True, includeBkg=True, **displayKwargs):
+    def initNMFParams(self, displaySeds=True, displayTemplates=True,
+                      imgLimits=True, includeBkg=None, offsetData=None, **displayKwargs):
         """Initialize the parameters needed for NMF deblending and (optionally) display the results
         """
-        result = initNMFparams(self.calexps, self.footprint, fillZero=fillZero,
-                               includeBkg=includeBkg, normalize=normalize)
+        if includeBkg is not None:
+            self.includeBkg = includeBkg
+        if offsetData is not None:
+            self.offsetData = offsetData
+        result = initNMFparams(self.calexps, self.footprint,
+                               includeBkg=self.includeBkg, offsetData=self.offsetData)
         self.data, self.mask, self.initW, self.initH, self.debResult, self.offset = result
         if displaySeds:
-            plotSeds(self.initW)
+            plotSeds(self.initW, self.includeBkg)
         if displayTemplates:
             if "fidx" not in displayKwargs:
                 displayKwargs["fidx"] = 0
@@ -481,10 +492,10 @@ class MulticolorCalExp:
             plotIntensities(self.initW, self.initH, self.footprint, offset=self.offset, **displayKwargs)
         return self.data, self.mask, self.initW, self.initH, self.offset
     
-    def getSymmetryDiffOp(self, includeBkg=False):
+    def getSymmetryDiffOp(self):
         """Create the operator to symmetrize each row in H
         """
-        self.diffOp = getSymmetryDiffOp(self.initH, self.footprint, includeBkg)
+        self.diffOp = getSymmetryDiffOp(self.initH, self.footprint)
         return self.diffOp
     
     def getTemplate(self, fidx, pkIdx, W=None, H=None):
@@ -492,7 +503,8 @@ class MulticolorCalExp:
             W = self.W
         if H is None:
             H = self.H
-        return reconstructTemplate(W, H, self.offset, fidx , pkIdx, fp=self.footprint, reshape=True)
+        return reconstructTemplate(W, H, fidx , pkIdx, offset=self.offset,
+                                   fp=self.footprint, reshape=True, includeBkg=self.includeBkg)
     
     def displayTemplate(self, fidx, pkIdx, W=None, H=None, cmap='inferno', imgLimits=True, **displayKwargs):
         template = self.getTemplate(fidx, pkIdx, W, H)
@@ -517,7 +529,8 @@ class MulticolorCalExp:
 
         # Update W and H using the specified update function
         for i in range(steps):
-            newW, newH = nmfUpdateFunc(self.data, newW, newH, self.footprint, **updateKwargs)
+            newW, newH = nmfUpdateFunc(self.data, newW, newH, self.footprint, self.offset,
+                                       self.includeBkg, **updateKwargs)
 
         # Show information about the fit
         for fidx, f in enumerate(self.debResult.filters):
@@ -528,7 +541,8 @@ class MulticolorCalExp:
             logger.info('Residual difference {0:.1f}%'.format(
                 100*np.abs(np.sum(diff)/np.sum(self.data[fidx]))))
         if self.simFilename is not None:
-            compareMeasToSim(fp, newW, newH, self.simTable, self.filters, self.offset, display=False)
+            compareMeasToSim(fp, newW, newH, self.simTable, self.filters, self.offset,
+                             display=False, includeBkg=self.includeBkg)
         
         # Show the new templates for each object
         if display:
@@ -540,7 +554,7 @@ class MulticolorCalExp:
                 if "vmax" not in displayKwargs:
                     displayKwargs["vmax"] = 10*self.vmaxDict[self.filters[displayKwargs["fidx"]]]
             plotIntensities(newW, newH, fp, offset=self.offset, **displayKwargs)
-            plotSeds(newW)
+            plotSeds(newW, self.includeBkg)
             plt.imshow(diff, interpolation='none', cmap='inferno')
             plt.show()
         
