@@ -299,6 +299,11 @@ def getPeakSymmetryOperator(row, shape, px, py):
     # Return a sparse matrix, which greatly speeds up the processing
     return scipy.sparse.coo_matrix(symmetryOp)
 
+def getPeakSymmetryDiffOperator(row, shape, px, py):
+    symOp = getPeakSymmetryOperator(row, shape, px, py)
+    diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
+    return diffOp
+
 def getSymmetryOperator(H, fp):
     """Build the symmetry operator for an entire intensity matrix H
     """
