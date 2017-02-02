@@ -330,6 +330,87 @@ def getSymmetryDiffOp(H, fp):
         diffOp.append(diff)
     return diffOp
 
+def getMonotonicRowOpX(width, px):
+    """Get an operator to find non-monotonic rows in X
+    
+    The monotonic X operator is a block diagonal matrix, where each block operates on a single row in the
+    image. This function calculates the block for a single row in the image to test for monotonicity.
+    This block operator is almost a block diagonal operator itself, except for two matrix elements
+    required to link the peak element to its neighboring pixels in the row.
+    """
+    blocks = []
+    # Create the gradient block for the elements leading up to the peak from the left
+    if px>0:
+        if px==1:
+            blocks.append(scipy.sparse.coo_matrix([[-1]]))
+        else:
+            blocks.append(scipy.sparse.diags([-1,1], [0,1], shape=(px, px)))
+    # The location of the peak has a zero element
+    blocks.append(scipy.sparse.coo_matrix([[0]]))
+    # Create the gradient block for the elements leading up to the peak from the right
+    if px<width-1:
+        if px==width-2:
+            blocks.append(scipy.sparse.coo_matrix([[-1]]))
+        else:
+            blocks.append(scipy.sparse.diags([1,-1], [-1,0], shape=(width-px-1, width-px-1)))
+    monoX = scipy.sparse.block_diag(blocks)
+    # Set the two elements that link the pixels next to the peak
+    if px>0:
+        monoX += scipy.sparse.coo_matrix(([1],([px-1],[px])), shape=(monoX.shape))
+    if px<width-1:
+        monoX += scipy.sparse.coo_matrix(([1],([px+1],[px])), shape=(monoX.shape))
+    return monoX
+
+def getMonotonicOpX(shape, px):
+    """Get an operator to test monotonicity in X
+    
+    The monotonic operator basically calculates the gradient in x from the edges to the peak.
+    Operating the monotonicity operator on a flattened image makes all non-monotonic pixels negative,
+    which can then be projected to the subset gradient=0 using proximal operators.
+    
+    The monotonic X operator is a block diagonal matrix, where each block operates on a single row in the
+    image determined by the peaks x coordinate ``px``. 
+    
+    See DM-9143 for more.
+    """
+    height, width = shape
+    rowOp = getMonotonicRowOpX(width, px)
+    blocks = [rowOp for n in range(height)]
+    return scipy.sparse.block_diag(blocks)
+
+def getMonotonicOpY(shape, py):
+    """Get an operator to test monotonicity in Y
+    
+    The monotonic operator basically calculates the gradient in x from the edges to the peak.
+    Operating the monotonicity operator on a flattened image makes all non-monotonic pixels negative,
+    which can then be projected to the subset gradient=0 using proximal operators.
+    
+    The monotonic Y operator is a block matrix, where each block is the size of the image width.
+    The matrix itself is made up of (img_height x img_height) blocks, most of which are all zeros.
+    
+    See DM-9143 for more.
+    """
+    height, width = shape
+    rows = []
+    empty = scipy.sparse.dia_matrix((width, width))
+    identity = scipy.sparse.identity(width)
+    
+    # Create the blocks by row, beginning with blocks leading up to the peak row from the top
+    for n in range(py):
+        row = [empty]*n
+        row += [-identity, identity]
+        row += [empty]*(height-n-2)
+        rows.append(row)
+    # Set all elements in the peak row to zero
+    rows.append([empty]*height)
+    # Create the blocks for the rows leading up to the peak row from the bottom
+    for n in range(height-py-1):
+        row = [empty]*(py+n)
+        row += [identity, -identity]
+        row += [empty]*(height-py-n-2)
+        rows.append(row)
+    return scipy.sparse.bmat(rows)
+
 def getIntensityDiff(H, diffOp, offset=0, includeBkg=True, bkg=1):
     """Calculate the cost function penalty for non-symmetry
     
