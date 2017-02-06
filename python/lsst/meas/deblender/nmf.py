@@ -411,6 +411,59 @@ def getMonotonicOpY(shape, py):
         rows.append(row)
     return scipy.sparse.bmat(rows)
 
+def getRadialMonotonicOp(shape, px, py):
+    """Get a 2D operator to contrain radial monotonicity
+    
+    The monotonic operator basically calculates a radial the gradient in from the edges to the peak.
+    Operating the monotonicity operator on a flattened image makes all non-monotonic pixels negative,
+    which can then be projected to the subset gradient=0 using proximal operators.
+    
+    The radial monotonic operator is a sparse matrix, where each diagonal element is -1
+    (except the peak position px, py) and each row has one other non-zero element, which is the
+    closest pixel that aligns with a radial line from the pixel to the peak position.
+    
+    See DM-9143 for more.
+    
+    TODO: Implement this in C++ for speed
+    """
+    height, width = shape
+    center = py*width+px
+    monotonic = -np.eye(width*height, width*height)
+    monotonic[center, center] = 0
+
+    # Set the pixel in line with the radius to 1 for each pixel
+    for h in range(height):
+        for w in range(width):
+            if h==py and w==px:
+                continue
+            dx = px-w
+            dy = py-h
+            pixel = h*width + w
+            if px-w>py-h:
+                if px-w>=h-py:
+                    x = w + 1
+                    y = h + int(np.round(dy/dx))
+                elif px-w<h-py:
+                    x = w - int(np.round(dx/dy))
+                    y = h - 1
+            elif px-w<py-h:
+                if px-w>=h-py:
+                    x = w + int(np.round(dx/dy))
+                    y = h + 1
+                elif px-w<h-py:
+                    x = w - 1
+                    y = h - int(np.round(dy/dx))
+            else:
+                if w<px:
+                    x = w + 1
+                    y = h + 1
+                elif w>px:
+                    x = w - 1
+                    y = h - 1
+            monotonic[pixel, y*width+x] = 1
+
+    return scipy.sparse.coo_matrix(monotonic)
+
 def getIntensityDiff(H, diffOp, offset=0, includeBkg=True, bkg=1):
     """Calculate the cost function penalty for non-symmetry
     
