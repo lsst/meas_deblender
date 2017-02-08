@@ -194,7 +194,7 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
             monos = []
             symm1ds = []
             mono1ds = []
-            yslice = H/2
+            yslice = H//2
             parent1d = img[yslice, :]
             for i, dpk in enumerate(deb.deblendedParents[0].peaks):
                 symm = dpk.origTemplate
