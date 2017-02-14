@@ -1,5 +1,6 @@
 .sconf_temp
 .sconsign.dblite
+_build.*
 *.o
 *.pyc
 *.so
