@@ -230,7 +230,12 @@ def getPeakSymmetryOp(shape, px, py):
     """
     symOp = getPeakSymmetry(shape, px, py)
     diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
-    return diffOp.tocoo()
+    # In cases where the symmetry operator is very small (eg. a small isolated source)
+    # scipy doesn't return a sparse matrix, so we test whether or not the matrix is sparse
+    # and if it is, use a sparse matrix that works best with the proximal operators.
+    if hasattr(diffOp, "tocoo"):
+        diffOp = diffOp.tocoo()
+    return diffOp
 
 def oldGetRadialMonotonicOp(shape, px, py):
     """Get a 2D operator to contrain radial monotonicity
