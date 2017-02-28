@@ -17,6 +17,7 @@ from .baseline import newDeblend
 from . import plugins as debPlugins
 from . import utils as debUtils
 from . import sim
+from . import proximal_nmf as pnmf
 
 logging.basicConfig()
 logger = logging.getLogger("lsst.meas.deblender")
@@ -146,17 +147,16 @@ def buildNmfData(calexps, footprint):
     ymin = bbox.getMinY()-y0
     ymax = ymin+bbox.getHeight()
     bandCount = len(calexps)
-    pixelCount = (ymax-ymin)*(xmax-xmin)
     
     # Add the image in each filter as a row in data
-    data = np.zeros((bandCount, pixelCount), dtype=np.float64)
-    mask = np.zeros((bandCount, pixelCount), dtype=np.int64)
-    variance = np.zeros((bandCount, pixelCount), dtype=np.int64)
+    data = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.float64)
+    mask = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.int64)
+    variance = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.int64)
     for n, calexp in enumerate(calexps):
         img, m, var = calexp.getMaskedImage().getArrays()
-        data[n] = img[ymin:ymax, xmin:xmax].flatten()
-        mask[n] = m[ymin:ymax, xmin:xmax].flatten()
-        variance[n] = var[ymin:ymax, xmin:xmax].flatten()
+        data[n] = img[ymin:ymax, xmin:xmax]
+        mask[n] = m[ymin:ymax, xmin:xmax]
+        variance[n] = var[ymin:ymax, xmin:xmax]
     
     return data, mask, variance
 
@@ -325,19 +325,19 @@ def getMonotonicOperator(footprint, getMonotonic=getRadialMonotonicOp):
     return monotonicOp
 
 def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None, vmax=None,
-                     display=False):
+                     display=False, poolSize=-1):
     """Compare measurements to simulated "true" data
     
     If running nmf on simulations, this matches the detections to the simulation catalog and
     compares the measured flux of each object to the simulated flux.
     """
     peakCoords = np.array([[peak.getIx(),peak.getIy()] for peak in footprint.getPeaks()])
-    refCoords = np.array(list(zip(realTable['x'], realTable['y'])))
-    idx, d2 = debUtils.query_reference(peakCoords, refCoords, kdtree=None, 
-            pool_size=None, separation=3, radec=False)
+    simCoords = np.array(list(zip(realTable['x'], realTable['y'])))
+    kdtree = scipy.spatial.cKDTree(simCoords)
+    d2, idx = kdtree.query(peakCoords, n_jobs=poolSize)
     shape = (footprint.getBBox().getHeight(), footprint.getBBox().getWidth())
     
-    for k in range(len(seds[0])-1):
+    for k in range(len(seds[0])):
         logger.info("Object {0} at ({1},{2})".format(k, footprint.getPeaks()[k].getIx(),
                                                      footprint.getPeaks()[k].getIx()))
         for fidx, f in enumerate(filters):
@@ -366,8 +366,9 @@ class DeblendedParent:
         self.calexps = expDeblend.calexps
         self.psfs = expDeblend.psfs
         self.footprint = footprint
+        self.bbox = footprint.getBBox()
         self.peaks = peaks
-        self.shape = (self.footprint.getBBox().getHeight(), self.footprint.getBBox().getWidth())
+        self.shape = (self.bbox.getHeight(), self.bbox.getWidth())
         
         # Initialize attributes to be assigned later
         self.data = None
@@ -382,13 +383,13 @@ class DeblendedParent:
         self.symmetryOp = None
         self.monotonicOp = None
 
-    def initNMF(self, initPsf=False, displaySeds=True, displayTemplates=True,
+    def initNMF(self, initPsf=False, displaySeds=False, displayTemplates=False,
                       imgLimits=True, **displayKwargs):
         """Initialize the parameters needed for NMF deblending and (optionally) display the results
         """
         # Create the data matrices
         self.data, self.mask, self.variance = buildNmfData(self.calexps, self.footprint)
-        self.initSeds, self.initIntensities = initNmfFactors(self.footprint, self.calexps)
+        #self.initSeds, self.initIntensities = initNmfFactors(self.footprint, self.calexps)
     
         # Create the PSF Operator
         if initPsf:
@@ -412,40 +413,60 @@ class DeblendedParent:
     
     def getSymmetryOp(self):
         """Create the operator to constrain symmetry
+        
+        Currently this is implemented in Peters algorithm but it is likely to be moved to this class later
         """
         self.symmetryOp = getSymmetryOperator(self.footprint)
         return self.symmetryOp
     
     def getMonotonicOp(self, getMonotonic=getRadialMonotonicOp):
         """Create the operator to constrain monotonicity
+        
+        Currently this is implemented in Peters algorithm but it is likely to be moved to this class later
         """
         self.monotonicOp = getMonotonicOperator(self.footprint, getMonotonic)
         return self.monotonicOp
     
-    def deblend(self, constraints, displayKwargs=None, maxiter=1000, stepsize = 2, stepUpdate=noStepUpdate,
-                display=False, imgLimits=True, **updateKwargs):
+    def deblend(self, constraints="M", displayKwargs=None, maxiter=1000, stepsize = 2,
+                stepUpdate=noStepUpdate, display=False, imgLimits=True, **updateKwargs):
         """Run the NMF deblender
         
         This will always start from self.initW and self.initH, which can be modified before execution
         """
         if displayKwargs is None:
             displayKwargs = {}
-        seds = np.copy(self.initSeds)
-        intensities = np.copy(self.initIntensities)
+        # These lines are commented out because for now they are implemented in Peters code
+        # This is likely to change
+        #seds = np.copy(self.initSeds)
+        #intensities = np.copy(self.initIntensities)
 
-        # Update W and H using the specified update function
-        step = 0
-        while step<maxiter:
-            #newSeds = proxSed(newSeds, newIntensities, self.data, stepsize, self.psfOp, self.variance)
-            #newIntensities = proxIntensities(newIntensities, newSeds, self.data, stepsize, self.psfOp,
-            #                                 self.variance, constraints, constraintMatrices)
-            step += 1
-            stepsize = stepUpdate(stepsize, step)
+        if self.data is None:
+            self.initNMF()
+
+        # Get the position of the peaks
+        # (needed by Peters code to calculate the initial matrices)
+        x0 = self.calexps[0].getX0()
+        y0 = self.calexps[0].getY0()
+        xmin = self.bbox.getMinX()-x0
+        ymin = self.bbox.getMinY()-y0
+        peaks = [(pk.getIx()-xmin, pk.getIy()-ymin) for pk in self.peaks]
+        
+        # Apply a single constraint to all of the peaks
+        # (if only one constraint is given)
+        if len(constraints)==1:
+            constraints = constraints*len(peaks)
+        print("constraints", constraints)
+        result = pnmf.nmf_deblender(self.data, K=len(peaks), max_iter=maxiter, peaks=peaks,
+                                    constraints=constraints)
+        seds, intensities, model = result
+        bands = intensities.shape[0]
+        pixels = intensities.shape[1]*intensities.shape[2]
 
         if display:
             # Show information about the fit
             for fidx, f in enumerate(self.filters):
-                diff = (np.dot(seds, intensities)-self.data)[fidx].reshape(self.shape)
+                model = np.dot(seds, intensities.reshape(bands, pixels)).reshape(self.data.shape)
+                diff = (model-self.data)[fidx].reshape(self.shape)
                 logger.info('Filter {0}'.format(f))
                 logger.info('Pixel range: {0} to {1}'.format(np.min(self.data), np.max(self.data)))
                 logger.info('Max difference: {0}'.format(np.max(diff)))
@@ -545,22 +566,28 @@ class ExposureDeblend:
     
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
                       displaySeds=False, displayTemplates=False, imgLimits=False,
-                      constraints="m", **displayKwargs):
+                      constraints="M", maxiter=1000, **displayKwargs):
         footprint, peaks = self.getParentFootprint(parentIdx, condition, display, imgLimits, **displayKwargs)
         deblend = DeblendedParent(self, footprint, peaks)
         deblend.initNMF(initPsf, displaySeds, displayTemplates, imgLimits)
+        
         # Only load the operators used in the constraints
+        # NotImplemented for now, since this is done in Peters code, but it is likely to be
+        # returned to the stack once testing has been completed
         if "s" in constraints.lower():
-            deblend.getSymmetryOp()
+            #deblend.getSymmetryOp()
+            pass
         if "m" in constraints.lower():
-            deblend.getMonotonicOp()
-        deblend.deblend(constraints=constraints, display=display)
+            #deblend.getMonotonicOp()
+            pass
+        deblend.deblend(constraints=constraints, maxiter=maxiter, display=display)
         return deblend
     
-    def deblend(self, condition=None, initPsf=False, constraints=""):
+    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=1000):
         self.deblendedParents = OrderedDict()
         for parentIdx, src in enumerate(self.mergedDet):
             if len(src.getFootprint().getPeaks())>1:
-                result = self.deblendParent(parentIdx, condition, initPsf, constraints=constraints)
-                self.deblendedParents[parentIdx] = result
+                result = self.deblendParent(parentIdx, condition, initPsf,
+                                            constraints=constraints, maxiter=maxiter)
+                self.deblendedParents[src.getId()] = result
     
