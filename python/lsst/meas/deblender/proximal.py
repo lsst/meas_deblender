@@ -267,8 +267,10 @@ class DeblendedParent:
     def deblend(self, constraints="M", displayKwargs=None, maxiter=1000, stepsize = 2,
                 stepUpdate=noStepUpdate, display=False, imgLimits=True, **updateKwargs):
         """Run the NMF deblender
-        
-        This will always start from self.initW and self.initH, which can be modified before execution
+
+        This currently just initializes the data (if necessary) and calls the nmf_deblender from
+        proximal_nmf. It can also display the deblended footprints and statistics describing the
+        fit if ``display=True``.
         """
         if displayKwargs is None:
             displayKwargs = {}
@@ -331,6 +333,8 @@ class DeblendedParent:
         return seds, intensities
 
     def getTemplate(self, fidx, pkIdx, seds=None, intensities=None):
+        """Apply the SED to the intensities to get the template for a given filter
+        """
         if seds is None:
             seds = self.seds
         if intensities is None:
@@ -339,6 +343,8 @@ class DeblendedParent:
 
     def displayTemplate(self, fidx, pkIdx, seds=None, intensities=None, imgLimits=True, 
                         cmap='inferno', **displayKwargs):
+        """Display an appropriately scaled template
+        """
         template = self.getTemplate(fidx, pkIdx, seds, intensities)
         if imgLimits:
             if "vmin" not in displayKwargs:
@@ -385,6 +391,10 @@ class ExposureDeblend:
     
     def getParentFootprint(self, parentIdx=0, condition=None, display=True, imgLimits=True, **displayKwargs):
         """Get the parent footprint, peaks, and (optionally) display them
+        
+        ``parentIdx`` is the index of the parent footprint in ``self.mergedTable[condition]``, where
+        condition is some array or index used to select some subset of the catalog, for example
+        ``self.mergedTable["peaks"]>0``.
         """
         if condition is None:
             condition = np.ones((len(self.mergedTable),), dtype=bool)
@@ -404,6 +414,13 @@ class ExposureDeblend:
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
                       displaySeds=False, displayTemplates=False, imgLimits=False,
                       constraints="M", maxiter=1000, **displayKwargs):
+        """Deblend a single parent footprint
+
+        Deblend a parent selected by passing a ``parentIdx`` and ``condition``
+        (see `ExposureDeblend.getParentFootprint`) and choosing a constraint
+        ("M" for monotonicity, "S" for symmetry, and " " for no constraint) and
+        maximum number of iterations (maxiter) for each step in the ADMM algorithm.
+        """
         footprint, peaks = self.getParentFootprint(parentIdx, condition, display, imgLimits, **displayKwargs)
         deblend = DeblendedParent(self, footprint, peaks)
         deblend.initNMF(initPsf, displaySeds, displayTemplates, imgLimits)
@@ -421,6 +438,8 @@ class ExposureDeblend:
         return deblend
     
     def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=1000):
+        """Deblend all of the footprints with multiple peaks
+        """
         self.deblendedParents = OrderedDict()
         for parentIdx, src in enumerate(self.mergedDet):
             if len(src.getFootprint().getPeaks())>1:
