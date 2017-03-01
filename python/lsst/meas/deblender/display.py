@@ -42,7 +42,7 @@ def plotIntensities(seds, intensities, shape, fidx=0,
         plt.show()
 
 def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None,
-                contrast=100, setZeroMin=False):
+                contrast=1, adjustZero=True):
     """Convert a collection of images or calexp's to an RGB image
     
     This requires either an array of images or a list of calexps.
@@ -60,22 +60,27 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
         filterIndices = [2,1,0]
     if yRange is None:
         ySlice = slice(None, None)
-    else:
+    elif not isinstance(yRange, slice):
         ySlice = slice(yRange[0], yRange[1])
+    else:
+        ySlice = yRange
     if xRange is None:
         xSlice = slice(None, None)
-    else:
+    elif not isinstance(xRange, slice):
         xSlice = slice(xRange[0], xRange[1])
+    else:
+        xSlice = xRange
+    # Select the subset of 3 images to use for the RGB image
     images = images[filterIndices,ySlice, xSlice]
 
     # Map intensity to [0,255]
     intensity = np.arcsinh(contrast*np.sum(images, axis=0)/3)
-    if setZeroMin:
-        intensity = intensity/(np.max(intensity))*255
-        intensity[intensity<0] = 0
-    else:
+    if adjustZero:
         # Adjust the colors so that zero is the lowest flux value
         intensity = (intensity-np.min(intensity))/(np.max(intensity)-np.min(intensity))*255
+    else:
+        intensity = intensity/(np.max(intensity))*255
+        intensity[intensity<0] = 0
 
     # Use the absolute value to normalize the pixel intensities
     pixelIntensity = np.sum(np.abs(images), axis=0)
@@ -91,15 +96,15 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
     colors[colors<0] = 0
     colors[zeroPix] = 0
     colors = colors.astype(np.uint8)
-    return np.dstack(colors), (images, pixelIntensity, intensity)
+    return np.dstack(colors)
 
 def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None,
-                   contrast=100, setZeroMin=False, figsize=(5,5)):
+                   contrast=100, adjustZero=True, figsize=(5,5)):
     """Display a collection of images or calexp's as an RGB image
     
     See `imagesToRgb` for more info.
     """
-    colors, debug = imagesToRgb(images, calexps, filterIndices, xRange, yRange, contrast, setZeroMin)
+    colors = imagesToRgb(images, calexps, filterIndices, xRange, yRange, contrast, adjustZero)
     plt.figure(figsize=figsize)
     plt.imshow(colors)
     plt.show()

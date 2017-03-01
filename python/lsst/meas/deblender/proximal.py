@@ -60,32 +60,35 @@ def loadMergedDetections(filename):
     logger.info("Sources with multiple peaks: {0}".format(np.sum(mergedTable['peaks']>1)))
     return mergedDet, mergedTable
 
-def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, display=True, fidx=0,
-        **kwargs):
+def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, display=True,
+                       filterIndices=None, contrast=100, adjustZero=True):
     """Load the parent footprint and peaks, and (optionally) display the image and footprint border
     """
     idx = np.where(condition)[0][parentIdx]
     src = mergedDet[idx]
     fp = src.getFootprint()
-    bbox = fp.getBBox()
     peaks = fp.getPeaks()
     
     if display:
-        if "interpolation" not in kwargs:
-            kwargs["interpolation"] = 'none'
-        if "cmap" not in kwargs:
-            kwargs["cmap"] = "inferno"
+        bbox = fp.getBBox()
+        refBbox = calexps[0].getMaskedImage().getBBox()
         
-        img = debUtils.extractImage(calexps[fidx].getMaskedImage(), bbox)
-        plt.imshow(img, **kwargs)
+        # Display the full color image
+        xSlice, ySlice = debUtils.getRelativeSlices(bbox, refBbox)
+        colors = debDisplay.imagesToRgb(calexps=calexps, filterIndices=filterIndices,
+                                        xRange=xSlice, yRange=ySlice,
+                                        contrast=contrast, adjustZero=adjustZero)
+        plt.imshow(colors)
+        
+        # Display the footprint border
         border, filled = debUtils.getFootprintArray(src)
         plt.imshow(border, interpolation='none', cmap='cool')
 
         px = [peak.getIx()-bbox.getMinX() for peak in fp.getPeaks()]
         py = [peak.getIy()-bbox.getMinY() for peak in fp.getPeaks()]
-        plt.plot(px, py, "rx")
-        plt.xlim(0,img.shape[1]-1)
-        plt.ylim(0,img.shape[0]-1)
+        plt.plot(px, py, "cx")
+        plt.xlim(0,colors.shape[1]-1)
+        plt.ylim(colors.shape[0]-1, 0)
         plt.show()
     return fp, peaks
 
@@ -191,7 +194,7 @@ class DeblendedParent:
         self.monotonicOp = None
 
     def initNMF(self, initPsf=False, displaySeds=False, displayTemplates=False,
-                      imgLimits=True, **displayKwargs):
+                filterIndices=None, contrast=100, adjustZero=True):
         """Initialize the parameters needed for NMF deblending and (optionally) display the results
         """
         # Create the data matrices
@@ -208,14 +211,12 @@ class DeblendedParent:
         if displaySeds:
             debDisplay.plotSeds(self.initSeds)
         if displayTemplates:
-            if "fidx" not in displayKwargs:
-                displayKwargs["fidx"] = 0
-            if imgLimits:
-                if "vmin" not in displayKwargs:
-                    displayKwargs["vmin"] = self.expDeblend.vmin[displayKwargs["fidx"]]
-                if "vmax" not in displayKwargs:
-                    displayKwargs["vmax"] = 10*self.expDeblend.vmax[displayKwargs["fidx"]]
-            plotIntensities(self.initSeds, self.initIntensities, self.shape, **displayKwargs)
+            if filterIndices is None:
+                filterIndices = [0,1,2]
+            templates = np.array([self.getTemplate(n, pk) for n in filterIndices])
+            debDisplay.plotColorImage(templates, filterIndices=filterIndices, contrast=contrast,
+                                      adjustZero=adjustZero)
+            #debDisplay.plotIntensities(self.initSeds, self.initIntensities, self.shape, **displayKwargs)
 
         return self.data, self.mask, self.variance, self.initSeds, self.initIntensities
     
@@ -236,7 +237,7 @@ class DeblendedParent:
         return #self.monotonicOp
     
     def deblend(self, constraints="M", displayKwargs=None, maxiter=1000, stepsize = 2,
-                stepUpdate=noStepUpdate, display=False, imgLimits=True, **updateKwargs):
+                stepUpdate=noStepUpdate, display=False, filterIndices=None, contrast=100, adjustZero=False):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
@@ -281,10 +282,12 @@ class DeblendedParent:
         result = pnmf.nmf_deblender(self.data, K=len(peaks), max_iter=maxiter, peaks=peaks,
                                     W=variance, constraints=constraints)
         seds, intensities, model = result
-        bands = intensities.shape[0]
-        pixels = intensities.shape[1]*intensities.shape[2]
+        self.seds = seds
+        self.intensities = intensities
 
         if display:
+            bands = intensities.shape[0]
+            pixels = intensities.shape[1]*intensities.shape[2]
             # Show information about the fit
             for fidx, f in enumerate(self.filters):
                 model = np.dot(seds, intensities.reshape(bands, pixels)).reshape(self.data.shape)
@@ -299,20 +302,14 @@ class DeblendedParent:
                                  self.filters, display=False)
 
             # Show the new templates for each object
-            if "fidx" not in displayKwargs:
-                displayKwargs["fidx"] = 0
-            if imgLimits:
-                if "vmin" not in displayKwargs:
-                    displayKwargs["vmin"] = self.expDeblend.vmin[displayKwargs["fidx"]]
-                if "vmax" not in displayKwargs:
-                    displayKwargs["vmax"] = 10*self.expDeblend.vmax[displayKwargs["fidx"]]
-            debDisplay.plotIntensities(seds, intensities, self.shape, **displayKwargs)
+            for pk in range(len(intensities)):
+                templates = np.array([self.getTemplate(n, pk) for n in range(len(self.calexps))])
+                debDisplay.plotColorImage(images=templates, filterIndices=filterIndices,
+                                          contrast=contrast, adjustZero=adjustZero, figsize=(5,5))
             debDisplay.plotSeds(seds)
             plt.imshow(diff, interpolation='none', cmap='inferno')
             plt.show()
 
-        self.seds = seds
-        self.intensities = intensities
         return seds, intensities
 
     def getTemplate(self, fidx, pkIdx, seds=None, intensities=None):
@@ -324,18 +321,26 @@ class DeblendedParent:
             intensities = self.intensities
         return reconstructTemplate(seds, intensities, fidx , pkIdx, self.shape)
 
-    def displayTemplate(self, fidx, pkIdx, seds=None, intensities=None, imgLimits=True, 
+    def displayTemplate(self, fidx, pkIdx, useMask=True, seds=None, intensities=None, imgLimits=False, 
                         cmap='inferno', **displayKwargs):
         """Display an appropriately scaled template
         """
         template = self.getTemplate(fidx, pkIdx, seds, intensities)
         if imgLimits:
             if "vmin" not in displayKwargs:
-                displayKwargs["vmin"] = self.expDeblend.vmin[self.filters[fidx]]
+                displayKwargs["vmin"] = self.expDeblend.vmin[fidx]
             if "vmax" not in displayKwargs:
-                displayKwargs["vmax"] = 10*self.expDeblend.vmax[self.filters[fidx]]
-        plt.imshow(template, interpolation='none', cmap=cmap, **displayKwargs)
+                displayKwargs["vmax"] = 10*self.expDeblend.vmax[fidx]
+        if useMask:
+            img = np.ma.array(template, mask=template<=0)
+        else:
+            img = template
+        plt.imshow(img, interpolation='none', cmap=cmap, **displayKwargs)
         plt.show()
+
+    def displayAllTemplates(self, fidx, useMask=True, imgLimits=False, cmap='inferno', **displayKwargs):
+        for pk in range(len(self.intensities)):
+            self.displayTemplate(fidx, pk, useMask=useMask, imgLimits=imgLimits, cmap=cmap, **displayKwargs)
 
 
 class ExposureDeblend:
@@ -372,7 +377,8 @@ class ExposureDeblend:
             self.simCat, self.simTable = sim.loadSimCatalog(simFilename)
         self.psfs = [calexp.getPsf() for calexp in self.calexps]
     
-    def getParentFootprint(self, parentIdx=0, condition=None, display=True, imgLimits=True, **displayKwargs):
+    def getParentFootprint(self, parentIdx=0, condition=None, display=True,
+                           filterIndices=None, contrast=100, adjustZero=True):
         """Get the parent footprint, peaks, and (optionally) display them
         
         ``parentIdx`` is the index of the parent footprint in ``self.mergedTable[condition]``, where
@@ -381,22 +387,15 @@ class ExposureDeblend:
         """
         if condition is None:
             condition = np.ones((len(self.mergedTable),), dtype=bool)
-        if display:
-            if "fidx" not in displayKwargs:
-                displayKwargs["fidx"] = 0
-            if imgLimits:
-                if "vmin" not in displayKwargs:
-                    displayKwargs["vmin"] = self.vmin[displayKwargs["fidx"]]
-                if "vmax" not in displayKwargs:
-                    displayKwargs["vmax"] = 10*self.vmax[displayKwargs["fidx"]]
         # Load the footprint and peaks for parent[parentIdx]
         footprint, peaks = getParentFootprint(self.mergedTable, self.mergedDet, self.calexps,
-                                              condition, parentIdx, display, **displayKwargs)
+                                              condition, parentIdx, display, filterIndices, contrast,
+                                              adjustZero)
         return footprint, peaks
     
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
-                      displaySeds=False, displayTemplates=False, imgLimits=False,
-                      constraints="M", maxiter=1000, **displayKwargs):
+                      displaySeds=False, displayTemplates=False, constraints="M", maxiter=1000,
+                      filterIndices=None, contrast=100, adjustZero=False):
         """Deblend a single parent footprint
 
         Deblend a parent selected by passing a ``parentIdx`` and ``condition``
@@ -404,9 +403,10 @@ class ExposureDeblend:
         ("M" for monotonicity, "S" for symmetry, and " " for no constraint) and
         maximum number of iterations (maxiter) for each step in the ADMM algorithm.
         """
-        footprint, peaks = self.getParentFootprint(parentIdx, condition, display, imgLimits, **displayKwargs)
+        footprint, peaks = self.getParentFootprint(parentIdx, condition, display,
+                                                   filterIndices, contrast, adjustZero)
         deblend = DeblendedParent(self, footprint, peaks)
-        deblend.initNMF(initPsf, displaySeds, displayTemplates, imgLimits)
+        deblend.initNMF(initPsf, displaySeds, displayTemplates, filterIndices, contrast, adjustZero)
         
         # Only load the operators used in the constraints
         # NotImplemented for now, since this is done in Peters code, but it is likely to be
