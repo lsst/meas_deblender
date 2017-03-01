@@ -18,9 +18,10 @@ from . import plugins as debPlugins
 from . import utils as debUtils
 from . import sim
 from . import proximal_nmf as pnmf
+from . import display as debDisplay
 
 logging.basicConfig()
-logger = logging.getLogger("lsst.meas.deblender")
+logger = logging.getLogger("lsst.meas.deblender.proximal")
 
 def loadCalExps(filters, filename):
     """Load calexps for testing the deblender.
@@ -88,20 +89,6 @@ def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, di
         plt.show()
     return fp, peaks
 
-def plotSeds(seds):
-    """Plot the SEDs for each source
-    """
-    for col in range(seds.shape[1]):
-        sed = seds[:, col]
-        band = range(len(sed))
-        lbl = "Obj {0}".format(col)
-        plt.plot(band, sed, '.-', label=lbl)
-    plt.xlabel("Filter Number")
-    plt.ylabel("Flux")
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
-               fancybox=True, shadow=True, ncol=seds.shape[1])
-    plt.show()
-
 def reconstructTemplate(seds, intensities, fidx , pkIdx, shape=None):
     """Calculate the template for a single peak for a single filter
     
@@ -112,22 +99,6 @@ def reconstructTemplate(seds, intensities, fidx , pkIdx, shape=None):
     if shape is not None:
         template = template.reshape(shape)
     return template
-
-def plotIntensities(seds, intensities, shape, fidx=0,
-                    vmin=None, vmax=None, useMask=False):
-    """Plot the template image for each source
-    
-    Multiply each row in ``intensities`` by the SED for filter ``fidx`` and
-    plot the result.
-    """
-    for k in range(len(intensities)):
-        template = reconstructTemplate(seds, intensities, fidx, k, shape)
-        # Optionally Mask zero pixels (gives a better idea of the footprint)
-        if useMask:
-            template = np.ma.array(template, mask=template==0)
-        plt.title("Object {0}".format(k))
-        plt.imshow(template, interpolation='none', cmap='inferno', vmin=vmin, vmax=vmax)
-        plt.show()
 
 def buildNmfData(calexps, footprint):
     """Build NMF data matrix
@@ -235,7 +206,7 @@ class DeblendedParent:
             self.psfOp = None
         
         if displaySeds:
-            plotSeds(self.initSeds)
+            debDisplay.plotSeds(self.initSeds)
         if displayTemplates:
             if "fidx" not in displayKwargs:
                 displayKwargs["fidx"] = 0
@@ -335,8 +306,8 @@ class DeblendedParent:
                     displayKwargs["vmin"] = self.expDeblend.vmin[displayKwargs["fidx"]]
                 if "vmax" not in displayKwargs:
                     displayKwargs["vmax"] = 10*self.expDeblend.vmax[displayKwargs["fidx"]]
-            plotIntensities(seds, intensities, self.shape, **displayKwargs)
-            plotSeds(seds)
+            debDisplay.plotIntensities(seds, intensities, self.shape, **displayKwargs)
+            debDisplay.plotSeds(seds)
             plt.imshow(diff, interpolation='none', cmap='inferno')
             plt.show()
 
