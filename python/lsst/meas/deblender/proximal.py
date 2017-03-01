@@ -151,7 +151,7 @@ def buildNmfData(calexps, footprint):
     # Add the image in each filter as a row in data
     data = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.float64)
     mask = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.int64)
-    variance = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.int64)
+    variance = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.float64)
     for n, calexp in enumerate(calexps):
         img, m, var = calexp.getMaskedImage().getArrays()
         data[n] = img[ymin:ymax, xmin:xmax]
@@ -294,9 +294,22 @@ class DeblendedParent:
         # (if only one constraint is given)
         if len(constraints)==1:
             constraints = constraints*len(peaks)
+
+        # Set the variance outside the footprint to zero
+        maskPlane = self.calexps[0].getMaskedImage().getMask().getMaskPlaneDict().asdict()
+        badPixels = (1<<maskPlane["BAD"] |
+                     1<<maskPlane["CR"] |
+                     1<<maskPlane["NO_DATA"] |
+                     1<<maskPlane["SAT"] |
+                     1<<maskPlane["SUSPECT"])
+        mask = (badPixels & self.mask).astype(bool)
+        
+        variance = np.copy(self.variance)
+        variance[mask] = 0
+        
         print("constraints", constraints)
         result = pnmf.nmf_deblender(self.data, K=len(peaks), max_iter=maxiter, peaks=peaks,
-                                    constraints=constraints)
+                                    W=variance, constraints=constraints)
         seds, intensities, model = result
         bands = intensities.shape[0]
         pixels = intensities.shape[1]*intensities.shape[2]
