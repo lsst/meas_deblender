@@ -303,7 +303,6 @@ class DeblendedParent:
                      1<<maskPlane["SAT"] |
                      1<<maskPlane["SUSPECT"])
         mask = (badPixels & self.mask).astype(bool)
-        
         variance = np.copy(self.variance)
         variance[mask] = 0
         
