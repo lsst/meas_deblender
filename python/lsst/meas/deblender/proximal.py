@@ -192,6 +192,7 @@ class DeblendedParent:
         self.psfOp = None
         self.symmetryOp = None
         self.monotonicOp = None
+        self.cutoff = 0
 
     def initNMF(self, initPsf=False, displaySeds=False, displayTemplates=False,
                 filterIndices=None, contrast=100, adjustZero=True):
@@ -322,8 +323,8 @@ class DeblendedParent:
             intensities = self.intensities
         return reconstructTemplate(seds, intensities, fidx , pkIdx, self.shape)
 
-    def displayTemplate(self, fidx, pkIdx, useMask=True, seds=None, intensities=None, imgLimits=False, 
-                        cmap='inferno', **displayKwargs):
+    def displayTemplate(self, fidx, pkIdx, useMask=True, cutoff=None, seds=None, intensities=None,
+                        imgLimits=False, cmap='inferno', **displayKwargs):
         """Display an appropriately scaled template
         """
         template = self.getTemplate(fidx, pkIdx, seds, intensities)
@@ -333,15 +334,24 @@ class DeblendedParent:
             if "vmax" not in displayKwargs:
                 displayKwargs["vmax"] = 10*self.expDeblend.vmax[fidx]
         if useMask:
-            img = np.ma.array(template, mask=template<=0)
+            if cutoff is None:
+                cutoff = self.cutoff
+            else:
+                cutoff = cutoff
+            img = np.ma.array(template, mask=template<=cutoff)
         else:
             img = template
         plt.imshow(img, interpolation='none', cmap=cmap, **displayKwargs)
         plt.show()
 
-    def displayAllTemplates(self, fidx, useMask=True, imgLimits=False, cmap='inferno', **displayKwargs):
+    def displayAllTemplates(self, fidx, useMask=True, cutoff=None,
+                            imgLimits=False, cmap='inferno', **displayKwargs):
         for pk in range(len(self.intensities)):
-            self.displayTemplate(fidx, pk, useMask=useMask, imgLimits=imgLimits, cmap=cmap, **displayKwargs)
+            self.displayTemplate(fidx, pk, useMask=useMask, cutoff=cutoff,
+                                 imgLimits=imgLimits, cmap=cmap, **displayKwargs)
+    
+    def trimFlux(cutoff=1e-2):
+        self.intensities[self.intensities<cutoff] = 0
 
 
 class ExposureDeblend:
