@@ -289,8 +289,10 @@ def compareMeasToSim(peakTables, simTables, nmfPeakTables, filters, minFlux=50):
         simTables[n]["image"] = n+1
     peakTable = vstack(peakTables)
     simTable = vstack(simTables)
-    del simTable["sed"]
-    del simTable["wave"]
+    if "sed" in simTable:
+        del simTable["sed"]
+    if "wave" in simTable:
+        del simTable["wave"]
     nmfPeakTable = vstack(nmfPeakTables)
 
     # Display statistics
@@ -322,6 +324,7 @@ def compareMeasToSim(peakTables, simTables, nmfPeakTables, filters, minFlux=50):
         plt.xlabel("Simulated Flux (counts)")
         plt.ylabel("Fractional Error")
         plt.legend(loc="upper center", fancybox=True, shadow=True, bbox_to_anchor=(.5, 1.2), ncol=3)
+        plt.gca().yaxis.grid(True)
         plt.show()
         
         plt.figure(figsize=(8,4))
