@@ -237,7 +237,8 @@ class DeblendedParent:
         return #self.monotonicOp
     
     def deblend(self, constraints="M", displayKwargs=None, maxiter=1000, stepsize = 2,
-                stepUpdate=noStepUpdate, display=False, filterIndices=None, contrast=100, adjustZero=False):
+                stepUpdate=noStepUpdate, display=False, filterIndices=None, contrast=100, adjustZero=False,
+                **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
@@ -280,7 +281,7 @@ class DeblendedParent:
         
         print("constraints", constraints)
         result = pnmf.nmf_deblender(self.data, K=len(peaks), max_iter=maxiter, peaks=peaks,
-                                    W=variance, constraints=constraints)
+                                    W=variance, constraints=constraints, **kwargs)
         seds, intensities, model = result
         self.seds = seds
         self.intensities = intensities
@@ -395,7 +396,7 @@ class ExposureDeblend:
     
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
                       displaySeds=False, displayTemplates=False, constraints="M", maxiter=1000,
-                      filterIndices=None, contrast=100, adjustZero=False):
+                      filterIndices=None, contrast=100, adjustZero=False, **kwargs):
         """Deblend a single parent footprint
 
         Deblend a parent selected by passing a ``parentIdx`` and ``condition``
@@ -417,16 +418,16 @@ class ExposureDeblend:
         if "m" in constraints.lower():
             #deblend.getMonotonicOp()
             pass
-        deblend.deblend(constraints=constraints, maxiter=maxiter, display=display)
+        deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
     
-    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=1000):
+    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=1000, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
         self.deblendedParents = OrderedDict()
         for parentIdx, src in enumerate(self.mergedDet):
             if len(src.getFootprint().getPeaks())>1:
                 result = self.deblendParent(parentIdx, condition, initPsf,
-                                            constraints=constraints, maxiter=maxiter)
+                                            constraints=constraints, maxiter=maxiter, **kwargs)
                 self.deblendedParents[src.getId()] = result
     
