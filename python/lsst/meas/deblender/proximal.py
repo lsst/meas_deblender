@@ -149,7 +149,7 @@ def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None
     
     for k in range(len(seds[0])):
         logger.info("Object {0} at ({1},{2})".format(k, footprint.getPeaks()[k].getIx(),
-                                                     footprint.getPeaks()[k].getIx()))
+                                                     footprint.getPeaks()[k].getIy()))
         for fidx, f in enumerate(filters):
             template = reconstructTemplate(seds, intensities, fidx , pkIdx=k, shape=shape)
             measFlux = np.sum(template)
@@ -236,7 +236,7 @@ class DeblendedParent:
         #self.monotonicOp = getMonotonicOperator(self.footprint, getMonotonic)
         return #self.monotonicOp
     
-    def deblend(self, constraints="M", displayKwargs=None, maxiter=100, stepsize = 2,
+    def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 stepUpdate=noStepUpdate, display=False, filterIndices=None, contrast=100, adjustZero=False,
                 **kwargs):
         """Run the NMF deblender
@@ -395,7 +395,7 @@ class ExposureDeblend:
         return footprint, peaks
     
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
-                      displaySeds=False, displayTemplates=False, constraints="M", maxiter=100,
+                      displaySeds=False, displayTemplates=False, constraints="M", maxiter=50,
                       filterIndices=None, contrast=100, adjustZero=False, **kwargs):
         """Deblend a single parent footprint
 
@@ -421,7 +421,7 @@ class ExposureDeblend:
         deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
     
-    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=100, **kwargs):
+    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
         self.deblendedParents = OrderedDict()
