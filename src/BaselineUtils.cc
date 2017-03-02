@@ -33,9 +33,99 @@ const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAY
 template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
 const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAYFLUX_TRIM;
 
-static bool span_ptr_compare(PTR(det::Span) sp1, PTR(det::Span) sp2) {
-    return (*sp1 < *sp2);
+static bool span_compare(geom::Span const & sp1,
+                         geom::Span const & sp2) {
+    return (sp1 < sp2);
 }
+
+namespace {
+    void nearestFootprint(std::vector<PTR(det::Footprint)> const& foots,
+                          image::Image<std::uint16_t>::Ptr argmin,
+                          image::Image<std::uint16_t>::Ptr dist)
+    {
+        /*
+         * insert the footprints into an image, set all the pixels to the
+         * Manhattan distance from the nearest set pixel.
+         */
+        typedef std::uint16_t dtype;
+        typedef std::uint16_t itype;
+
+        const itype nil = 0xffff;
+
+        *argmin = 0;
+        *dist = 0;
+
+        {
+        int i = 0;
+        for (std::shared_ptr<det::Footprint> const & foot : foots) {
+            foot->getSpans()->setImage(*argmin, static_cast<itype>(i));
+            foot->getSpans()->setImage(*dist, static_cast<dtype>(1));
+            ++i;
+        }
+        }
+
+        int const height = dist->getHeight();
+        int const width  = dist->getWidth();
+
+        // traverse from bottom left to top right
+        for (int y = 0; y != height; ++y) {
+            image::Image<dtype>::xy_locator dim = dist->xy_at(0, y);
+            image::Image<itype>::xy_locator aim = argmin->xy_at(0, y);
+            for (int x = 0; x != width; ++x, ++dim.x(), ++aim.x()) {
+                if (dim(0, 0) == 1) {
+                    // first pass and pixel was on, it gets a zero
+                    dim(0, 0) = 0;
+                    // its argmin is already set
+                } else {
+                    // pixel was off. It is at most the sum of lengths of
+                    // the array away from a pixel that is on
+                    dim(0, 0) = width + height;
+                    aim(0, 0) = nil;
+                    // or one more than the pixel to the north
+                    if (y > 0) {
+                        dtype ndist = dim(0,-1) + 1;
+                        if (ndist < dim(0,0)) {
+                            dim(0,0) = ndist;
+                            aim(0,0) = aim(0,-1);
+                        }
+                    }
+                    // or one more than the pixel to the west
+                    if (x > 0) {
+                        dtype ndist = dim(-1,0) + 1;
+                        if (ndist < dim(0,0)) {
+                            dim(0,0) = ndist;
+                            aim(0,0) = aim(-1,0);
+                        }
+                    }
+                }
+            }
+        }
+        // traverse from top right to bottom left
+        for (int y = height - 1; y >= 0; --y) {
+            image::Image<dtype>::xy_locator dim = dist->xy_at(width-1, y);
+            image::Image<itype>::xy_locator aim = argmin->xy_at(width-1, y);
+            for (int x = width - 1; x >= 0; --x, --dim.x(), --aim.x()) {
+                // either what we had on the first pass or one more than
+                // the pixel to the south
+                if (y + 1 < height) {
+                    dtype ndist = dim(0,1) + 1;
+                    if (ndist < dim(0,0)) {
+                        dim(0,0) = ndist;
+                        aim(0,0) = aim(0,1);
+                    }
+                }
+                // or one more than the pixel to the east
+                if (x + 1 < width) {
+                    dtype ndist = dim(1,0) + 1;
+                    if (ndist < dim(0,0)) {
+                        dim(0,0) = ndist;
+                        aim(0,0) = aim(1,0);
+                    }
+                }
+            }
+        }
+    }
+} // end anonymous namespace
 
 /**
  Run a spatial median filter over the given input *img*, writing the
@@ -271,19 +361,16 @@ makeMonotonic(
 
 static double _get_contrib_r_to_footprint(int x, int y,
                                           PTR(det::Footprint) tfoot) {
-    typedef det::Footprint::SpanList SpanList;
     double minr2 = 1e12;
-    SpanList const& tspans = tfoot->getSpans();
-    for (SpanList::const_iterator ts = tspans.begin(); ts < tspans.end(); ++ts) {
-        geom::Span* sp = ts->get();
+    for (geom::Span const & sp : *(tfoot->getSpans())) {
         int mindx;
         // span is to right of pixel?
-        int dx = sp->getX0() - x;
+        int dx = sp.getX0() - x;
         if (dx >= 0) {
             mindx = dx;
         } else {
             // span is to left of pixel?
-            dx = x - sp->getX1();
+            dx = x - sp.getX1();
             if (dx >= 0) {
                 mindx = dx;
             } else {
@@ -291,7 +378,7 @@ static double _get_contrib_r_to_footprint(int x, int y,
                 mindx = 0;
             }
         }
-        int dy = sp->getY() - y;
+        int dy = sp.getY() - y;
         minr2 = std::min(minr2, (double)(mindx*mindx + dy*dy));
     }
     //printf("stray flux at (%i,%i): dist to t %i is %g\n", x, y, (int)i, sqrt(minr2));
@@ -314,13 +401,13 @@ _find_stray_flux(det::Footprint const& foot,
                  std::vector<std::shared_ptr<typename det::HeavyFootprint<ImagePixelT,MaskPixelT,VariancePixelT> > > & strays
                  ) {
 
-    typedef typename det::Footprint::SpanList SpanList;
     typedef typename det::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT> HeavyFootprint;
     typedef typename std::shared_ptr< HeavyFootprint > HeavyFootprintPtrT;
 
     // when doing stray flux: the footprints and pixels, which we'll
     // combine into the return 'strays' HeavyFootprint at the end.
     std::vector<PTR(det::Footprint) > strayfoot;
+    std::vector<std::vector<geom::Span>> straySpans(tfoots.size());
     std::vector<std::vector<ImagePixelT> > straypix;
     std::vector<std::vector<MaskPixelT> > straymask;
     std::vector<std::vector<VariancePixelT> > strayvar;
@@ -356,7 +443,8 @@ _find_stray_flux(det::Footprint const& foot,
         if (!always && ispsf.size()) {
             // create a temp list that has empty footprints in place
             // of all the point sources.
-            PTR(det::Footprint) empty(new det::Footprint(foot.getPeaks().getSchema()));
+            auto empty = std::make_shared<det::Footprint>();
+            empty->setPeakSchema(foot.getPeaks().getSchema());
             for (size_t i=0; i<tfoots.size(); ++i) {
                 if (ispsf[i]) {
                     templist.push_back(empty);
@@ -371,11 +459,10 @@ _find_stray_flux(det::Footprint const& foot,
 
     // Go through the (parent) Footprint looking for stray flux:
     // pixels that are not claimed by any template, and positive.
-    const SpanList& spans = foot.getSpans();
-    for (SpanList::const_iterator s = spans.begin(); s < spans.end(); s++) {
-        int y = (*s)->getY();
-        int x0 = (*s)->getX0();
-        int x1 = (*s)->getX1();
+    for (geom::Span const & s : *foot.getSpans()) {
+        int y = s.getY();
+        int x0 = s.getX0();
+        int x1 = s.getX1();
         typename ImageT::x_iterator tsum_it =
             tsum->row_begin(y - sumy0) + (x0 - sumx0);
         typename MaskedImageT::x_iterator in_it =
@@ -463,10 +550,12 @@ _find_stray_flux(det::Footprint const& foot,
                 }
                 // the stray flux to give to template i
                 double p = (contrib[i] / csum) * (*in_it).image();
+
                 if (!strayfoot[i]) {
-                    strayfoot[i] = PTR(det::Footprint)(new det::Footprint(foot.getPeaks().getSchema()));
+                    strayfoot[i] = std::make_shared<det::Footprint>();
+                    strayfoot[i]->setPeakSchema(foot.getPeaks().getSchema());
                 }
-                strayfoot[i]->addSpanInSeries(y, x, x); // XXX this may be rather heavy in memory use
+                straySpans[i].push_back(geom::Span(y, x, x));
                 straypix[i].push_back(p);
                 straymask[i].push_back((*in_it).mask());
                 strayvar[i].push_back((*in_it).variance());
@@ -476,6 +565,9 @@ _find_stray_flux(det::Footprint const& foot,
 
     // Store the stray flux in HeavyFootprints
     for (size_t i=0; i<tfoots.size(); ++i) {
+        if (strayfoot[i]) {
+            strayfoot[i]->setSpans(std::make_shared<geom::SpanSet>(straySpans[i]));
+        }
         if (!strayfoot[i]) {
             strays.push_back(HeavyFootprintPtrT());
         } else {
@@ -491,7 +583,7 @@ _find_stray_flux(det::Footprint const& foot,
             typename ndarray::Array<MaskPixelT,1,1>::Iterator mpix;
             typename ndarray::Array<VariancePixelT,1,1>::Iterator vpix;
 
-            assert((size_t)strayfoot[i]->getNpix() == straypix[i].size());
+            assert((size_t)strayfoot[i]->getArea() == straypix[i].size());
 
             for (spix = straypix[i].begin(),
                      smask = straymask[i].begin(),
@@ -608,7 +700,6 @@ apportionFlux(MaskedImageT const& img,
               int strayFluxOptions,
               double clipStrayFluxFraction
     ) {
-    typedef typename det::Footprint::SpanList SpanList;
 
     if (timgs.size() != tfoots.size()) {
         throw LSST_EXCEPT(lsst::pex::exceptions::LengthError,
@@ -724,13 +815,13 @@ apportionFlux(MaskedImageT const& img,
  */
 class RelativeSpanIterator {
 public:
-    typedef det::Footprint::SpanList SpanList;
+    using SpanSet = geom::SpanSet;
 
     RelativeSpanIterator() {}
 
-    RelativeSpanIterator(SpanList::const_iterator const& real,
-                         SpanList const& arr,
-                         int cx, int cy, bool forward=true) 
+    RelativeSpanIterator(SpanSet::const_iterator const& real,
+                         SpanSet const& arr,
+                         int cx, int cy, bool forward=true)
         : _real(real), _cx(cx), _cy(cy), _forward(forward)
         {
             if (_forward) {
@@ -740,22 +831,22 @@ public:
             }
         }
 
-    bool operator==(const SpanList::const_iterator & other) {
+    bool operator==(const SpanSet::const_iterator & other) {
         return _real == other;
     }
-    bool operator!=(const SpanList::const_iterator & other) {
+    bool operator!=(const SpanSet::const_iterator & other) {
         return _real != other;
     }
-    bool operator<=(const SpanList::const_iterator & other) {
+    bool operator<=(const SpanSet::const_iterator & other) {
         return _real <= other;
     }
-    bool operator<(const SpanList::const_iterator & other) {
+    bool operator<(const SpanSet::const_iterator & other) {
         return _real < other;
     }
-    bool operator>=(const SpanList::const_iterator & other) {
+    bool operator>=(const SpanSet::const_iterator & other) {
         return _real >= other;
     }
-    bool operator>(const SpanList::const_iterator & other) {
+    bool operator>(const SpanSet::const_iterator & other) {
         return _real > other;
     }
 
@@ -792,34 +883,34 @@ public:
 
     int dxlo() {
         if (_forward) {
-            return (*_real)->getX0() - _cx;
+            return _real->getX0() - _cx;
         } else {
-            return _cx - (*_real)->getX1();
+            return _cx - _real->getX1();
         }
     }
     int dxhi() {
         if (_forward) {
-            return (*_real)->getX1() - _cx;
+            return _real->getX1() - _cx;
         } else {
-            return _cx - (*_real)->getX0();
+            return _cx - _real->getX0();
         }
     }
     int dy() {
-        return std::abs((*_real)->getY() - _cy);
+        return std::abs(_real->getY() - _cy);
     }
     int x0() {
-        return (*_real)->getX0();
+        return _real->getX0();
     }
     int x1() {
-        return (*_real)->getX1();
+        return _real->getX1();
     }
     int y() {
-        return (*_real)->getY();
+        return _real->getY();
     }
 
 private:
-    SpanList::const_iterator _real;
-    SpanList::const_iterator _end;
+    SpanSet::const_iterator _real;
+    SpanSet::const_iterator _end;
     int _cx;
     int _cy;
     bool _forward;
@@ -883,26 +974,24 @@ symmetrizeFootprint(
     det::Footprint const& foot,
     int cx, int cy) {
 
-    typedef typename det::Footprint::SpanList SpanList;
-
-    PTR(det::Footprint) sfoot(new det::Footprint(foot.getPeaks().getSchema()));
-    const SpanList spans = foot.getSpans();
-    assert(foot.isNormalized());
+    auto sfoot = std::make_shared<det::Footprint>();
+    sfoot->setPeakSchema(foot.getPeaks().getSchema());
+    geom::SpanSet const & spans = *foot.getSpans();
 
     LOG_LOGGER _log = LOG_GET("meas.deblender.symmetrizeFootprint");
 
     // Find the Span containing the peak.
-    PTR(det::Span) target(new det::Span(cy, cx, cx));
-    SpanList::const_iterator peakspan =
-        std::upper_bound(spans.begin(), spans.end(), target, span_ptr_compare);
+    geom::Span target(cy, cx, cx);
+    geom::SpanSet::const_iterator peakspan =
+        std::upper_bound(spans.begin(), spans.end(), target, span_compare);
     // upper_bound returns the last position where "target" could be inserted;
     // ie, the first Span larger than "target".  The Span containing "target"
     // should be peakspan-1 or (if the peak is on the first pixel in the span,
     // peakspan.
-    PTR(det::Span) sp;
+    geom::Span sp;
     if (peakspan == spans.begin()) {
         sp = *peakspan;
-        if (!sp->contains(cx, cy)) {
+        if (!sp.contains(cx, cy)) {
             LOGL_WARN(_log,
                 "Failed to find span containing (%i,%i): before the beginning of this footprint", cx, cy);
             return PTR(det::Footprint)();
@@ -911,21 +1000,21 @@ symmetrizeFootprint(
         --peakspan;
         sp = *peakspan;
 
-        if (!sp->contains(cx, cy)) {
+        if (!sp.contains(cx, cy)) {
             ++peakspan;
             sp = *peakspan;
-            if (!sp->contains(cx, cy)) {
+            if (!sp.contains(cx, cy)) {
                 geom::Box2I fbb = foot.getBBox();
                 LOGL_WARN(_log, "Failed to find span containing (%i,%i): nearest is %i, [%i,%i].  "
                           "Footprint bbox is [%i,%i],[%i,%i]",
-                          cx, cy, sp->getY(), sp->getX0(), sp->getX1(),
+                          cx, cy, sp.getY(), sp.getX0(), sp.getX1(),
                           fbb.getMinX(), fbb.getMaxX(), fbb.getMinY(), fbb.getMaxY());
                 return PTR(det::Footprint)();
             }
         }
     }
     LOGL_DEBUG(_log, "Span containing (%i,%i): (x=[%i,%i], y=%i)",
-               cx, cy, sp->getX0(), sp->getX1(), sp->getY());
+               cx, cy, sp.getX0(), sp.getX1(), sp.getY());
 
     // The symmetric templates are essentially an AND of the footprint
     // pixels and its 180-degree-rotated self, rotated around the
@@ -933,7 +1022,7 @@ symmetrizeFootprint(
     //
     // We iterate forward and backward simultaneously, starting from
     // the span containing the peak and moving out, row by row.
-    // 
+    //
     // In the loop below, we search for the next pair of Spans that
     // overlap (in "dx" from the center), output the overlapping
     // portion of the Spans, and advance either the "fwd" or "back"
@@ -959,6 +1048,7 @@ symmetrizeFootprint(
     RelativeSpanIterator back(peakspan, spans, cx, cy, false);
 
     int dy = 0;
+    std::vector<geom::Span> tmpSpans;
     while (fwd.notDone() && back.notDone()) {
         // forward and backward "y"; just symmetric around cy
         int fy = cy + dy;
@@ -1037,8 +1127,8 @@ symmetrizeFootprint(
         if (dxlo <= dxhi) {
             LOGL_DEBUG(_log, "Adding span fwd %i, [%i, %i],  back %i, [%i, %i]",
                        fy, cx+dxlo, cx+dxhi, by, cx-dxhi, cx-dxlo);
-            sfoot->addSpan(fy, cx + dxlo, cx + dxhi);
-            sfoot->addSpan(by, cx - dxhi, cx - dxlo);
+            tmpSpans.push_back(geom::Span(fy, cx + dxlo, cx + dxhi));
+            tmpSpans.push_back(geom::Span(by, cx - dxhi, cx - dxlo));
         }
 
         // Advance the one whose "hi" edge is smallest
@@ -1075,7 +1165,7 @@ symmetrizeFootprint(
         }
 
     }
-    sfoot->normalize();
+    sfoot->setSpans(std::make_shared<geom::SpanSet>(std::move(tmpSpans)));
     return sfoot;
 }
 
@@ -1105,7 +1195,6 @@ buildSymmetricTemplate(
     bool* patchedEdges) {
 
     typedef typename MaskedImageT::const_xy_locator xy_loc;
-    typedef typename det::Footprint::SpanList SpanList;
 
     *patchedEdges = false;
 
@@ -1119,6 +1208,7 @@ buildSymmetricTemplate(
     }
 
     FootprintPtrT sfoot = symmetrizeFootprint(foot, cx, cy);
+
     if (!sfoot) {
         return std::pair<ImagePtrT, FootprintPtrT>(ImagePtrT(), sfoot);
     }
@@ -1127,7 +1217,7 @@ buildSymmetricTemplate(
         throw LSST_EXCEPT(lsst::pex::exceptions::LengthError,
                           "Image too small for symmetrized footprint");
     }
-    const SpanList spans = sfoot->getSpans();
+    geom::SpanSet const & spans = *sfoot->getSpans();
 
     // does this footprint touch an EDGE?
     bool touchesEdge = false;
@@ -1136,12 +1226,12 @@ buildSymmetricTemplate(
         MaskPtrT mask = img.getMask();
         bool edge = false;
         MaskPixelT edgebit = mask->getPlaneBitMask("EDGE");
-        for (SpanList::const_iterator fwd=spans.begin();
+        for (geom::SpanSet::const_iterator fwd=spans.begin();
              fwd != spans.end(); ++fwd) {
-            int x0 = (*fwd)->getX0();
-            int x1 = (*fwd)->getX1();
+            int x0 = fwd->getX0();
+            int x1 = fwd->getX1();
             typename MaskT::x_iterator xiter =
-                mask->x_at(x0 - mask->getX0(), (*fwd)->getY() - mask->getY0());
+                mask->x_at(x0 - mask->getX0(), fwd->getY() - mask->getY0());
             for (int x=x0; x<=x1; ++x, ++xiter) {
                 if ((*xiter) & edgebit) {
                     edge = true;
@@ -1160,17 +1250,17 @@ buildSymmetricTemplate(
     // The result image:
     ImagePtrT targetimg(new ImageT(sfoot->getBBox()));
 
-    SpanList::const_iterator fwd  = spans.begin();
-    SpanList::const_iterator back = spans.end()-1;
+    geom::SpanSet::const_iterator fwd  = spans.begin();
+    geom::SpanSet::const_iterator back = spans.end()-1;
 
     ImagePtrT theimg = img.getImage();
 
     for (; fwd <= back; fwd++, back--) {
-        int fy = (*fwd)->getY();
-        int by = (*back)->getY();
+        int fy = fwd->getY();
+        int by = back->getY();
 
-        for (int fx=(*fwd)->getX0(), bx=(*back)->getX1();
-             fx <= (*fwd)->getX1();
+        for (int fx=fwd->getX0(), bx=back->getX1();
+             fx <= fwd->getX1();
              fx++, bx--) {
             // FIXME -- CURRENTLY WE IGNORE THE MASK PLANE!  options
             // include ORing the mask bits, or being clever about
@@ -1196,7 +1286,6 @@ buildSymmetricTemplate(
         }
     }
 
-
     if (touchesEdge) {
         // Find spans whose mirrors fall outside the image bounds,
         // grow the footprint to include those spans, and plug in
@@ -1211,17 +1300,17 @@ buildSymmetricTemplate(
         LOGL_DEBUG(_log, "Footprint touches EDGE: start bbox [%i,%i],[%i,%i]",
                    bb.getMinX(), bb.getMaxX(), bb.getMinY(), bb.getMaxY());
         // original footprint spans
-        const SpanList ospans = foot.getSpans();
+        const geom::SpanSet & ospans = *foot.getSpans();
         for (fwd = ospans.begin(); fwd != ospans.end(); ++fwd) {
-            int y = (*fwd)->getY();
-            int x = (*fwd)->getX0();
+            int y = fwd->getY();
+            int x = fwd->getX0();
             // mirrored coords
             int ym = cy + (cy - y);
             int xm = cx + (cx - x);
             if (!imbb.contains(geom::Point2I(xm, ym))) {
                 bb.include(geom::Point2I(x, y));
             }
-            x = (*fwd)->getX1();
+            x = fwd->getX1();
             xm = cx + (cx - x);
             if (!imbb.contains(geom::Point2I(xm, ym))) {
                 bb.include(geom::Point2I(x, y));
@@ -1232,20 +1321,21 @@ buildSymmetricTemplate(
 
         // New template image
         ImagePtrT targetimg2(new ImageT(bb));
-        copyWithinFootprint(*sfoot, targetimg, targetimg2);
+        sfoot->getSpans()->copyImage(*targetimg, *targetimg2);
 
         LOGL_DEBUG(_log, "Symmetric footprint spans:");
-        const SpanList sspans = sfoot->getSpans();
+        const geom::SpanSet & sspans = *sfoot->getSpans();
         for (fwd = sspans.begin(); fwd != sspans.end(); ++fwd) {
-            LOGL_DEBUG(_log, "  %s", (*fwd)->toString().c_str());
+            LOGL_DEBUG(_log, "  %s", fwd->toString().c_str());
         }
 
         // copy original 'img' pixels for the portion of spans whose
         // mirrors are out of bounds.
+        std::vector<geom::Span> newSpans(sfoot->getSpans()->begin(), sfoot->getSpans()->end());
         for (fwd = ospans.begin(); fwd != ospans.end(); ++fwd) {
-            int y   = (*fwd)->getY();
-            int x0  = (*fwd)->getX0();
-            int x1 = (*fwd)->getX1();
+            int y   = fwd->getY();
+            int x0  = fwd->getX0();
+            int x1 = fwd->getX1();
             // mirrored coords
             int ym  = cy + (cy - y);
             int xm0 = cx + (cx - x0);
@@ -1266,7 +1356,7 @@ buildSymmetricTemplate(
                 x1 = cx + (cx - (imbb.getMaxX() + 1));
             }
             LOGL_DEBUG(_log, "Span y=%i, x=[%i,%i] has mirror (%i,[%i,%i]) out-of-bounds; clipped to %i,[%i,%i]",
-                       y, (*fwd)->getX0(), (*fwd)->getX1(), ym, xm1, xm0, y, x0, x1);
+                       y, fwd->getX0(), fwd->getX1(), ym, xm1, xm0, y, x0, x1);
             typename MaskedImageT::x_iterator initer =
                 img.x_at(x0 - img.getX0(), y - img.getY0());
             typename ImageT::x_iterator outiter =
@@ -1274,9 +1364,9 @@ buildSymmetricTemplate(
             for (int x=x0; x<=x1; ++x, ++outiter, ++initer) {
                 *outiter = initer.image();
             }
-            sfoot->addSpan(y, x0, x1);
+            newSpans.push_back(geom::Span(y, x0, x1));
         }
-        sfoot->normalize();
+        sfoot->setSpans(std::make_shared<geom::SpanSet>(std::move(newSpans)));
         targetimg = targetimg2;
     }
 
@@ -1294,20 +1384,18 @@ deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 hasSignificantFluxAtEdge(ImagePtrT img,
                          PTR(det::Footprint) sfoot,
                          ImagePixelT thresh) {
-    typedef typename det::Footprint::SpanList SpanList;
 
     LOG_LOGGER _log = LOG_GET("meas.deblender.hasSignificantFluxAtEdge");
 
     // Find edge template pixels with significant flux -- perhaps
     // because their symmetric pixels were outside the footprint?
     // (clipped by an image edge, etc)
-    PTR(det::Footprint) edge = sfoot->findEdgePixels();
+    std::shared_ptr<geom::SpanSet> spans = sfoot->getSpans()->findEdgePixels();
 
-    const SpanList spans = edge->getSpans();
-    for (SpanList::const_iterator sp = spans.begin(); sp != spans.end(); ++sp) {
-        int const y  = (*sp)->getY();
-        int const x0 = (*sp)->getX0();
-        int const x1 = (*sp)->getX1();
+    for (geom::SpanSet::const_iterator sp = spans->begin(); sp != spans->end(); ++sp) {
+        int const y  = sp->getY();
+        int const x0 = sp->getX0();
+        int const x1 = sp->getX1();
         int x;
         typename ImageT::const_x_iterator xiter;
         for (xiter = img->x_at(x0 - img->getX0(), y - img->getY0()), x=x0; x<=x1; ++x, ++xiter) {
@@ -1331,15 +1419,15 @@ getSignificantEdgePixels(ImagePtrT img,
                          ImagePixelT thresh) {
     LOG_LOGGER _log = LOG_GET("meas.deblender.getSignificantEdgePixels");
 
-    sfoot->normalize();                 // Algorithms require spans sorted by y
 
-    PTR(det::Footprint) significant(new det::Footprint(sfoot->getPeaks().getSchema()));
+    auto significant = std::make_shared<det::Footprint>();
+    significant->setPeakSchema(sfoot->getPeaks().getSchema());
 
     int const x0 = img->getX0(), y0 = img->getY0();
-    CONST_PTR(det::Footprint) const edges = sfoot->findEdgePixels();
-    for (det::Footprint::SpanList::const_iterator ss = edges->getSpans().begin();
-         ss != edges->getSpans().end(); ++ss) {
-        geom::Span const& span = **ss;
+    std::shared_ptr<geom::SpanSet> edgeSpans = sfoot->getSpans()->findEdgePixels();
+    std::vector<geom::Span> tmpSpans;
+    for (geom::SpanSet::const_iterator ss = edgeSpans->begin(); ss != edgeSpans->end(); ++ss) {
+        geom::Span const& span = *ss;
         int const y = span.getY();
         int x = span.getX0();
         typename ImageT::const_x_iterator iter = img->x_at(x - x0, y - y0);
@@ -1351,14 +1439,14 @@ getSignificantEdgePixels(ImagePtrT img,
                 xSpan = x;
             } else if (onSpan) {
                 onSpan = false;
-                significant->addSpanInSeries(y, xSpan, x - 1);
+                tmpSpans.push_back(geom::Span(y, xSpan, x - 1));
             }
         }
         if (onSpan) {
-            significant->addSpanInSeries(y, xSpan, span.getX1());
+            tmpSpans.push_back(geom::Span(y, xSpan, span.getX1()));
         }
     }
-
+    significant->setSpans(std::make_shared<geom::SpanSet>(std::move(tmpSpans)));
     return significant;
 }
 

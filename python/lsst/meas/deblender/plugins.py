@@ -21,6 +21,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy as np
+from builtins import range
 
 import lsst.pex.exceptions
 import lsst.afw.image as afwImage
@@ -29,6 +30,36 @@ import lsst.afw.geom as afwGeom
 
 # Import C++ routines
 from .baselineUtils import BaselineUtilsF as butils
+
+
+def clipFootprintToNonzeroImpl(foot, image):
+    '''
+     Clips the given *Footprint* to the region in the *Image*
+     containing non-zero values.  The clipping drops spans that are
+     totally zero, and moves endpoints to non-zero; it does not
+     split spans that have internal zeros.
+    '''
+    x0 = image.getX0()
+    y0 = image.getY0()
+    xImMax = x0 + image.getDimensions().getX()
+    yImMax = y0 + image.getDimensions().getY()
+    newSpans = []
+    arr = image.getArray()
+    for span in foot.spans:
+        y = span.getY()
+        if y < y0 or y > yImMax:
+            continue
+        spanX0 = span.getX0()
+        spanX1 = span.getX1()
+        xMin = spanX0 if spanX0 >= x0 else x0
+        xMax = spanX1 if spanX1 <= xImMax else xImMax
+        xarray = np.arange(xMin, xMax+1)[arr[y-y0, xMin-x0:xMax-x0+1] > 0]
+        if len(xarray) > 0:
+            newSpans.append(afwGeom.Span(y, xarray[0], xarray[-1]))
+    # Time to update the SpanSet
+    foot.setSpans(afwGeom.SpanSet(newSpans, normalize=False))
+    foot.removeOrphanPeaks()
+
 
 class DeblenderPlugin(object):
     """Class to define plugins for the deblender.
@@ -40,7 +71,7 @@ class DeblenderPlugin(object):
     """
     def __init__(self, func, onReset=None, maxIterations=50, **kwargs):
         """Initialize a deblender plugin
-        
+
         Parameters
         ----------
         func: `function`
@@ -87,12 +118,12 @@ class DeblenderPlugin(object):
 
 def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.5, tinyFootprintSize=2):
     """Fit a PSF + smooth background model (linear) to a small region around each peak
-    
+
     This function will iterate over all filters in deblender result but does not compare
     results across filters.
     DeblendedPeaks that pass the cuts have their templates modified to the PSF + background model
     and their ``deblendedAsPsf`` property set to ``True``.
-    
+
     This will likely be replaced in the future with a function that compares the psf chi-squared cuts
     so that peaks flagged as point sources will be considered point sources in all bands.
 
@@ -120,7 +151,7 @@ def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.
         If the bbox of the clipped PSF model for a peak is smaller than ``max(tinyFootprintSize,2)``
         then ``tinyFootprint`` for the peak is set to ``True`` and the peak is not fit.
         The default is 2.
-    
+
     Returns
     -------
     modified: `bool`
@@ -138,7 +169,7 @@ def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.
         # create mask image for pixels within the footprint
         fmask = afwImage.MaskU(dp.bb)
         fmask.setXY0(dp.bb.getMinX(), dp.bb.getMinY())
-        afwDet.setMaskFromFootprint(fmask, dp.fp, 1)
+        dp.fp.spans.setMask(fmask, 1)
 
         # pk.getF() -- retrieving the floating-point location of the peak
         # -- actually shows up in the profile if we do it in the loop, so
@@ -608,15 +639,14 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
 
         # Copy the part of the PSF model within the clipped footprint.
         psfmod = afwImage.ImageF(bb)
-        afwDet.copyWithinFootprintImage(fpcopy, psfimg, psfmod)
+        fpcopy.spans.copyImage(psfimg, psfmod)
         # Save it as our template.
-        fpcopy.clipToNonzero(psfmod)
-        fpcopy.normalize()
+        clipFootprintToNonzeroImpl(fpcopy, psfmod)
         pkres.setTemplate(psfmod, fpcopy)
 
         # DEBUG
         pkres.setPsfTemplate(psfmod, fpcopy)
-    
+
     return ispsf
 
 def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=True):
@@ -625,7 +655,7 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
     Given ``maskedImageF``, ``footprint``, and a ``DebldendedPeak``, creates a symmetric template
     (``templateImage`` and ``templateFootprint``) around the peak for all peaks not flagged as
     ``skip`` or ``deblendedAsPsf``.
-    
+
     Parameters
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
@@ -681,11 +711,11 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
 
 def rampFluxAtEdge(debResult, log, patchEdges=False):
     """Adjust flux on the edges of the template footprints.
-    
+
     Using the PSF, a peak ``Footprint`` with pixels on the edge of ``footprint``
     is grown by the ``psffwhm``*1.5 and filled in with ramped pixels.
     The result is a new symmetric footprint template for the peaks near the edge.
-    
+
     Parameters
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
@@ -707,7 +737,7 @@ def rampFluxAtEdge(debResult, log, patchEdges=False):
     for fidx in debResult.filters:
         dp = debResult.deblendedParents[fidx]
         log.trace('Checking for significant flux at edge: sigma1=%g', dp.avgNoise)
-        
+
         for peaki, pkres in enumerate(dp.peaks):
             if pkres.skip or pkres.deblendedAsPsf:
                 continue
@@ -798,11 +828,11 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
     # (footprint+margin)-clipped image;
     # we need the pixels OUTSIDE the footprint to be 0.
     fpcopy = afwDet.Footprint(fp)
-    fpcopy = afwDet.growFootprint(fpcopy, S)
-    fpcopy.clipTo(tbb)
-    fpcopy.normalize()
+    fpcopy.dilate(S)
+    fpcopy.setSpans(fpcopy.spans.clippedTo(tbb))
+    fpcopy.removeOrphanPeaks()
     padim = maskedImage.Factory(tbb)
-    afwDet.copyWithinFootprintMaskedImage(fpcopy, maskedImage, padim)
+    fpcopy.spans.clippedTo(maskedImage.getBBox()).copyMaskedImage(maskedImage, padim)
 
     # find pixels on the edge of the template
     edgepix = butils.getSignificantEdgePixels(t1, tfoot, -1e6)
@@ -863,7 +893,7 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
 
 def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
     """Applying median smoothing filter to the template images for every peak in every filter.
-    
+
     Parameters
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
@@ -941,11 +971,11 @@ def makeTemplatesMonotonic(debResult, log):
 
 def clipFootprintsToNonzero(debResult, log):
     """Clip non-zero spans in the template footprints for every peak in each filter.
-    
+
     Peak ``Footprint``s are clipped to the region in the image containing non-zero values
     by dropping spans that are completely zero and moving endpoints to non-zero pixels
     (but does not split spans that have internal zeros).
-    
+
     Parameters
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
@@ -968,8 +998,7 @@ def clipFootprintsToNonzero(debResult, log):
                 continue
             modified = True
             timg, tfoot = pkres.templateImage, pkres.templateFootprint
-            tfoot.clipToNonzero(timg)
-            tfoot.normalize()
+            clipFootprintToNonzeroImpl(tfoot, timg)
             if not tfoot.getBBox().isEmpty() and tfoot.getBBox() != timg.getBBox(afwImage.PARENT):
                 timg = timg.Factory(timg, tfoot.getBBox(), afwImage.PARENT, True)
             pkres.setTemplate(timg, tfoot)
@@ -977,11 +1006,11 @@ def clipFootprintsToNonzero(debResult, log):
 
 def weightTemplates(debResult, log):
     """Weight the templates to best fit the observed image in each filter
-    
+
     This function re-weights the templates so that their linear combination best represents
     the observed image in that filter.
     In the future it may be useful to simultaneously weight all of the filters together.
-    
+
     Parameters
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
@@ -1005,12 +1034,12 @@ def _weightTemplates(dp):
     """Weight the templates to best match the parent Footprint in a single filter
 
     This includes weighting both regular templates and point source templates
-    
+
     Parameter
     ---------
     dp: `DeblendedParent`
         The deblended parent to re-weight
-    
+
     Returns
     -------
     None
@@ -1044,7 +1073,7 @@ def _weightTemplates(dp):
 
 def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
     """Remove "degenerate templates"
-    
+
     If galaxies have substructure, such as face-on spirals, the process of identifying peaks can
     "shred" the galaxy into many pieces. The templates of shredded galaxies are typically quite
     similar because they represent the same galaxy, so we try to identify these "degenerate" peaks
@@ -1052,7 +1081,7 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
     If they are nearly parallel, we only keep one of the peaks and reject the other.
     If only one of the peaks is a PSF template, the other template is used,
     otherwise the one with the maximum template value is kept.
-    
+
     Parameters
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
@@ -1139,15 +1168,15 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
                                                                                    keep))
             dp.peaks[reject].skip = True
             dp.peaks[reject].degenerate = True
-    
+
     return foundReject
 
 def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-to-peak',
-                  strayFluxToPointSources='necessary', clipStrayFluxFraction=0.001, 
+                  strayFluxToPointSources='necessary', clipStrayFluxFraction=0.001,
                   getTemplateSum=False):
     """Apportion flux to all of the peak templates in each filter
 
-    Divide the ``maskedImage`` flux amongst all of the templates based on the fraction of 
+    Divide the ``maskedImage`` flux amongst all of the templates based on the fraction of
     flux assigned to each ``template``.
     Leftover "stray flux" is assigned to peaks based on the other parameters.
 
@@ -1186,7 +1215,7 @@ def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-t
     -------
     modified: `bool`
         Apportion flux always modifies the templates, so ``modified`` is always ``True``.
-        However, this should likely be the final step and it is unlikely that 
+        However, this should likely be the final step and it is unlikely that
         any deblender plugins will be re-run.
     """
     validStrayPtSrc = ['never', 'necessary', 'always']
@@ -1256,12 +1285,15 @@ def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-t
 
         # Shrink parent to union of children
         if strayFluxAssignment == 'trim':
-            dp.fp.include(tfoots, True)
+            finalSpanSet = afwGeom.SpanSet()
+            for foot in tfoots:
+                finalSpanSet = finalSpanSet.union(foot.spans)
+            dp.fp.setSpans(finalSpanSet)
 
         # Store the template sum in the deblender result
         if getTemplateSum:
             debResult.setTemplateSums(sumimg, fidx)
-        
+
         # Save the apportioned fluxes
         ii = 0
         for j, (pk, pkres) in enumerate(zip(dp.fp.getPeaks(), dp.peaks)):
