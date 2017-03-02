@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 #
 # LSST Data Management System
@@ -155,7 +156,7 @@ class StrayFluxTestCase(lsst.utils.tests.TestCase):
         # Change verbose to False to quiet down the meas_deblender.baseline logger
         deb = deblend(fakefp, afwimg, fakepsf, fakepsf_fwhm, verbose=True)
         parent_img = afwImage.ImageF(fpbb)
-        afwDet.copyWithinFootprintImage(fakefp, afwimg.getImage(), parent_img)
+        fakefp.spans.copyImage(afwimg.getImage(), parent_img)
 
         if doPlot:
             def myimshow(*args, **kwargs):

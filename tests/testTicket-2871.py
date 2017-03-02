@@ -84,7 +84,8 @@ class DeblendTestCase(unittest.TestCase):
             The footprint is of the nominated size.
             """
             src = catalog.addNew()
-            foot = afwDetection.Footprint(afwGeom.Point2I(x, y), size)
+            spans = afwGeom.SpanSet.fromShape(int(size), offset=(x, y))
+            foot = afwDetection.Footprint(spans)
             foot.addPeak(x, y, flux)
             foot.addPeak(x + offset, y + offset, flux)
             src.setFootprint(foot)

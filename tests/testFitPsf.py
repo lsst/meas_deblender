@@ -50,7 +50,8 @@ class FitPsfTestCase(unittest.TestCase):
     def test1(self):
 
         # circle
-        fp = afwDet.Footprint(afwGeom.Point2I(50, 50), 45.)
+        spans = afwGeom.SpanSet.fromShape(45, offset=(50, 50))
+        fp = afwDet.Footprint(spans)
 
         #
         psfsig = 1.5
@@ -64,7 +65,7 @@ class FitPsfTestCase(unittest.TestCase):
 
         fmask = afwImage.MaskU(fbb)
         fmask.setXY0(fbb.getMinX(), fbb.getMinY())
-        afwDet.setMaskFromFootprint(fmask, fp, 1)
+        fp.spans.setMask(fmask, 1)
 
         sig1 = 10.
 
