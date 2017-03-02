@@ -236,7 +236,7 @@ class DeblendedParent:
         #self.monotonicOp = getMonotonicOperator(self.footprint, getMonotonic)
         return #self.monotonicOp
     
-    def deblend(self, constraints="M", displayKwargs=None, maxiter=300, stepsize = 2,
+    def deblend(self, constraints="M", displayKwargs=None, maxiter=100, stepsize = 2,
                 stepUpdate=noStepUpdate, display=False, filterIndices=None, contrast=100, adjustZero=False,
                 **kwargs):
         """Run the NMF deblender
@@ -395,7 +395,7 @@ class ExposureDeblend:
         return footprint, peaks
     
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
-                      displaySeds=False, displayTemplates=False, constraints="M", maxiter=300,
+                      displaySeds=False, displayTemplates=False, constraints="M", maxiter=100,
                       filterIndices=None, contrast=100, adjustZero=False, **kwargs):
         """Deblend a single parent footprint
 
@@ -421,7 +421,7 @@ class ExposureDeblend:
         deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
     
-    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=300, **kwargs):
+    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=100, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
         self.deblendedParents = OrderedDict()
