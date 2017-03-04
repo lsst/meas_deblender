@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include "lsst/log/Log.h"
-#include "lsst/meas/deblender/Baseline.h"
+#include "lsst/meas/deblender/BaselineUtils.h"
 #include "lsst/pex/exceptions.h"
 #include "lsst/afw/geom/Box.h"
 
@@ -14,6 +14,24 @@ namespace det = lsst::afw::detection;
 namespace deblend = lsst::meas::deblender;
 namespace geom = lsst::afw::geom;
 
+template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::ASSIGN_STRAYFLUX;
+
+template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+const int
+deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY;
+
+template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAYFLUX_TO_POINT_SOURCES_ALWAYS;
+
+template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAYFLUX_R_TO_FOOTPRINT;
+
+template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAYFLUX_NEAREST_FOOTPRINT;
+
+template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
+const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAYFLUX_TRIM;
 
 static bool span_ptr_compare(PTR(det::Span) sp1, PTR(det::Span) sp2) {
     return (*sp1 < *sp2);
