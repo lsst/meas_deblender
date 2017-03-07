@@ -24,7 +24,6 @@ from builtins import object
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-import math # FIXME: remove this line and replace all uses of math
 from collections import OrderedDict
 import numpy as np
 
@@ -99,7 +98,10 @@ class DeblenderResult(object):
         try:
             len(avgNoise)
         except TypeError:
-            avgNoise = [avgNoise]
+            if avgNoise is None:
+                avgNoise = [None]*len(psfs)
+            else:
+                avgNoise = [avgNoise]
         # Now check that all of the parameters have the same number of entries
         if any([len(footprints)!=len(p) for p in [maskedImages, psfs, psffwhms, avgNoise]]):
             raise ValueError("To use the multi-color deblender, "
@@ -131,9 +133,11 @@ class DeblenderResult(object):
             self.deblendedParents[self.filters[n]] = dp
 
         # Group the peaks in each color
+        self.peaks = []
         for idx in range(self.peakCount):
             peakDict = {f: dp.peaks[idx] for f,dp in self.deblendedParents.items()}
             multiPeak = MultiColorPeak(peakDict, idx, self)
+            self.peaks.append(multiPeak)
 
     def getParentProperty(self, propertyName):
         """Get the footprint in each filter"""
@@ -199,7 +203,7 @@ class DeblendedParent(object):
         # avgNoise is an estiamte of the average noise level for the image in this filter
         if avgNoise is None:
             stats = afwMath.makeStatistics(self.varimg, self.mask, afwMath.MEDIAN)
-            avgNoise = math.sqrt(stats.getValue(afwMath.MEDIAN))
+            avgNoise = np.sqrt(stats.getValue(afwMath.MEDIAN))
             debResult.log.trace('Estimated avgNoise for filter %s = %f', self.filter, avgNoise)
         self.avgNoise = avgNoise
         
@@ -382,7 +386,7 @@ class DeblendedPeak(object):
             if self.strayFlux is not None:
                 heavy.normalize()
                 self.strayFlux.normalize()
-                heavy = afwDet.mergeHeavyFootprintsF(heavy, self.strayFlux)
+                heavy = afwDet.mergeHeavyFootprints(heavy, self.strayFlux)
 
         return heavy
 
