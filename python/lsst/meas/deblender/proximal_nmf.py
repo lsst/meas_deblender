@@ -447,6 +447,8 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
         indices = maxIndices*cosNorm.shape[1]+columnIndices
         indices = np.unravel_index(indices, cosNorm.shape)
         cosNorm[indices] = minGradient
+        # Remove the reference for the peak pixel
+        cosNorm[:,px+py*shape[1]] = 0
     else:
         # Normalize the cos weights for each pixel
         normalize = np.sum(cosWeight, axis=0)
@@ -457,11 +459,10 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
     
     # The identity with the peak pixel removed represents the reference pixels
     diagonal = np.ones(size)
-    diagonal[px+py*shape[1]] = 0
+    diagonal[px+py*shape[1]] = -1
     monotonic = cosArr-sparse.diags(diagonal)
     
     return monotonic.tocoo()
-
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
