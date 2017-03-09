@@ -263,6 +263,7 @@ class DeblendedParent:
         xmin = self.bbox.getMinX()-x0
         ymin = self.bbox.getMinY()-y0
         peaks = [(pk.getIx()-xmin, pk.getIy()-ymin) for pk in self.peaks]
+        self.peakCoords = peaks
         
         # Apply a single constraint to all of the peaks
         # (if only one constraint is given)
@@ -350,8 +351,34 @@ class DeblendedParent:
             self.displayTemplate(fidx, pk, useMask=useMask, cutoff=cutoff,
                                  imgLimits=imgLimits, cmap=cmap, **displayKwargs)
     
-    def trimFlux(cutoff=1e-2):
-        self.intensities[self.intensities<cutoff] = 0
+    def trimFlux(self, cutoff=1e-2):
+        seds = np.max(self.seds, axis=0)
+        intensities = (self.intensities.T*seds).T
+        self.intensities[intensities<cutoff] = 0
+    
+    def getFluxPortion(self):
+        """Use the intensity templates to estimate the flux for all of the sources
+        """
+        filters = len(self.data)
+        peakCount = len(self.intensities)
+        peakFlux = np.zeros((filters, peakCount))
+        for fidx in range(filters):
+            data = self.data[fidx]
+            weight = self.variance[fidx]
+            totalWeight = np.sum(weight)
+            totalFlux = np.sum(self.intensities, axis=0)
+            normalization = totalFlux*totalWeight
+            zeroFlux = normalization==0
+            normalization[zeroFlux] = 1
+            normalization = 1/normalization
+
+            for pk in range(peakCount):
+                flux = weight*data*self.intensities[pk]*normalization
+                flux[zeroFlux] = 0
+                peakFlux[fidx][pk] = np.sum(flux)*data.size
+
+        self.peakFlux = peakFlux
+        return peakFlux
 
 
 class ExposureDeblend:
