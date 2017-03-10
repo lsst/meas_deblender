@@ -216,32 +216,52 @@ def calculateIsolatedFlux(filters, expDb, peakTable, simTable, fluxThresh=100):
                 logger.info("n: {0}, Filter: {1}, simFlux: {2}, flux: {3}".format(n, f, simFlux, flux))
                 displayImage(n, int(flux/simFlux*100), fidx, expDb)
 
-def calculateSedsFromFlux(tbl, filters):
+def calculateFluxPortion(expDb, peakTable):
+    for pk, peak in enumerate(peakTable):
+        if peak["parent"] in expDb.deblendedParents:
+            deblendedParent = expDb.deblendedParents[peak["parent"]]
+            if deblendedParent.peakFlux is None:
+                deblendedParent.getFluxPortion()
+            for fidx, f in enumerate(expDb.filters):
+                peakTable["flux_"+f][pk] = deblendedParent.peakFlux[fidx][peak["peakIdx"]]
+
+def calculateSedsFromFlux(tbl, filters, inPlace=True):
     fluxCols = ["flux_"+f for f in filters]
     shape = (len(tbl), len(fluxCols))
     seds = tbl[fluxCols].as_array().view(np.float64).reshape(shape)
     normalization = np.sum(seds, axis=1)
     seds = seds/normalization[:,None]
-    tbl["sed"] = seds
+    if inPlace:
+        tbl["sed"] = seds
     return seds, normalization
 
-def plotSedComparison(simTable, peakTable, nmfPeakTable, minFlux):
+def plotSedComparison(simTable, simSeds, deblendedTables, minFlux):
     matched = simTable["matched"]
+    sed = simSeds[matched]
     goodFlux = simTable["flux_i"][matched]>minFlux
     flux = simTable["flux_i"][matched]
-    sed = simTable["sed"][matched]
-    diffOld = peakTable["sed"][matched]-sed
-    diffNmf = nmfPeakTable["sed"][matched]-sed
-    errOld = np.sqrt(np.sum(((diffOld/sed)**2), axis=1)/len(sed[0]))
-    errNmf = np.sqrt(np.sum(((diffNmf/sed)**2), axis=1)/len(sed[0]))
+    
+    diffs = OrderedDict()
+    errors = OrderedDict()
+    goodErrors = OrderedDict()
+    for tblName, tbl in deblendedTables.items():
+        diff = tbl["sed"][matched]-sed
+        diffs[tblName] = diff
+        errors[tblName] = np.sqrt(np.sum(((diff/sed)**2), axis=1)/len(sed[0]))
+        goodErrors[tblName] = errors[tblName][goodFlux]
     
     # Plot the histogram
     plt.figure(figsize=(8,4))
     bins = np.arange(0,23,2)
     bins = [0,5,10,15,20,25]
-    weight = np.ones_like(errOld[goodFlux])/len(errOld[goodFlux])
-    clippedErrors = [np.clip(err*100, bins[0], bins[-1]) for err in [errOld[goodFlux], errNmf[goodFlux]]]
-    plt.hist(clippedErrors, bins=bins, weights=[weight]*2, label=["LSST","NMF"])
+    #weight = np.ones_like(errOld[goodFlux])/len(errOld[goodFlux])
+    #clippedErrors = [np.clip(err*100, bins[0], bins[-1]) for err in [errOld[goodFlux], errNmf[goodFlux]]]
+    #plt.hist(clippedErrors, bins=bins, weights=[weight]*2, label=["LSST","NMF"])
+    
+    weight = np.ones_like(errors[errors.keys()[0]][goodFlux])/len(errors[errors.keys()[0]][goodFlux])
+    clippedErrors = [np.clip(err*100, bins[0], bins[-1]) for err in goodErrors.values()]
+    plt.hist(clippedErrors, bins=bins, weights=[weight]*len(deblendedTables), label=deblendedTables.keys())
+    
     xlabels = [str(b) for b in bins[:-1]]
     xlabels[-1] += "+"
     plt.xticks(bins, xlabels)
@@ -249,93 +269,101 @@ def plotSedComparison(simTable, peakTable, nmfPeakTable, minFlux):
     plt.xlabel("Error (%)")
     plt.ylabel("Fraction of Sources")
     plt.grid()
-    plt.legend(fancybox=True, shadow=True, ncol=2)
+    plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
     plt.show()
 
     # Setup the combined SED scatter plot with all sources included
-    fig = plt.figure(figsize=(8,3))
-    ax = fig.add_subplot(1,1,1)
-    ax.set_frame_on(False)
-    ax.set_xticks([])
-    ax.get_yaxis().set_visible(False)
-    ax.set_xlabel("Simulated Flux", labelpad=30)
+    #fig = plt.figure(figsize=(8,3))
+    #ax = fig.add_subplot(1,1,1)
+    #ax.set_frame_on(False)
+    #ax.set_xticks([])
+    #ax.get_yaxis().set_visible(False)
+    #ax.set_xlabel("Simulated Flux", labelpad=30)
 
     # Plot the SED scatter plots for LSST and NMF deblending
-    ax = fig.add_subplot(1,2,1)
-    ax.plot(flux[goodFlux], errOld[goodFlux], '.', label="LSST")
-    ax.plot(flux[~goodFlux], errOld[~goodFlux], '.', label="Bad LSST")
-    ax.set_ylabel("Fractional Error")
-    ax.set_title("LSST", y=.85)
-    ax = fig.add_subplot(1,2,2)
-    ax.plot(flux[goodFlux], errNmf[goodFlux], '.', label="NMF")
-    ax.plot(flux[~goodFlux], errNmf[~goodFlux], '.', label="Bad NMF")
-    ax.set_title("NMF", y=.85)
-    plt.show()
+    #ax = fig.add_subplot(1,2,1)
+    #ax.plot(flux[goodFlux], errOld[goodFlux], '.', label="LSST")
+    #ax.plot(flux[~goodFlux], errOld[~goodFlux], '.', label="Bad LSST")
+    #ax.set_ylabel("Fractional Error")
+    #ax.set_title("LSST", y=.85)
+    #ax = fig.add_subplot(1,2,2)
+    #ax.plot(flux[goodFlux], errNmf[goodFlux], '.', label="NMF")
+    #ax.plot(flux[~goodFlux], errNmf[~goodFlux], '.', label="Bad NMF")
+    #ax.set_title("NMF", y=.85)
+    #plt.show()
 
     # Plot the clipped SED scatter plots
     plt.figure(figsize=(8,5))
-    plt.plot(flux[goodFlux], errOld[goodFlux], '+', label="LSST", alpha=.5, mew=2)
-    plt.plot(flux[goodFlux], errNmf[goodFlux], '.', label="NMF", alpha=.5, color="#c44e52")
+    markers = ['.','+','x']
+    while len(markers)<len(deblendedTables.keys()):
+        markers = markers * 2
+    for n, (tblName, err) in enumerate(goodErrors.items()):
+        plt.plot(flux[goodFlux], err, markers[n], label=tblName, alpha=.5)
     plt.xlabel("Simulated Flux")
     plt.ylabel("Fractional Error")
-    plt.legend(fancybox=True, shadow=True, ncol=2)
+    plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
     plt.gca().yaxis.grid(True)
     plt.show()
 
-def compareMeasToSim(peakTables, simTables, nmfPeakTables, filters, minFlux=50):
+def compareMeasToSim(simTables, deblendedTblDict, filters, minFlux=50):
     from astropy.table import vstack
-    for n in range(len(peakTables)):
-        peakTables[n]["image"] = n+1
-        simTables[n]["image"] = n+1
-    peakTable = vstack(peakTables)
+
     simTable = vstack(simTables)
-    if "sed" in simTable:
-        del simTable["sed"]
-    if "wave" in simTable:
-        del simTable["wave"]
-    nmfPeakTable = vstack(nmfPeakTables)
+    deblendedTables = OrderedDict()
+    # Combine the peakTables in each exposure into a single table
+    # (this is not a merge, and assumes that the exposure catalogs do not overlap)
+    for tblName, tbls in deblendedTblDict.items():
+        # Keep track of which exposure each blend belonged to
+        for n in range(len(tbls)):
+            deblendedTblDict[tblName][n]["image"] = n+1
+        deblendedTables[tblName] = vstack(tbls)
+    blended = deblendedTables[tblName]["blended"]
+    matched = simTable["matched"]
 
     # Display statistics
-    #logger.info("Total Simulated Sources: {0}".format(len(simTable)))
-    logger.info("Total Detected Sources: {0}".format(len(peakTable)))
+    logger.info("Total Simulated Sources: {0}".format(len(simTable)))
+    logger.info("Total Detected Sources: {0}".format(len(blended)))
     logger.info("Total Matches: {0}".format(np.sum(simTable["matched"])))
-    logger.info("Matched Isolated sources: {0}".format(np.sum(simTable["matched"]&~peakTable["blended"])))
-    logger.info("Matched Blended sources: {0}".format(np.sum(simTable["matched"]&peakTable["blended"])))
+    logger.info("Matched Isolated sources: {0}".format(np.sum(simTable["matched"]&~blended)))
+    logger.info("Matched Blended sources: {0}".format(np.sum(simTable["matched"]&blended)))
     logger.info("Total Duplicates: {0}".format(np.sum(simTable["duplicate"])))
 
     # Calculate and compare SEDs
-    calculateSedsFromFlux(peakTable, filters)
-    calculateSedsFromFlux(nmfPeakTable, filters)
-    calculateSedsFromFlux(simTable, filters)
-    plotSedComparison(simTable, peakTable, nmfPeakTable, minFlux)
+    simSeds, normalization = calculateSedsFromFlux(simTable, filters, inPlace=False)
+    for tblName in deblendedTables:
+        calculateSedsFromFlux(deblendedTables[tblName], filters)
+    plotSedComparison(simTable, simSeds, deblendedTables, minFlux)
 
     for f in filters:
         flux = "flux_"+f
-        diff = (peakTable[flux]-simTable[flux])/simTable[flux]
-        diffNmf = (nmfPeakTable[flux]-simTable[flux])/simTable[flux]
-        matched = simTable["matched"]
-        blended = peakTable["blended"]
-        lowflux = peakTable[flux]<minFlux
+        diff = OrderedDict()
+        lowFlux = simTable[flux]<minFlux
         plt.figure(figsize=(8,4))
-        plt.plot(simTable[flux][matched & blended & ~lowflux], diff[matched & blended & ~lowflux], '.', label="LSST")
-        plt.plot(simTable[flux][matched & blended & ~lowflux], diffNmf[matched & blended & ~lowflux], '.', label="NMF")
-        plt.plot(simTable[flux][matched & ~blended & ~lowflux], diff[matched & ~blended & ~lowflux], '.', label="Isolated")
+        differences = OrderedDict()
+        for tblName, tbl in deblendedTables.items():
+            diff = (tbl[flux]-simTable[flux])/simTable[flux]
+            differences[tblName] = diff
+            plt.plot(simTable[flux][matched & blended & ~lowFlux], diff[matched & blended & ~lowFlux], '.',
+                     label=tblName)
+        plt.plot(simTable[flux][matched & ~blended & ~lowFlux], diff[matched & ~blended & ~lowFlux], '.',
+                 label="Isolated")
         plt.title("Filter {0}".format(f), y=.9)
         plt.xlabel("Simulated Flux (counts)")
         plt.ylabel("Fractional Error")
-        plt.legend(loc="upper center", fancybox=True, shadow=True, bbox_to_anchor=(.5, 1.2), ncol=3)
+        #plt.legend(loc="upper center", fancybox=True, shadow=True, bbox_to_anchor=(.5, 1.2), ncol=3)
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
         plt.gca().yaxis.grid(True)
         plt.show()
         
         plt.figure(figsize=(8,4))
         bins = np.arange(0,23,2)
         bins = [0,5,10,15,20,25]
-        datasets = [np.abs(diff[matched&blended&~lowflux]),
-                    np.abs(diffNmf[matched&blended&~lowflux]),
-                    np.abs(diff[matched&~blended&~lowflux])]
+        datasets = [np.abs(diff[matched&blended&~lowFlux]) for tblName, diff in differences.items()]
+        diff = differences["LSST"]
+        datasets = datasets + [np.abs(diff[matched&~blended&~lowFlux])]
         weights = [np.ones_like(data)/len(data) for data in datasets]
         clippedErrors = [np.clip(data*100, bins[0], bins[-1]) for data in datasets]
-        plt.hist(clippedErrors, bins=bins, weights=weights, label=["LSST","NMF","Isolated"])
+        plt.hist(clippedErrors, bins=bins, weights=weights, label=differences.keys()+["Isolated"])
         xlabels = [str(b) for b in bins[:-1]]
         xlabels[-1] += "+"
         plt.xticks(bins, xlabels)
@@ -343,13 +371,13 @@ def compareMeasToSim(peakTables, simTables, nmfPeakTables, filters, minFlux=50):
         plt.xlabel("Error (%)")
         plt.ylabel("Fraction of Sources")
         plt.gca().yaxis.grid(True)
-        plt.legend(loc="upper center", fancybox=True, shadow=True, ncol=3, bbox_to_anchor=(.5, 1.2))
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
         plt.show()
         
-        logger.info("Isolated Mean: {0}".format(np.mean(np.abs(diff[matched&~blended & ~lowflux]))))
-        logger.info("Isolated RMS: {0}".format(np.sqrt(np.mean(diff[matched&~blended & ~lowflux])**2+
-                                                       np.std(diff[matched&~blended & ~lowflux])**2)))
-        logger.info("Blended Mean: {0}".format(np.mean(np.abs(diff[matched&blended & ~lowflux]))))
-        logger.info("Blended RMS: {0}".format(np.sqrt(np.mean(diff[matched&blended & ~lowflux])**2+
-                                                      np.std(diff[matched&blended & ~lowflux])**2)))
-    return peakTable, simTable, nmfPeakTable
+        #logger.info("Isolated Mean: {0}".format(np.mean(np.abs(diff[matched&~blended & ~lowflux]))))
+        #logger.info("Isolated RMS: {0}".format(np.sqrt(np.mean(diff[matched&~blended & ~lowflux])**2+
+        #                                               np.std(diff[matched&~blended & ~lowflux])**2)))
+        #logger.info("Blended Mean: {0}".format(np.mean(np.abs(diff[matched&blended & ~lowflux]))))
+        #logger.info("Blended RMS: {0}".format(np.sqrt(np.mean(diff[matched&blended & ~lowflux])**2+
+        #                                              np.std(diff[matched&blended & ~lowflux])**2)))
+    return deblendedTables
