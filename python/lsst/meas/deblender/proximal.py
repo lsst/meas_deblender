@@ -193,6 +193,8 @@ class DeblendedParent:
         self.symmetryOp = None
         self.monotonicOp = None
         self.cutoff = 0
+        self.peakFlux = None
+        self.correlations = None
 
     def initNMF(self, initPsf=False, displaySeds=False, displayTemplates=False,
                 filterIndices=None, contrast=100, adjustZero=True):
@@ -380,6 +382,42 @@ class DeblendedParent:
         self.peakFlux = peakFlux
         return peakFlux
 
+    def getCorrelations(self, minFlux=None):
+        """Calculate the correlation between two footprints
+        
+        LSST Footprints will not be added to the NMF deblender until after the new footprints
+        are merged with master. Until then, users can specify ``minFlux``, which will clip the
+        "footprint" to regions with flux above ``minFlux``.
+        """
+        intensities = np.copy(self.intensities)
+        if minFlux is not None:
+            intensities[intensities<minFlux] = 0
+        totalIntensity = np.sum(intensities, axis=(1,2))
+        
+        peakCount = len(self.peaks)
+        correlations = np.zeros((peakCount, peakCount))
+        for i in range(peakCount-1):
+            for j in range(i+1, peakCount):
+                norm = totalIntensity[i]*totalIntensity[j]
+                if norm>0:
+                    correlations[i,j] = np.sum(intensities[i]*intensities[j])/norm
+        self.correlations = correlations
+        return correlations
+        
+        templates = [self.getTemplate(0, pk) for pk in range(len(self.peaks))]
+        if minFlux is not None:
+            for n, t in enumerate(templates):
+                templates[n][templates[n]<minFlux] = 0
+        peakCount = len(self.peaks)
+        degenerateFlux = np.zeros((peakCount, peakCount))
+        for i in range(peakCount-1):
+            for j in range(i+1, peakCount):
+                norm = np.sum(templates[i])*np.sum(templates[j])
+                if norm>0:
+                    degenerateFlux[i,j] = np.sum(templates[i]*templates[j])/norm
+        
+        self.correlations = degenerateFlux
+        return degenerateFlux
 
 class ExposureDeblend:
     """Container for the objects and results of the NMF deblender

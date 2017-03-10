@@ -13,6 +13,7 @@ import lsst.afw.math as afwMath
 
 from . import utils as debUtils
 from . import baseline
+from . import display
 
 logging.basicConfig()
 logger = logging.getLogger("lsst.meas.deblender")
@@ -381,3 +382,42 @@ def compareMeasToSim(simTables, deblendedTblDict, filters, minFlux=50):
         #logger.info("Blended RMS: {0}".format(np.sqrt(np.mean(diff[matched&blended & ~lowflux])**2+
         #                                              np.std(diff[matched&blended & ~lowflux])**2)))
     return deblendedTables
+
+def checkForDegeneracy(expDb, minFlux=None, filterIdx=None):
+    """Calculate the correlation for each pair of objects and store it in the parent deblends
+    """
+    for parentIdx, parent in expDb.deblendedParents.items():
+        logger.info("Parent {0}".format(parentIdx))
+        vmin, vmax = debUtils.zscale(parent.data[1])
+        plt.figure(figsize=(6,6))
+        # Optionally show the image data underneath the footprints
+        if filterIdx is not None:
+            display.maskPlot(parent.data[filterIdx], vmin=vmin, vmax=10*vmax, show=False)
+
+        totalFlux = parent.intensities
+        totalFlux = np.sum(totalFlux.reshape(totalFlux.shape[0], totalFlux.shape[1]*totalFlux.shape[2]),
+                                             axis=1)
+        goodFlux = totalFlux>0
+        
+        # Plot the footprint for each object
+        for n, pk in enumerate(parent.intensities):
+            subset = pk>minFlux
+            if goodFlux[n]:
+                display.maskPlot(subset, subset==0, show=False, alpha=.2, cmap='cool')
+        
+        for n,pk in enumerate(parent.peakCoords):
+            plt.annotate(n, xy=pk)
+        px, py = np.array(parent.peakCoords).T
+        plt.plot(px[goodFlux], py[goodFlux], 'k.')
+        plt.plot(px[~goodFlux], py[~goodFlux], 'rx')
+        
+        plt.xlim([0,parent.data[1].shape[1]])
+        plt.ylim([0,parent.data[1].shape[0]])
+        plt.show()
+    
+        # Show the correlation matrix
+        degenerateFlux = parent.getCorrelations(minFlux=minFlux)
+        plt.imshow(np.ma.array(degenerateFlux, mask=degenerateFlux==0))
+        plt.title("Correlation between peak templates")
+        plt.colorbar()
+        plt.show()
