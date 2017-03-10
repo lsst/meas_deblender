@@ -109,3 +109,21 @@ def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, y
     plt.imshow(colors)
     plt.show()
     return colors
+
+def maskPlot(img, mask=None, hideAxes=True, show=True, **kwargs):
+    """Plot an image with specified pictures masked out
+    
+    It is often convenient to mask zero (or low flux) pixels in an image to highlight actual structure,
+    so this convenience function makes it quick and easy to implement
+    ``plt.plot(np.ma.array(img, mask=mask), **kwargs)``, optionally hiding the axes and showing the image.
+    """
+    if mask is None:
+        maImg = img
+    else:
+        maImg = np.ma.array(img, mask=mask)
+    plt.imshow(maImg, **kwargs)
+    if hideAxes:
+        plt.axis("off")
+    if show:
+        plt.show()
+    return plt
