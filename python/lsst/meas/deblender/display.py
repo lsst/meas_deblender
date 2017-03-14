@@ -118,9 +118,9 @@ def maskPlot(img, mask=None, hideAxes=True, show=True, **kwargs):
     ``plt.plot(np.ma.array(img, mask=mask), **kwargs)``, optionally hiding the axes and showing the image.
     """
     if mask is None:
-        maImg = img
-    else:
-        maImg = np.ma.array(img, mask=mask)
+        mask = img==0
+    maImg = np.ma.array(img, mask=mask)
+    
     plt.imshow(maImg, **kwargs)
     if hideAxes:
         plt.axis("off")
