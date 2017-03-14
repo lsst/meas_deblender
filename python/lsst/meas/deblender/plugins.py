@@ -1264,7 +1264,6 @@ def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-t
         
         # Save the apportioned fluxes
         ii = 0
-        print("STRAY FLUX", strayflux)
         for j, (pk, pkres) in enumerate(zip(dp.fp.getPeaks(), dp.peaks)):
             if pkres.skip:
                 continue
