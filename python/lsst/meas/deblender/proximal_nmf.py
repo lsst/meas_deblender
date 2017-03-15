@@ -480,7 +480,7 @@ def createPsfOperator(psfImg, imgShape, threshold=1e-2):
     size = width * height
     
     # Hide pixels in the psf below the threshold
-    psf = np.copy(psfImg)
+    psf = np.copy(psfImg).T
     psf[psf<threshold] = 0
     
     # Calculate the coordinates of the pixels in the psf image above the threshold
