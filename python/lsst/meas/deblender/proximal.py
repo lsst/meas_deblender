@@ -241,7 +241,7 @@ class DeblendedParent:
     
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 stepUpdate=noStepUpdate, display=False, filterIndices=None, contrast=100, adjustZero=False,
-                **kwargs):
+                usePsf=False, psfThresh=1e-2, **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
