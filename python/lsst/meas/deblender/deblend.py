@@ -130,6 +130,8 @@ class SourceDeblendConfig(pexConf.Config):
                                         "degenerate).  If one of the objects has been labeled as a PSF it "
                                         "will be removed, otherwise the template with the lowest value will "
                                         "be removed."))
+    medianSmoothTemplate = pexConf.Field(dtype=bool, default=True,
+                                         doc="Apply a smoothing filter to all of the template images")
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -317,7 +319,8 @@ class SourceDeblendTask(pipeBase.Task):
                     clipStrayFluxFraction=self.config.clipStrayFluxFraction,
                     weightTemplates=self.config.weightTemplates,
                     removeDegenerateTemplates=self.config.removeDegenerateTemplates,
-                    maxTempDotProd=self.config.maxTempDotProd
+                    maxTempDotProd=self.config.maxTempDotProd,
+                    medianSmoothTemplate=self.config.medianSmoothTemplate
                 )
                 if self.config.catchFailures:
                     src.set(self.deblendFailedKey, False)
