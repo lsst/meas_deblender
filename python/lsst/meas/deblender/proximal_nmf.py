@@ -1,6 +1,5 @@
 from __future__ import print_function, division
 import numpy as np, scipy.sparse, scipy.sparse.linalg
-from scipy import sparse
 from functools import partial
 
 import logging
@@ -9,39 +8,39 @@ logging.basicConfig()
 logger = logging.getLogger("lsst.meas.deblender.proximal_nmf")
 
 # identity
-def prox_id(X, l=None):
+def prox_id(X, step):
     return X
 
 # projection onto 0
-def prox_zero(X,l=None):
+def prox_zero(X, step):
     return np.zeros_like(X)
 
-# hard thresholding: X if X >= k, otherVise 0
-# NOTE: modified X in place
-def prox_hard(X, l):
-    below = X-l < 0
+# hard thresholding: X if X >= k, otherwise 0
+# NOTE: modifies X in place
+def prox_hard(X, step, l=0):
+    below = X - l*step < 0
     X[below] = 0
     return X
 
 # projection onto non-negative numbers
-def prox_plus(X, l=None):
-    return prox_hard(X, 0)
+def prox_plus(X, step):
+    return prox_hard(X, step, l=0)
 
 # soft thresholding operator
-def prox_soft(X, l):
-    return np.sign(X)*prox_plus(np.abs(X) - l)
+def prox_soft(X, step, l=0):
+    return np.sign(X)*prox_plus(np.abs(X) - l*step, step)
 
 # same but with projection onto non-negative
-def prox_soft_plus(X, l):
-    return prox_plus(np.abs(X) - l)
+def prox_soft_plus(X, step, l=0):
+    return prox_plus(np.abs(X) - l*step, step)
 
 # projection onto sum=1 along each axis
-def prox_unity(X, l=None, axis=0):
+def prox_unity(X, step, axis=0):
     return X / np.sum(X, axis=axis, keepdims=True)
 
 # same but with projection onto non-negative
-def prox_unity_plus(X, l=None, axis=0):
-    return prox_unity(prox_plus(X), axis=axis)
+def prox_unity_plus(X, step, axis=0):
+    return prox_unity(prox_plus(X, step), step, axis=axis)
 
 def l2sq(x):
     return (x**2).sum()
@@ -246,67 +245,14 @@ def getPeakSymmetryOp(shape, px, py, fillValue=0):
         diffOp = diffOp.tocoo()
     return diffOp
 
-def oldGetRadialMonotonicOp(shape, px, py):
-    """Get a 2D operator to contrain radial monotonicity
-
-    The monotonic operator basically calculates a radial the gradient in from the edges to the peak.
-    Operating the monotonicity operator on a flattened image makes all non-monotonic pixels negative,
-    which can then be projected to the subset gradient=0 using proximal operators.
-
-    The radial monotonic operator is a sparse matrix, where each diagonal element is -1
-    (except the peak position px, py) and each row has one other non-zero element, which is the
-    closest pixel that aligns with a radial line from the pixel to the peak position.
-
-    See DM-9143 for more.
-
-    TODO: Implement this in C++ for speed
-    """
-    height, width = shape
-    center = py*width+px
-    monotonic = -np.eye(width*height, width*height)
-    monotonic[center, center] = 0
-
-    # Set the pixel in line with the radius to 1 for each pixel
-    for h in range(height):
-        for w in range(width):
-            if h==py and w==px:
-                continue
-            dx = px-w
-            dy = py-h
-            pixel = h*width + w
-            if px-w>py-h:
-                if px-w>=h-py:
-                    x = w + 1
-                    y = h + int(np.round(dy/dx))
-                elif px-w<h-py:
-                    x = w - int(np.round(dx/dy))
-                    y = h - 1
-            elif px-w<py-h:
-                if px-w>=h-py:
-                    x = w + int(np.round(dx/dy))
-                    y = h + 1
-                elif px-w<h-py:
-                    x = w - 1
-                    y = h - int(np.round(dy/dx))
-            else:
-                if w<px:
-                    x = w + 1
-                    y = h + 1
-                elif w>px:
-                    x = w - 1
-                    y = h - 1
-            monotonic[pixel, y*width+x] = 1
-
-    return scipy.sparse.coo_matrix(monotonic)
-
 def getOffsets(width, coords=None):
     """Get the offset and slices for a sparse band diagonal array
-    
+
     For an operator that interacts with its neighbors we want a band diagonal matrix,
     where each row describes the 8 pixels that are neighbors for the reference pixel
     (the diagonal). Regardless of the operator, these 8 bands are always the same,
     so we make a utility function that returns the offsets (passed to scipy.sparse.diags).
-    
+
     See `diagonalizeArray` for more on the slices and format of the array used to create
     NxN operators that act on a data vector.
     """
@@ -320,18 +266,18 @@ def getOffsets(width, coords=None):
 
 def diagonalizeArray(arr, shape=None, dtype=np.float64):
     """Convert an array to a matrix that compares each pixel to its neighbors
-    
+
     Given an array with length N, create an 8xN array, where each row will be a
     diagonal in a diagonalized array. Each column in this matrix is a row in the larger
     NxN matrix used for an operator, except that this 2D array only contains the values
     used to create the bands in the band diagonal matrix.
-    
+
     Because the off-diagonal bands have less than N elements, ``getOffsets`` is used to
     create a mask that will set the elements of the array that are outside of the matrix to zero.
-    
+
     ``arr`` is the vector to diagonalize, for example the distance from each pixel to the peak,
     or the angle of the vector to the peak.
-    
+
     ``shape`` is the shape of the original image.
     """
     if shape is None:
@@ -343,7 +289,7 @@ def diagonalizeArray(arr, shape=None, dtype=np.float64):
     else:
         raise ValueError("Expected either a 2D array or a 1D array and a shape")
     size = width * height
-    
+
     # We hard code 8 rows, since each row corresponds to a neighbor
     # of each pixel.
     diagonals = np.zeros((8, size), dtype=dtype)
@@ -352,7 +298,7 @@ def diagonalizeArray(arr, shape=None, dtype=np.float64):
     for n, s in enumerate(slices):
         diagonals[n][slicesInv[n]] = data[s]
         mask[n][slicesInv[n]] = 0
-    
+
     # Create a mask to hide false neighbors for pixels on the edge
     # (for example, a pixel on the left edge should not be connected to the
     # pixel to its immediate left in the flattened vector, since that pixel
@@ -363,22 +309,22 @@ def diagonalizeArray(arr, shape=None, dtype=np.float64):
     mask[4][np.arange(1,height)*width-1] = 1
     mask[5][np.arange(height)*width] = 1
     mask[7][np.arange(1,height-1)*width-1] = 1
-    
+
     return diagonals, mask
 
 def diagonalsToSparse(diagonals, shape, dtype=np.float64):
     """Convert a diagonalized array into a sparse diagonal matrix
-    
+
     ``diagonalizeArray`` creates an 8xN array representing the bands that describe the
     interactions of a pixel with its neighbors. This function takes that 8xN array and converts
     it into a sparse diagonal matrix.
-    
-    See `diagonalizeArray` for the details of the 8xN array. 
+
+    See `diagonalizeArray` for the details of the 8xN array.
     """
     height, width = shape
     offsets, slices, slicesInv = getOffsets(width)
     diags = [diag[slicesInv[n]] for n, diag in enumerate(diagonals)]
-    
+
     # This block hides false neighbors for the edge pixels (see comments in diagonalizeArray code)
     # For now we assume that the mask in diagonalizeArray has already been applied, making these
     # lines redundant and unecessary, but if that changes in the future we can uncomment them
@@ -388,13 +334,13 @@ def diagonalsToSparse(diagonals, shape, dtype=np.float64):
     #diags[4][np.arange(1,height)*width-1] = 0
     #diags[5][np.arange(height)*width] = 0
     #diags[7][np.arange(1,height-1)*width-1] = 0
-    
-    diagonalArr = sparse.diags(diags, offsets, dtype=dtype)
+
+    diagonalArr = scipy.sparse.diags(diags, offsets, dtype=dtype)
     return diagonalArr
 
-def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
+def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=1):
     """Create an operator to constrain radial monotonicity
-    
+
     This version of the radial monotonicity operator selects all of the pixels closer to the peak
     for each pixel and weights their flux based on their alignment with a vector from the pixel
     to the peak. In order to quickly create this using sparse matrices, its construction is a bit opaque.
@@ -407,13 +353,13 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
     X = X - px
     Y = Y - py
     distance = np.sqrt(X**2+Y**2)
-    
+
     # Find each pixels neighbors further from the peak and mark them as invalid
     # (to be removed later)
     distArr, mask = diagonalizeArray(distance, dtype=np.float64)
     relativeDist = (distance.flatten()[:,None]-distArr.T).T
     invalidPix = relativeDist<=0
-    
+
     # Calculate the angle between each pixel and the x axis, relative to the peak position
     # (also avoid dividing by zero and set the tan(infinity) pixel values to pi/2 manually)
     inf = X==0
@@ -421,7 +367,7 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
     tX[inf] = 1
     angles = np.arctan2(-Y,-tX)
     angles[inf&(Y!=0)] = 0.5*np.pi*np.sign(angles[inf&(Y!=0)])
-    
+
     # Calcualte the angle between each pixel and it's neighbors
     xArr, m = diagonalizeArray(X)
     yArr, m = diagonalizeArray(Y)
@@ -432,7 +378,7 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
     dx[inf] = 1
     relativeAngles = np.arctan2(dy,dx)
     relativeAngles[inf&(dy!=0)] = 0.5*np.pi*np.sign(relativeAngles[inf&(dy!=0)])
-    
+
     # Find the difference between each pixels angle with the peak
     # and the relative angles to its neighbors, and take the
     # cos to find its neighbors weight
@@ -442,7 +388,7 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
     # and neighbors further from the peak than the reference pixel
     cosWeight[invalidPix] = 0
     cosWeight[mask] = 0
-    
+
     if useNearest:
         # Only use a single pixel most in line with peak
         cosNorm = np.zeros_like(cosWeight)
@@ -460,57 +406,50 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
         cosNorm = (cosWeight.T/normalize[:,None]).T
         cosNorm[mask] = 0
     cosArr = diagonalsToSparse(cosNorm, shape)
-    
+
     # The identity with the peak pixel removed represents the reference pixels
     diagonal = np.ones(size)
     diagonal[px+py*shape[1]] = -1
-    monotonic = cosArr-sparse.diags(diagonal)
-    
+    monotonic = cosArr-scipy.sparse.diags(diagonal)
+
     return monotonic.tocoo()
 
-def createPsfOperator(psfImg, imgShape, threshold=1e-2):
+def getPSFOp(psfImg, imgShape, threshold=1e-2):
     """Create an operator to convolve intensities with the PSF
-    
+
     Given a psf image ``psfImg`` and the shape of the blended image ``imgShape``,
     make a banded matrix out of all the pixels in ``psfImg`` above ``threshold``
     that acts as the PSF operator.
-    
-    TODO: Optimize this algorithm to 
+
+    TODO: Optimize this algorithm to
     """
     height, width = imgShape
     size = width * height
-    
+
     # Hide pixels in the psf below the threshold
     psf = np.copy(psfImg)
     psf[psf<threshold] = 0
-    
+
     # Calculate the coordinates of the pixels in the psf image above the threshold
     indices = np.where(psf>0)
     indices = np.dstack(indices)[0]
     cy, cx = np.unravel_index(np.argmax(psf), psf.shape)
     coords = indices-np.array([cy,cx])
-    
-    #print(cy, cx)
-    #print("coords\n", coords)
-    #print("indices\n", indices)
-    #print("cy, cx:\n", np.array([cy, cx]))
-    
+
     # Create the PSF Operator
     offsets, slices, slicesInv = getOffsets(width, coords)
-    #print("offsets:", offsets)
     psfDiags = [psf[y,x] for y,x in indices]
-    psfOp = sparse.diags(psfDiags, offsets, shape=(size, size), dtype=np.float64)
+    psfOp = scipy.sparse.diags(psfDiags, offsets, shape=(size, size), dtype=np.float64)
     psfOp = psfOp.tolil()
-    
+
     # Remove entries for pixels on the left or right edges
     cxRange = np.unique([cx for cy,cx in coords])
-    #print("cxRange", cxRange)
     for h in range(height):
         for y,x in coords:
             # Left edge
             if x<0 and width*(h+y)+x>=0 and h+y<=height:
                 psfOp[width*h, width*(h+y)+x] = 0
-            
+
                 # Pixels closer to the left edge
                 # than the radius of the psf
                 for x_ in cxRange[cxRange<0]:
@@ -520,24 +459,24 @@ def createPsfOperator(psfImg, imgShape, threshold=1e-2):
                         h+y<=height
                     ):
                         psfOp[width*h-x_, width*(h+y)+x-x_] = 0
-            
+
             # Right edge
             if x>0 and width*(h+1)-1>=0 and width*(h+y+1)+x-1>=0 and h+y<=height and width*(h+1+y)+x-1<size:
                 psfOp[width*(h+1)-1, width*(h+y+1)+x-1] = 0
-            
+
                 for x_ in cxRange[cxRange>0]:
                     # Near right edge
                     if (x>x_ and
                         width*(h+1)-x_-1>=0 and
-                        width*(h+y+1)+x-x_-1>=0 and 
+                        width*(h+y+1)+x-x_-1>=0 and
                         h+y<=height and
                         width*(h+1+y)+x-x_-1<size
                     ):
-                        #print("edge",h,x,y,x_)
                         psfOp[width*(h+1)-x_-1, width*(h+y+1)+x-x_-1] = 0
 
     # Return the transpose, which correctly convolves the data with the PSF
-    return psfOp.T.tocoo(), coords
+    return psfOp.T.tocoo()
+
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
@@ -545,7 +484,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
     A = A0.copy()
     S = S0.copy()
     S_ = S0.copy() # needed for convergence test
-    beta = 0.75    # TODO: unclear how to chose 0 < beta <= 1
+    beta = 1. # 0.75    # TODO: unclear how to chose 0 < beta <= 1
 
     if W is not None:
         W_max = W.max()
@@ -568,7 +507,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
             step_S2 = step_S * lM2
             it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter, e_rel=e_rel)
 
-        print(it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])])
+        print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
         if it_A == 0 and it_S == 0:
             break
@@ -592,7 +531,7 @@ def init_A(B, K, peaks=None, I=None):
         for k in range(K):
             px,py = peaks[k]
             A[:,k] = I[:,py,px]
-    A = prox_unity_plus(A)
+    A = prox_unity_plus(A, 0)
     return A
 
 def init_S(N, M, K, peaks=None, I=None):
@@ -609,18 +548,17 @@ def init_S(N, M, K, peaks=None, I=None):
             S[k,py*M+px] = np.abs(I[:,py,px].mean()) + tiny
     return S
 
-def adapt_PSF(P, shape):
-    B = P.shape[0]
-    # PSF shape can be different from image shape
-    P_ = np.zeros(B, shape[0], shape[0])
+def adapt_PSF(P, B, shape, threshold=1e-2):
+    # TODO: Should be simpler for likelihood gradients if P = const across B
+    P_ = np.zeros((B, shape[0]*shape[1], shape[0]*shape[1]))
     for b in range(B):
-        peak_idx = np.argmax(P[b])
-        px, py = np.unravel_index(peak_idx, P[b].shape)
-        # ... fill elements of P[b] in P_[b,:] so that np.dot(P_, X) acts like a convolution
+        # TODO: would be much faster to pass sparse matrices along,
+        # but need 3D sparse containers or modification of delta_data()
+        P_[b,:,:] = getPSFOp(P[b], shape, threshold=threshold).toarray()
+    return P_
 
 
-def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, e_rel=1e-3,
-                  fillValue=0, useNearest=True, minGradient=.9, threshold=1e-2):
+def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, l0_thresh=None, l1_thresh=None, e_rel=1e-3):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -635,9 +573,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if P is None:
         P_ = P
     else:
-        P_ = np.zeros(len(P), I.size, I.size)
-        for n, psf in enumerate(P):
-            P_[n] = createPsfOperator(psf, I.shape, threshold)
+        P_ = adapt_PSF(P, B, (N,M), threshold=1e-2)
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
@@ -648,8 +584,16 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     prox_A = prox_unity_plus
 
     # S: non-negativity or L0/L1 sparsity plus ...
-    # TODO: 2) decouple step from proximal lambda when using prox_hard or prox_soft
-    prox_S = prox_plus # prox_hard
+    if l0_thresh is None and l1_thresh is None:
+        prox_S = prox_plus
+    else:
+        # L0 has preference
+        if l0_thresh is not None:
+            if l1_thresh is not None:
+                print "Warning: l1_thresh ignored in favor of l0_thresh"
+            prox_S = partial(prox_hard, l=l0_thresh)
+        else:
+            prox_S = partial(prox_soft, l=l1_thresh)
 
     # ... additional constraint for each component of S
     if constraints is not None:
@@ -661,10 +605,11 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                 C = scipy.sparse.identity(N*M)
             if c == "M":
                 px, py = peaks[k]
-                C = getRadialMonotonicOp((N,M), px, py, useNearest, minGradient)
+                C = getRadialMonotonicOp((N,M), px, py)
             if c == "S":
                 px, py = peaks[k]
-                C = getPeakSymmetryOp((N,M), px, py, fillValue)
+                fillValue = 1
+                C = getPeakSymmetryOp((N,M), px, py, fillValue=fillValue)
             M2.append(C)
 
         # calculate step sizes for each constraint matrix
@@ -673,7 +618,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
         prox_constraints = {
             " ": prox_id,    # do nothing
-            "M": prox_plus,  # positive gradients
+            "M": prox_plus,  # positive gradients. TODO: Maybe require minimum here?
             "S": prox_zero   # zero deviation of mirrored pixels
         }
         prox_Cs = [prox_constraints[c] for c in constraints]
@@ -683,7 +628,12 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # run the NMF with those constraints
     A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_, e_rel=e_rel)
-    model = np.dot(A,S).reshape(B,N,M)
-    # reshape S to have shape B,N,M
+
+    # reshape to have shape B,N,M
+    model = np.dot(A,S)
+    if P is not None:
+        model = convolve_band(P_, model)
+    model = model.reshape(B,N,M)
     S = S.reshape(K,N,M)
+
     return A,S,model
