@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import numpy as np, scipy.sparse, scipy.sparse.linalg
 from scipy import sparse
 from functools import partial
@@ -67,10 +68,10 @@ def grad_likelihood_S(S, A, Y, W=1, P=None):
 
 # executes one proximal step of likelihood gradient, folloVed by prox_g
 def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1, P=None):
-    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=None), step)
+    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=P), step)
 
 def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=1, P=None):
-    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=None), step)
+    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=P), step)
 
 # split X into K components along axis
 # apply prox_list[k] to each component k
@@ -298,7 +299,7 @@ def oldGetRadialMonotonicOp(shape, px, py):
 
     return scipy.sparse.coo_matrix(monotonic)
 
-def getOffsets(width):
+def getOffsets(width, coords=None):
     """Get the offset and slices for a sparse band diagonal array
     
     For an operator that interacts with its neighbors we want a band diagonal matrix,
@@ -309,7 +310,10 @@ def getOffsets(width):
     See `diagonalizeArray` for more on the slices and format of the array used to create
     NxN operators that act on a data vector.
     """
-    offsets = [-width-1, -width, -width+1, -1, 1, width-1, width, width+1]
+    # Use the neighboring pixels by default
+    if coords is None:
+        coords = [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1, 1), (0,1), (1,1)]
+    offsets = [width*y+x for y,x in coords]
     slices = [slice(None, s) if s<0 else slice(s, None) for s in offsets]
     slicesInv = [slice(-s, None) if s<0 else slice(None, -s) for s in offsets]
     return offsets, slices, slicesInv
@@ -464,6 +468,77 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=.9):
     
     return monotonic.tocoo()
 
+def createPsfOperator(psfImg, imgShape, threshold=1e-2):
+    """Create an operator to convolve intensities with the PSF
+    
+    Given a psf image ``psfImg`` and the shape of the blended image ``imgShape``,
+    make a banded matrix out of all the pixels in ``psfImg`` above ``threshold``
+    that acts as the PSF operator.
+    
+    TODO: Optimize this algorithm to 
+    """
+    height, width = imgShape
+    size = width * height
+    
+    # Hide pixels in the psf below the threshold
+    psf = np.copy(psfImg)
+    psf[psf<threshold] = 0
+    
+    # Calculate the coordinates of the pixels in the psf image above the threshold
+    indices = np.where(psf>0)
+    indices = np.dstack(indices)[0]
+    cy, cx = np.unravel_index(np.argmax(psf), psf.shape)
+    coords = indices-np.array([cy,cx])
+    
+    #print(cy, cx)
+    #print("coords\n", coords)
+    #print("indices\n", indices)
+    #print("cy, cx:\n", np.array([cy, cx]))
+    
+    # Create the PSF Operator
+    offsets, slices, slicesInv = getOffsets(width, coords)
+    #print("offsets:", offsets)
+    psfDiags = [psf[y,x] for y,x in indices]
+    psfOp = sparse.diags(psfDiags, offsets, shape=(size, size), dtype=np.float64)
+    psfOp = psfOp.tolil()
+    
+    # Remove entries for pixels on the left or right edges
+    cxRange = np.unique([cx for cy,cx in coords])
+    #print("cxRange", cxRange)
+    for h in range(height):
+        for y,x in coords:
+            # Left edge
+            if x<0 and width*(h+y)+x>=0 and h+y<=height:
+                psfOp[width*h, width*(h+y)+x] = 0
+            
+                # Pixels closer to the left edge
+                # than the radius of the psf
+                for x_ in cxRange[cxRange<0]:
+                    if (x<x_ and
+                        width*h-x_>=0 and
+                        width*(h+y)+x-x_>=0 and
+                        h+y<=height
+                    ):
+                        psfOp[width*h-x_, width*(h+y)+x-x_] = 0
+            
+            # Right edge
+            if x>0 and width*(h+1)-1>=0 and width*(h+y+1)+x-1>=0 and h+y<=height and width*(h+1+y)+x-1<size:
+                psfOp[width*(h+1)-1, width*(h+y+1)+x-1] = 0
+            
+                for x_ in cxRange[cxRange>0]:
+                    # Near right edge
+                    if (x>x_ and
+                        width*(h+1)-x_-1>=0 and
+                        width*(h+y+1)+x-x_-1>=0 and 
+                        h+y<=height and
+                        width*(h+1+y)+x-x_-1<size
+                    ):
+                        #print("edge",h,x,y,x_)
+                        psfOp[width*(h+1)-x_-1, width*(h+y+1)+x-x_-1] = 0
+
+    # Return the transpose, which correctly convolves the data with the PSF
+    return psfOp.T.tocoo(), coords
+
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
     K = S0.shape[0]
@@ -493,7 +568,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
             step_S2 = step_S * lM2
             it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter, e_rel=e_rel)
 
-        print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
+        print(it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])])
 
         if it_A == 0 and it_S == 0:
             break
@@ -545,7 +620,7 @@ def adapt_PSF(P, shape):
 
 
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, e_rel=1e-3,
-                  fillValue=0, useNearest=True, minGradient=.9):
+                  fillValue=0, useNearest=True, minGradient=.9, threshold=1e-2):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -560,7 +635,9 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if P is None:
         P_ = P
     else:
-        P_ = adapt_PSF(P)
+        P_ = np.zeros(len(P), I.size, I.size)
+        for n, psf in enumerate(P):
+            P_[n] = createPsfOperator(psf, I.shape, threshold)
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
