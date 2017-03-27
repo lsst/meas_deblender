@@ -258,7 +258,7 @@ def getOffsets(width, coords=None):
     """
     # Use the neighboring pixels by default
     if coords is None:
-        coords = [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1, 1), (0,1), (1,1)]
+        coords = [(-1,-1), (-1,0), (-1, 1), (0,-1), (0,1), (1, -1), (1,0), (1,1)]
     offsets = [width*y+x for y,x in coords]
     slices = [slice(None, s) if s<0 else slice(s, None) for s in offsets]
     slicesInv = [slice(-s, None) if s<0 else slice(None, -s) for s in offsets]
@@ -507,7 +507,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
             step_S2 = step_S * lM2
             it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter, e_rel=e_rel)
 
-        print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
+        logger.info(it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])])
 
         if it_A == 0 and it_S == 0:
             break
@@ -590,7 +590,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         # L0 has preference
         if l0_thresh is not None:
             if l1_thresh is not None:
-                print "Warning: l1_thresh ignored in favor of l0_thresh"
+                logger.warn("Warning: l1_thresh ignored in favor of l0_thresh")
             prox_S = partial(prox_hard, l=l0_thresh)
         else:
             prox_S = partial(prox_soft, l=l1_thresh)
