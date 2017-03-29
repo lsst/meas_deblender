@@ -362,11 +362,16 @@ class DeblendedParent:
             psfOp = None
         return reconstructTemplate(seds, intensities, fidx , pkIdx, self.shape, psfOp)
 
-    def displayTemplate(self, fidx, pkIdx, useMask=True, cutoff=None, seds=None, intensities=None,
-                        imgLimits=False, cmap='inferno', **displayKwargs):
+    def displayImage(self, pkIdx, fidx=0, imgType='template', useMask=True, cutoff=None, seds=None,
+                        intensities=None, imgLimits=False, cmap='inferno', **displayKwargs):
         """Display an appropriately scaled template
         """
-        template = self.getTemplate(fidx, pkIdx, seds, intensities)
+        if imgType.lower() == 'template':
+            img = self.getTemplate(fidx, pkIdx, seds, intensities)
+        elif imgType.lower() == 'intensity':
+            img = self.intensities[pkIdx]
+        else:
+            raise Exception("imgType must be either 'template' or 'intensity'")
         if imgLimits:
             if "vmin" not in displayKwargs:
                 displayKwargs["vmin"] = self.expDeblend.vmin[fidx]
@@ -377,18 +382,16 @@ class DeblendedParent:
                 cutoff = self.cutoff
             else:
                 cutoff = cutoff
-            img = np.ma.array(template, mask=template<=cutoff)
-        else:
-            img = template
+            img = np.ma.array(img, mask=img<=cutoff)
         plt.imshow(img, interpolation='none', cmap=cmap, **displayKwargs)
         plt.show()
 
-    def displayAllTemplates(self, fidx, useMask=True, cutoff=None,
+    def displayAllImages(self, fidx=0, imgType='template', useMask=True, cutoff=None,
                             imgLimits=False, cmap='inferno', **displayKwargs):
         for pk in range(len(self.intensities)):
-            self.displayTemplate(fidx, pk, useMask=useMask, cutoff=cutoff,
+            self.displayImage(pk, fidx, imgType, useMask=useMask, cutoff=cutoff,
                                  imgLimits=imgLimits, cmap=cmap, **displayKwargs)
-    
+
     def trimFlux(self, cutoff=1e-2):
         seds = np.max(self.seds, axis=0)
         intensities = (self.intensities.T*seds).T
