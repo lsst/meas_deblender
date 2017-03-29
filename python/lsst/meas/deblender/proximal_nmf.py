@@ -600,7 +600,6 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if P is None:
         P_ = P
     else:
-        logger.info("Using PSF convolution")
         P_ = adapt_PSF(P, B, (N,M), threshold=psf_thresh)
 
     # init matrices
@@ -663,4 +662,4 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     model = model.reshape(B,N,M)
     S = S.reshape(K,N,M)
 
-    return A,S,model
+    return A,S,model,P_
