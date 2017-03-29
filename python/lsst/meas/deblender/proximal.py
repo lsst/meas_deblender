@@ -305,14 +305,14 @@ class DeblendedParent:
         if psfThresh is not None:
             self.psfThresh = psfThresh
         if usePsf and 'P' not in kwargs:
-            self.psfOp = [pnmf.getPSFOp(psfImg, self.data[0].shape, threshold=self.psfThresh)
-                          for psfImg in self.psfs]
+            #self.psfOp = [pnmf.getPSFOp(psfImg, self.data[0].shape, threshold=self.psfThresh)
+            #              for psfImg in self.psfs]
             kwargs['P'] = self.psfs
         logger.info("constraints: {0}".format(constraints))
         result = pnmf.nmf_deblender(self.data, K=len(self.peakCoords), max_iter=maxiter,
                                     peaks=self.peakCoords, W=variance, constraints=constraints,
                                     psf_thresh=self.psfThresh, **kwargs)
-        seds, intensities, model = result
+        seds, intensities, model, self.psfOp = result
         self.seds = seds
         self.intensities = intensities
 
