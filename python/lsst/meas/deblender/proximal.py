@@ -264,7 +264,7 @@ class DeblendedParent:
         return #self.monotonicOp
     
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
-                stepUpdate=noStepUpdate, display=False, filterIndices=None, contrast=100, adjustZero=False,
+                display=False, filterIndices=None, contrast=100, adjustZero=False,
                 psfThresh=None, usePsf=None, **kwargs):
         """Run the NMF deblender
 
@@ -284,8 +284,8 @@ class DeblendedParent:
 
         # Apply a single constraint to all of the peaks
         # (if only one constraint is given)
-        if constraints is not None and len(constraints)==1:
-            constraints = constraints*len(self.peakCoords)
+        #if constraints is not None and len(constraints)==1:
+        #    constraints = constraints*len(self.peakCoords)
 
         # Set the variance outside the footprint to zero
         maskPlane = self.calexps[0].getMaskedImage().getMask().getMaskPlaneDict().asdict()
