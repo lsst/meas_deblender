@@ -675,7 +675,7 @@ def getPSFOp(psfImg, imgShape, threshold=1e-2):
 
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
-        max_iter=1000, W=None, P=None, e_rel=1e-3, algorithm='ADMM'):
+        max_iter=1000, W=None, P=None, e_rel=1e-3, algorithm='ADMM', outer_max_iter=50):
 
     K = S0.shape[0]
     A = A0.copy()
@@ -688,7 +688,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
     else:
         W = W_max = 1
 
-    for it in range(max_iter):
+    for it in range(inner_max_iter):
         # A: simple gradient method; need to rebind S each time
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
         step_A = beta**it / lipschitz_const(S) / W_max
@@ -723,8 +723,6 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
         # Convergence crit from Langville 2014, section 5
         if it > 10 and np.array([np.dot(S_[k],S[k]) > (1-e_rel**2)*l2sq(S[k]) for k in range(K)]).all():
             break
-        if it>12:
-            import IPython; IPython.embed()
 
         S[:,:] = S_[:,:]
     S[:,:] = S_[:,:]
@@ -782,7 +780,7 @@ def get_constraints(constraint, (px, py), (N, M), useNearest=True, fillValue=1):
 
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None,
                   l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3, psf_thresh=1e-2,
-                  monotonicUseNearest=False, nonSymmetricFill=1, algorithm="ADMM"):
+                  monotonicUseNearest=False, nonSymmetricFill=1, algorithm="ADMM", outer_max_iter=50):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -865,8 +863,8 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # run the NMF with those constraints
     if algorithm=="ADMM" or algorithm=="SDMM":
-        A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2,
-                  max_iter=max_iter, W=W_, P=P_, e_rel=e_rel, algorithm=algorithm)
+        A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter,
+                  W=W_, P=P_, e_rel=e_rel, algorithm=algorithm, outer_max_iter=outer_max_iter)
     elif algorithm=="GLM":
         # TODO: Improve this, the following is for testing purposes only
         A, S = GLM(data=Y, X10=A, X20=S, W=W_, P=P_,
