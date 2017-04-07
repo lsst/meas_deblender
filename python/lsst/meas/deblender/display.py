@@ -79,8 +79,10 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
         # Adjust the colors so that zero is the lowest flux value
         intensity = (intensity-np.min(intensity))/(np.max(intensity)-np.min(intensity))*255
     else:
-        intensity = intensity/(np.max(intensity))*255
-        intensity[intensity<0] = 0
+        maxIntensity = np.max(intensity)
+        if maxIntensity > 0:
+            intensity = intensity/(maxIntensity)*255
+            intensity[intensity<0] = 0
 
     # Use the absolute value to normalize the pixel intensities
     pixelIntensity = np.sum(np.abs(images), axis=0)

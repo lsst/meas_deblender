@@ -140,7 +140,7 @@ def buildNmfData(calexps, footprint):
     return data, mask, variance
 
 def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None, vmax=None,
-                     display=False, poolSize=-1, psfOp=None):
+                     display=False, poolSize=-1, psfOp=None, fluxPortions=None):
     """Compare measurements to simulated "true" data
     
     If running nmf on simulations, this matches the detections to the simulation catalog and
@@ -159,8 +159,15 @@ def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None
             template = reconstructTemplate(seds, intensities, fidx , pkIdx=k, shape=shape, psfOp=psfOp)
             measFlux = np.sum(template)
             realFlux = realTable[idx][k]['flux_'+f]
-            logger.info("Filter {0}: flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
-                f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
+            logger.info("Filter {0}: template flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
+                        f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
+        for fidx, f in enumerate(filters):
+            template = reconstructTemplate(seds, intensities, fidx , pkIdx=k, shape=shape, psfOp=psfOp)
+            realFlux = realTable[idx][k]['flux_'+f]
+            if fluxPortions is not None:
+                flux = fluxPortions[fidx, k]
+                logger.info("Filter {0}: re-apportioned flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
+                        f, flux, realFlux, 100*np.abs(flux-realFlux)/realFlux))
             if display:
                 kwargs = {}
                 if vmin is not None:
@@ -336,7 +343,8 @@ class DeblendedParent:
                     100*np.abs(np.sum(diff)/np.sum(self.data[fidx]))))
             if self.expDeblend.simTable is not None:
                 compareMeasToSim(self.footprint, seds, intensities, self.expDeblend.simTable, 
-                                 self.filters, display=False, psfOp=self.psfOp)
+                                 self.filters, display=False, psfOp=self.psfOp,
+                                 fluxPortions=self.getFluxPortion())
 
             # Show the new templates for each object
             for pk in range(len(intensities)):
@@ -407,14 +415,22 @@ class DeblendedParent:
             data = self.data[fidx]
             weight = self.variance[fidx]
             totalWeight = np.sum(weight)
-            totalFlux = np.sum(self.intensities, axis=0)
+            if self.psfOp is not None:
+                intensities = np.zeros_like(self.intensities)
+                psfOp = self.psfOp[fidx]
+                for pk in range(peakCount):
+                    intensities[pk,:] = psfOp.dot(self.intensities[pk,:].flatten()).reshape(
+                                                  self.intensities[pk,:].shape)
+            else:
+                intensities = self.intensities
+            totalFlux = np.sum(intensities, axis=0)
             normalization = totalFlux*totalWeight
             zeroFlux = normalization==0
             normalization[zeroFlux] = 1
             normalization = 1/normalization
 
             for pk in range(peakCount):
-                flux = weight*data*self.intensities[pk]*normalization
+                flux = weight*data*intensities[pk]*normalization
                 flux[zeroFlux] = 0
                 peakFlux[fidx][pk] = np.sum(flux)*data.size
 
