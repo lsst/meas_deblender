@@ -476,6 +476,61 @@ class DeblendedParent:
         self.correlations = degenerateFlux
         return degenerateFlux
 
+    def convergencePlots(self):
+        """Plot the different errors used to measure convergence
+
+        For both the NMF stopping criteria and multiplier stopping criteria,
+        plot the variables used to estimate convergence.
+        In all of the plots, an `X` indicates a point that fails the convergence criteria
+        """
+        color_cycle = [u'#4c72b0', u'#55a868', u'#c44e52', u'#8172b2', u'#ccb974', u'#64b5cd']
+
+        # Plot the NMF matrices used calculate convergence
+        norms = np.array(self.errors[0])
+        idx = np.arange(norms.shape[0])
+        for pk in range(norms.shape[1]):
+            color = color_cycle[np.mod(pk, len(color_cycle))]
+            cross_term = norms[:,pk,0]
+            old2 = norms[:,pk,1]
+            diff = cross_term - old2
+            conv = diff > 0
+            plt.plot(idx, diff, c=color, label="Peak {0}".format(pk))
+            plt.plot(idx[~conv], diff[~conv], 'x', c=color)
+        plt.xlabel("Iteration")
+        plt.ylabel("($S_{new} \cdot S_{old}$)-$S_{old}^2$")
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.show()
+
+        # Plot the Primal residuals
+        errors = np.array(self.errors[1])
+        idx = np.arange(errors.shape[0])
+        for c in range(errors.shape[1]):
+            color = color_cycle[np.mod(c, len(color_cycle))]
+            e_pri2 = errors[:,c,0]
+            R = errors[:,c,2]
+            diff = e_pri2-R
+            conv = diff > 0
+            plt.plot(diff, label="Constraint {0}".format(c), c=color)
+            plt.plot(idx[~conv], diff[~conv], 'x', c=color)
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.xlabel("Iteration")
+        plt.ylabel("$R^2-e_{pri}^2$")
+        plt.show()
+
+        # Plot the dual residuals
+        for c in range(errors.shape[1]):
+            color = color_cycle[np.mod(c, len(color_cycle))]
+            e_dual2 = errors[:,c,1]
+            S = errors[:,c,3]
+            diff = e_dual2-S
+            conv = diff > 0
+            plt.plot(diff, label="Constraint {0}".format(c), c=color)
+            plt.plot(idx[~conv], diff[~conv], 'x', c=color)
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.xlabel("Iteration")
+        plt.ylabel("$S^2-e_{dual}^2$")
+        plt.show()
+
 class ExposureDeblend:
     """Container for the objects and results of the NMF deblender
     """
