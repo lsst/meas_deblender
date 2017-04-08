@@ -235,7 +235,7 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
 def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constraints):
     """Update the prime and dual variables for multiple linear constraints
     
-    Both SDMM and GLM require the same method of updating the prime and dual
+    Both SDMM and GLMM require the same method of updating the prime and dual
     variables for the intensity matrix linear constraints.
     
     """
@@ -323,7 +323,7 @@ def SDMM(X0, prox_f, step_f, prox_g, step_g, constraints, max_iter=1000, e_rel=1
             break
     return n, X, Z, U, all_errors
 
-def GLM(data, X10, X20, W, P,
+def GLMM(data, X10, X20, W, P,
         prox_f1, prox_f2, prox_g1, prox_g2,
         constraints1, constraints2, lM1, lM2, max_iter=1000, e_rel=1e-3, beta=1, min_iter=20):
     """ Solve for both the SED and Intensity Matrices at the same time
@@ -892,7 +892,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                                     return_eigenvectors=False)[0]) for C in M2])
             prox_S2 = partial(prox_components, prox_list=[prox_constraints[c] for c in constraints], axis=0)
 
-        elif algorithm=="SDMM" or algorithm=="GLM":
+        elif algorithm=="SDMM" or algorithm=="GLMM":
             if isinstance(constraints, basestring):
                 constraints = [constraint*K for constraint in constraints]
             elif all([len(constraint)==K for constraint in constraints]):
@@ -919,11 +919,12 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         A,S, errors = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter,
                   W=W_, P=P_, e_rel=e_rel, algorithm=algorithm, outer_max_iter=outer_max_iter)
         f = None
-    elif algorithm=="GLM":
+    elif algorithm=="GLMM":
         # TODO: Improve this, the following is for testing purposes only
-        A, S, errors = GLM(data=Y, X10=A, X20=S, W=W_, P=P_,
-                           prox_f1=prox_A, prox_f2=prox_S, prox_g1=None, prox_g2=prox_S2,
-                           constraints1=None, constraints2=M2, lM1=1, lM2=lM2, max_iter=max_iter, e_rel=e_rel, beta=1.0)
+        A, S, errors = GLMM(data=Y, X10=A, X20=S, W=W_, P=P_,
+                            prox_f1=prox_A, prox_f2=prox_S, prox_g1=None, prox_g2=prox_S2,
+                            constraints1=None, constraints2=M2, lM1=1, lM2=lM2, max_iter=max_iter,
+                            e_rel=e_rel, beta=1.0)
 
     # reshape to have shape B,N,M
     model = np.dot(A,S)
