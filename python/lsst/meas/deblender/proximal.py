@@ -198,8 +198,8 @@ class DeblendedParent:
         # (needed by Peters code to calculate the initial matrices)
         x0 = self.calexps[0].getX0()
         y0 = self.calexps[0].getY0()
-        xmin = self.bbox.getMinX()-x0
-        ymin = self.bbox.getMinY()-y0
+        xmin = self.bbox.getMinX()
+        ymin = self.bbox.getMinY()
         peaks = [(pk.getIx()-xmin, pk.getIy()-ymin) for pk in self.peaks]
         self.peakCoords = peaks
         
@@ -281,29 +281,31 @@ class DeblendedParent:
         """
         if displayKwargs is None:
             displayKwargs = {}
-        # These lines are commented out because for now they are implemented in Peters code
-        # This is likely to change
-        #seds = np.copy(self.initSeds)
-        #intensities = np.copy(self.initIntensities)
 
         if self.data is None:
             self.initNMF()
 
-        # Apply a single constraint to all of the peaks
-        # (if only one constraint is given)
-        #if constraints is not None and len(constraints)==1:
-        #    constraints = constraints*len(self.peakCoords)
-
-        # Set the variance outside the footprint to zero
+        # Set the variance for bad pixels to zero
         maskPlane = self.calexps[0].getMaskedImage().getMask().getMaskPlaneDict().asdict()
         badPixels = (1<<maskPlane["BAD"] |
                      1<<maskPlane["CR"] |
                      1<<maskPlane["NO_DATA"] |
                      1<<maskPlane["SAT"] |
                      1<<maskPlane["SUSPECT"])
-        mask = (badPixels & self.mask).astype(bool)
+        # Set the variance for pixels outside the footprint to zero
+        import lsst.afw.image as afwImage
+        import lsst.afw.detection as afwDetect
+        fpMask = afwImage.MaskU(self.footprint.getBBox())
+        afwDetect.setMaskFromFootprint(fpMask, self.footprint, 1)
+        fpMask = ~fpMask.getArray().astype(bool)
+        
+        mask = ((badPixels & self.mask) | fpMask).astype(bool)
         variance = np.copy(self.variance)
         variance[mask] = 0
+        data = self.data.copy()
+        data[mask] = 0
+        debDisplay.maskPlot(data[0], data[0]==0)
+        
 
         if usePsf is None:
             usePsf = self.usePsf
@@ -316,10 +318,10 @@ class DeblendedParent:
             #              for psfImg in self.psfs]
             kwargs['P'] = self.psfs
         logger.info("constraints: {0}".format(constraints))
-        result = pnmf.nmf_deblender(self.data, K=len(self.peakCoords), max_iter=maxiter,
+        result = pnmf.nmf_deblender(data, K=len(self.peakCoords), max_iter=maxiter,
                                     peaks=self.peakCoords, W=variance, constraints=constraints,
                                     psf_thresh=self.psfThresh, **kwargs)
-        seds, intensities, model, self.psfOp = result
+        seds, intensities, self.model, self.psfOp, self.errors = result
         self.seds = seds
         self.intensities = intensities
 
