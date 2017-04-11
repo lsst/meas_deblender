@@ -49,6 +49,17 @@ def prox_unity(X, step, axis=0):
 def prox_unity_plus(X, step, axis=0):
     return prox_unity(prox_plus(X, step), step, axis=axis)
 
+# Project onto minimum of each symmetric pair
+def prox_symmetry(X, step, idx, sidx):
+    X_ = np.zeros_like(X)
+    X_[idx] = np.min([X[idx], X[sidx]], axis=0)
+    return X_
+
+# Take the minimum value of the data and the template
+# (this should prevent faint sources from growing too large)
+def prox_data_min(X, step, Y, idx, sidx, W=1):
+    return prox_plus(np.min([X, Y], axis=0), step)
+
 def l2sq(x):
     return (x**2).sum()
 
@@ -65,6 +76,16 @@ def convolve_band(P, I):
             PI[b] = P[b].dot(I[b])
         return PI
 
+def get_model(A, S, W, P=None):
+    # TODO: Add the weights back in
+    if P is None:
+        return A.dot(S)
+    B,N = A.shape[0], S.shape[1]
+    model = np.empty((B,N))
+    for b in range(B):
+        model[b] = P[b].dot(np.dot(S.T, A[b]))
+    return model
+
 def delta_data(A, S, Y, W=1, P=None):
     if P is None:
         return W*(np.dot(A,S) - Y)
@@ -80,13 +101,28 @@ def delta_data(A, S, Y, W=1, P=None):
                 EWP[b] = P[b].T.dot(W[b]*(P[b].dot(np.dot(S.T, A[b])) - Y[b]))
             return EWP
 
+def delta_model(A, model, W=1, P=None):
+    if P is None:
+        return A.T.dot(model)
+    else:
+        # all the tranposes are needed to allow for the sparse matrix dot
+        # products to be callable
+        if isinstance(P, list) is False:
+            return A.T.dot(P.T.dot(model.T).T)
+        else:
+            B,N = A.shape[0], model.shape[1]
+            delta = np.empty((B,N))
+            for b in range(B):
+                delta[b] = P[b].T.dot(model[b])
+            return A.T.dot(delta)
+
 def grad_likelihood_A(A, S, Y, W=1, P=None):
     D = delta_data(A, S, Y, W=W, P=P)
-    return np.dot(D, S.T)
+    return D.dot(S.T)
 
 def grad_likelihood_S(S, A, Y, W=1, P=None):
     D = delta_data(A, S, Y, W=W, P=P)
-    return np.dot(A.T, D)
+    return A.T.dot(D)
 
 # executes one proximal step of likelihood gradient, folloVed by prox_g
 def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1, P=None):
@@ -177,13 +213,13 @@ def get_variable_errors(A, AX, Z, U, e_rel):
         e_dual2 = e_rel**2*l2sq(dot_components(A, U, transpose=True))
     return e_pri2, e_dual2
 
-def get_quadratic_regularization(A, X, Z, U):
+def get_linearization(C, X, Z, U):
     """Get the quadratic regularization term for a linear operator
     
     Using the method of augmented Lagrangians requires a quadratic regularization used
     to updated the X matrix in ADMM. This method calculates those terms.
     """
-    return dot_components(A, dot_components(A, X) - Z + U, transpose=True)
+    return dot_components(C, dot_components(C, X) - Z + U, transpose=True)
 
 # Alternating direction method of multipliers
 # initial: initial guess of solution
@@ -206,7 +242,7 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
             X = prox_f(Z - U, step_f)
             AX = X
         else:
-            X = prox_f(X - (step_f/step_g)[:,None] * get_quadratic_regularization(A, X, Z, U), step_f)
+            X = prox_f(X - (step_f/step_g)[:,None] * get_linearization(A, X, Z, U), step_f)
             AX = dot_components(A, X)
         Z_ = prox_g(AX + U, step_g)
         # this uses relaxation parameter of 1
@@ -232,16 +268,17 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
 
     return it, X, Z, U, errors
 
-def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constraints):
+def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constraints,
+                          nonlinear=0):
     """Update the prime and dual variables for multiple linear constraints
     
     Both SDMM and GLMM require the same method of updating the prime and dual
     variables for the intensity matrix linear constraints.
     
     """
-    linearization = [step_f/proxSteps[i] * get_quadratic_regularization(c, X, Y[i], Z[i])
+    linearization = [step_f/proxSteps[i] * get_linearization(c, X, Y[i], Z[i])
                      for i, c in enumerate(constraints)]
-    X_ = prox_f(X - np.sum(linearization, axis=0), step=step_f)
+    X_ = prox_f(X - np.sum(linearization, axis=0)-nonlinear, step=step_f)
     # Iterate over the different constraints
     CX = []
     Y_ = Y.copy()
@@ -325,7 +362,8 @@ def SDMM(X0, prox_f, step_f, prox_g, step_g, constraints, max_iter=1000, e_rel=1
 
 def GLMM(data, X10, X20, W, P,
         prox_f1, prox_f2, prox_g1, prox_g2,
-        constraints1, constraints2, lM1, lM2, max_iter=1000, e_rel=1e-3, beta=1, min_iter=20):
+        constraints1, constraints2, lM1, lM2, max_iter=1000, e_rel=1e-3, beta=1, min_iter=20,
+        nonlinear=None, idx=None, sidx=None):
     """ Solve for both the SED and Intensity Matrices at the same time
     """
     # Initialize SED matrix
@@ -342,6 +380,15 @@ def GLMM(data, X10, X20, W, P,
     N2, M2 = X2.shape
     Z2 = np.zeros((len(constraints2), N2, M2))
     U2 = np.zeros_like(Z2)
+    
+    # Initialize non-linear constraints
+    # For now there is only 1 and it is hard coded
+    # TODO: extend this functionality to more general non-linear constraints
+    
+    prox_nonlinear = prox_plus#partial(prox_data_min, Y=data, W=W)
+    nonlinearX = get_model(X10, X20, W, P)
+    nonlinearZ = np.zeros_like(nonlinearX)
+    nonlinearU = np.zeros_like(nonlinearZ)
 
     # Initialize Other Parameters
     K = X2.shape[0]
@@ -373,7 +420,33 @@ def GLMM(data, X10, X20, W, P,
         step_f2 = beta**it / lipschitz_const(X1) / W_max
         step_g2 = step_f2 * lM2
         prox_like_f2 = partial(prox_likelihood_S, A=X1, Y=data, prox_g=prox_f2, W=W, P=P)
-        X2_, Z2_, U2, CX = update_sdmm_variables(X2, Z2, U2, prox_like_f2, step_f2, prox_g2, step_g2, constraints2)
+        X2_, Z2_, U2, CX = update_sdmm_variables(X2, Z2, U2, prox_like_f2, step_f2, prox_g2, step_g2,
+                                                 constraints2)
+        # Force the model to be less than the data for every pixel
+        if False:
+            # Set the nonlinear mode
+            model = data-get_model(X1, X2, W, P)
+            dModel = -delta_model(X1, model-nonlinearZ+nonlinearU, W, P)
+            # Update S2 and the linear constraints
+            X2_, Z2_, U2, CX = update_sdmm_variables(X2, Z2, U2, prox_like_f2, step_f2, prox_g2, step_g2,
+                                                     constraints2, nonlinear=dModel)
+            # Update the nonlinear constraints
+            model_ = data-get_model(X1, X2_, W, P)
+            nonlinearZ = prox_nonlinear(model_+nonlinearU, step_f2)
+            nonlinearU = nonlinearU + model_ - nonlinearZ
+        
+            shape = (71,104)
+            import matplotlib
+            import matplotlib.pyplot as plt
+            if it==0 or np.mod(it, 1000)==0:
+                logger.info("it: {0}".format(it))
+                logger.info("max point: {0}".format(np.unravel_index(np.argmax(model[2].reshape(shape)), shape)))
+                plt.imshow(model[2].reshape(shape))
+                plt.show()
+                plt.imshow(model_[2].reshape(shape))
+                plt.show()
+                plt.imshow(nonlinearZ[2].reshape(shape))
+                plt.show()
 
         ## Convergence crit from Langville 2014, section 5 ?
         NMF_converge, norms = check_NMF_convergence(it, X2_, X2, e_rel, K, min_iter)
@@ -482,6 +555,38 @@ def getPeakSymmetryOp(shape, px, py, fillValue=0):
     if hasattr(diffOp, "tocoo"):
         diffOp = diffOp.tocoo()
     return diffOp
+
+def getPeakSymmetryIndices(shape, px, py):
+    """Get indices and symmetric indices for a peak
+    
+    For a given peak, get the indices 
+    """
+    # The index of each element in the img
+    indices = np.arange(shape[0]*shape[1]).reshape(shape)
+    # Get only the indices that fit in the footprint
+    if py<(shape[0]-1)/2.:
+        ymin = 0
+        ymax = 2*py+1
+    elif py>(shape[0]-1)/2.:
+        ymin = 2*py-shape[0]+1
+        ymax = shape[0]
+    else:
+        ymin = 0
+        ymax = shape[0]
+    if px<(shape[1]-1)/2.:
+        xmin = 0
+        xmax = 2*px+1
+    elif px>(shape[1]-1)/2.:
+        xmin = 2*px-shape[1]+1
+        xmax = shape[1]
+    else:
+        xmin = 0
+        xmax = shape[1]
+    # Image indices
+    idx = indices[ymin:ymax, xmin:xmax]
+    # Symmetric indices
+    sidx = np.fliplr(np.flipud(idx))
+    return idx, sidx
 
 def getOffsets(width, coords=None):
     """Get the offset and slices for a sparse band diagonal array
@@ -823,13 +928,13 @@ def adapt_PSF(P, B, shape, threshold=1e-2):
 def get_constraints(constraint, (px, py), (N, M), useNearest=True, fillValue=1):
     """Get appropriate constraint operator
     """
-    if constraint == " ":
+    if constraint == " " or constraint == 's':
         return scipy.sparse.identity(N*M)
-    if constraint.upper() == "M":
+    elif constraint == "M":
         return getRadialMonotonicOp((N,M), px, py, useNearest=useNearest)
-    if constraint.upper() == "S":
+    elif constraint == "S":
         return getPeakSymmetryOp((N,M), px, py, fillValue=fillValue)
-    raise ValueError("'constraint' should be in [' ', 'M', 'S'] but received '{0}'".format(constraint))
+    raise ValueError("'constraint' should be in [' ', 'M', 'S', 's'] but received '{0}'".format(constraint))
 
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None,
                   l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3, psf_thresh=1e-2,
@@ -849,6 +954,8 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         P_ = P
     else:
         P_ = adapt_PSF(P, B, (N,M), threshold=psf_thresh)
+    
+    logger.info("Shape: {0}".format((N,M)))
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
@@ -870,12 +977,23 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         else:
             prox_S = partial(prox_soft_plus, l=l1_thresh)
 
+    # TODO: Testing the symmetry operator
+    idx = []
+    sidx = []
+    for (px,py) in peaks:
+        i, s = getPeakSymmetryIndices((N,M), px, py)
+        idx.append(i)
+        sidx.append(s)
+
     # ... additional constraint for each component of S
     if constraints is not None:
-        prox_constraints = {
+        linear_constraints = {
             " ": prox_id,    # do nothing
             "M": partial(prox_min, l=gradient_thresh), # positive gradients
-            "S": prox_zero   # zero deviation of mirrored pixels
+            "S": prox_zero,   # zero deviation of mirrored pixels
+        }
+        nonlinear_constraints = {
+            "D": partial(prox_data_min, Y=Y, W=W_)
         }
         M2 = []
         # Expand the constraints if the user passed an abbreviated format and
@@ -890,7 +1008,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                                   monotonicUseNearest, nonSymmetricFill) for pk, peak in enumerate(peaks)]
             lM2 = np.array([np.real(scipy.sparse.linalg.eigs(np.dot(C.T,C), k=1,
                                     return_eigenvectors=False)[0]) for C in M2])
-            prox_S2 = partial(prox_components, prox_list=[prox_constraints[c] for c in constraints], axis=0)
+            prox_S2 = partial(prox_components, prox_list=[linear_constraints[c] for c in constraints], axis=0)
 
         elif algorithm=="SDMM" or algorithm=="GLMM":
             if isinstance(constraints, basestring):
@@ -904,11 +1022,25 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
             for constraint in constraints:
                 M2.append([])
                 lM2.append([])
+                prox_list = []
                 for pk, peak in enumerate(peaks):
                     C = get_constraints(constraint[pk], peak, (N, M), monotonicUseNearest, nonSymmetricFill)
                     M2[-1].append(C)
-                    lM2[-1].append(C.T.dot(C))
-                prox_S2.append(partial(prox_components, prox_list=[prox_constraints[c] for c in constraint], axis=0))
+                    if C is not None:
+                        lM2[-1].append(C.T.dot(C))
+                    else:
+                        lM2[-1].append(scipy.sparse.identity(N*M))
+
+                    if constraint[pk] in linear_constraints:
+                        prox_list.append(linear_constraints[constraint[pk]])
+                    elif constraint[pk] == 's':
+                        px, py = peak
+                        idx, sidx = getPeakSymmetryIndices((N,M), px, py)
+                        prox_list.append(partial(prox_symmetry, idx=idx, sidx=sidx))
+                    else:
+                        err = "The only accepted constraints are 'M','S','s', ' ', received {0}"
+                        raise Exception(err.format(constraint[pk]))
+                prox_S2.append(partial(prox_components, prox_list=prox_list, axis=0))
             lM2 = np.sum(lM2, axis=0)
             lM2 = np.array([np.real(scipy.sparse.linalg.eigs(l, k=1, return_eigenvectors=False)[0]) for l in lM2])
     else:
@@ -924,7 +1056,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         A, S, errors = GLMM(data=Y, X10=A, X20=S, W=W_, P=P_,
                             prox_f1=prox_A, prox_f2=prox_S, prox_g1=None, prox_g2=prox_S2,
                             constraints1=None, constraints2=M2, lM1=1, lM2=lM2, max_iter=max_iter,
-                            e_rel=e_rel, beta=1.0)
+                            e_rel=e_rel, beta=1.0, idx=idx, sidx=sidx)
 
     # reshape to have shape B,N,M
     model = np.dot(A,S)
