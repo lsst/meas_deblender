@@ -821,6 +821,32 @@ def getPSFOp(psfImg, imgShape, threshold=1e-2):
     # Return the transpose, which correctly convolves the data with the PSF
     return psfOp.T.tocoo()
 
+def getTranslationOps(deltaX, deltaY, shape, threshold=1e-8):
+    Dx, Dy = int(deltaX), int(deltaY)
+    dx = np.abs(deltaX-Dx)
+    dy = np.abs(deltaY-Dy)
+
+    height, width = shape
+    size = width * height
+
+    # If dx or dy are less than the shift threshold, set them to zero
+    if dx < threshold:
+        Dx = np.ceil(deltaX)
+        dx = 0
+    if dy < threshold:
+        Dy = np.ceil(deltaY)
+        dy = 0
+
+    # Build the x and y translation matrices
+    bx = scipy.sparse.diags([(1-dx), dx], [Dx, Dx+np.sign(deltaX)],
+                            shape=(width, width), dtype=np.float64)
+    tx = scipy.sparse.block_diag([bx]*height)
+    ty = scipy.sparse.diags([(1-dy), dy], [Dy*width, (Dy+np.sign(deltaY))*width],
+                            shape=(size, size), dtype=np.float64)
+    # Create the single translation operator (used for A and S likelihoods)
+    transOp = ty.dot(tx.T)
+
+    return tx, ty, transOp
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
         max_iter=1000, W=None, P=None, e_rel=1e-3, algorithm='ADMM',
