@@ -384,7 +384,10 @@ class SourceDeblendTask(pipeBase.Task):
             # to their original values.  The following updates the parent footprint
             # in-place to ensure it contains the full union of itself and all of its
             # children's footprints.
-            src.getFootprint().include([child.getFootprint() for child in kids])
+            spans = src.getFootprint().spans
+            for child in kids:
+                spans = spans.union(child.getFootprint().spans)
+            src.getFootprint().setSpans(spans)
 
             src.set(self.nChildKey, nchild)
 
@@ -428,9 +431,8 @@ class SourceDeblendTask(pipeBase.Task):
         size = float(footprint.getArea())
         for maskName, limit in self.config.maskLimits.items():
             maskVal = mask.getPlaneBitMask(maskName)
-            unmasked = afwDet.Footprint(footprint)
-            unmasked.intersectMask(mask, maskVal) # footprint of unmasked pixels
-            if (size - unmasked.getArea())/size > limit:
+            unmaskedSpan = footprint.spans.intersectNot(mask, maskVal) # spanset of unmasked pixels
+            if (size - unmaskedSpan.getArea())/size > limit:
                 return True
         return False
 
@@ -447,4 +449,4 @@ class SourceDeblendTask(pipeBase.Task):
         source.set(self.nChildKey, len(fp.getPeaks())) # It would have this many if we deblended them all
         if self.config.notDeblendedMask:
             mask.addMaskPlane(self.config.notDeblendedMask)
-            afwDet.setMaskFromFootprint(mask, fp, mask.getPlaneBitMask(self.config.notDeblendedMask))
+            fp.spans.setMask(mask, mask.getPlaneBitMask(self.config.notDeblendedMask))

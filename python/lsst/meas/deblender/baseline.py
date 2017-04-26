@@ -186,7 +186,6 @@ class DeblendedParent(object):
         """
         self.filter = filterName
         self.fp = footprint
-        self.fp.normalize()
         self.maskedImage = maskedImage
         self.psf = psf
         self.psffwhm = psffwhm
@@ -384,8 +383,6 @@ class DeblendedPeak(object):
         heavy = afwDet.makeHeavyFootprint(self.templateFootprint, self.fluxPortion)
         if strayFlux:
             if self.strayFlux is not None:
-                heavy.normalize()
-                self.strayFlux.normalize()
                 heavy = afwDet.mergeHeavyFootprints(heavy, self.strayFlux)
 
         return heavy

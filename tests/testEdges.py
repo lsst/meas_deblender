@@ -182,7 +182,7 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
             # print len(deb.peaks), 'deblended peaks'
 
             parent_img = afwImage.ImageF(fpbb)
-            afwDet.copyWithinFootprintImage(fp, afwimg.getImage(), parent_img)
+            fp.spans.copyImage(afwimg.getImage(), parent_img)
 
             X = [x for x, y in XY]
             Y = [y for x, y in XY]
@@ -209,8 +209,7 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
                 symm1ds.append(oned)
 
                 mono = afwImage.ImageF(fpbb)
-                afwDet.copyWithinFootprintImage(dpk.templateFootprint,
-                                                dpk.templateImage, mono)
+                dpk.templateFootprint.spans.copyImage(dpk.templateImage, mono)
                 monos.append(mono)
 
                 im = mono.getArray()
