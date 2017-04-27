@@ -53,7 +53,7 @@ def clipFootprintToNonzeroImpl(foot, image):
         spanX1 = span.getX1()
         xMin = spanX0 if spanX0 >= x0 else x0
         xMax = spanX1 if spanX1 <= xImMax else xImMax
-        xarray = np.arange(xMin, xMax+1)[arr[y-y0, xMin-x0:xMax-x0+1] > 0]
+        xarray = np.arange(xMin, xMax+1)[arr[y-y0, xMin-x0:xMax-x0+1] != 0]
         if len(xarray) > 0:
             newSpans.append(afwGeom.Span(y, xarray[0], xarray[-1]))
     # Time to update the SpanSet
