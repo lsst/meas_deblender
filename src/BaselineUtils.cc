@@ -40,8 +40,8 @@ static bool span_compare(geom::Span const & sp1,
 
 namespace {
     void nearestFootprint(std::vector<PTR(det::Footprint)> const& foots,
-                          image::Image<std::uint16_t>::Ptr argmin,
-                          image::Image<std::uint16_t>::Ptr dist)
+                          std::shared_ptr<image::Image<std::uint16_t>> argmin,
+                          std::shared_ptr<image::Image<std::uint16_t>> dist)
     {
         /*
          * insert the footprints into an image, set all the pixels to the
