@@ -1,50 +1,112 @@
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-/home/rea3/Python/lib/python2.7/site-packages/pandas-0.14.0-py2.7-linux-x86_64.egg/pandas/hashtable.so: undefined symbol: PyUnicodeUCS2_DecodeUTF8
-generating image 0/9 with 12 galaxies
-generating image 1/9 with 18 galaxies
-generating image 2/9 with 19 galaxies
-generating image 3/9 with 5 galaxies
-generating image 4/9 with 16 galaxies
-generating image 5/9 with 3 galaxies
-generating image 6/9 with 4 galaxies
-generating image 7/9 with 18 galaxies
-generating image 8/9 with 10 galaxies
+generating image 0/1 with 80 objects
+3.60467317303 29.6441937737 672.931635972 13.643827391 0.0496118872133
+11.4133371446 33.2062986409 1379.68036281 25.0072073939 0.736537111351
+22.1220291342 12.2722552947 400.162677851 22.0177178355 0.0979563107277
+30.9922208689 7.87164759901 4556.41889581 16.2681440697 0.596300237395
+12.1511523905 32.6339022885 1671.88695599 17.6669705628 1.3225803185
+6.88125898812 16.2832672387 377.645176737 13.4979938591 1.3289434035
+27.8743811367 14.9228331102 2060.16331122 15.840706446 0.439191047161
+9.25364719965 8.45227435641 4535.57296208 8.62499329293 0.869868597598
+16.8378084991 6.67865075355 2766.22534091 10.4683707803 0.787455663381
+27.8893547398 20.5646516353 4478.4408766 24.3048567752 0.580240730351
+17.1107687989 9.3619933044 418.457978165 13.5748324848 0.424049476418
+20.1694531869 8.09301406264 3070.41178532 19.0363431317 0.0127673850849
+25.8941284627 33.161530035 2700.9316823 33.1418846941 0.970794980841
+26.7730830262 28.5700450128 665.256248646 27.404538508 0.0436500213017
+10.2916546279 19.0036308875 1282.22809382 15.4290934141 0.93494200953
+17.9868853227 11.2637187126 4578.52889523 15.8401596592 0.430678892526
+6.14982093939 24.6530921674 2286.55532227 13.589306667 0.357065285458
+24.311424513 10.6181929476 368.326968124 11.1606574719 0.0899164473744
+19.0744138432 5.32363860721 2415.25696001 9.7316603808 0.00464931162658
+9.30631845074 8.46905270191 1068.14959323 8.89983659921 0.551891370806
+32.9562246275 3.52966798714 601.102182602 27.7100158407 0.60415013951
+28.5247115425 16.1078701307 3453.59464586 27.9899551241 0.170228872801
+32.5290069836 6.35617841805 1636.4806906 16.310625974 0.221713015046
+8.16411386352 34.9838506369 2211.67547804 22.2930181135 0.719630805296
+15.1144603154 26.642252606 468.357605085 18.9026833165 0.517077191063
+23.9287980807 5.70078280643 1595.13998772 15.4878234713 0.165715666488
+32.089858662 25.013135532 3666.00464584 31.8007196916 0.154947232628
+4.77453110524 8.60671428039 992.334127543 7.42879269594 0.805918538034
+10.5423994989 24.0299369467 3397.15157774 13.9005043336 1.39081771106
+23.7666165965 34.2831000011 1040.143368 31.5393021632 0.74395544306
+19.1185024571 31.1929851171 2707.56265572 19.5243261642 0.761453320861
+15.7391884787 34.022828037 1304.15517996 32.3060954165 1.46782131849
+31.1666378483 6.51365084837 1253.27627633 11.8499688885 0.249071736782
+18.448330676 33.5386517999 706.953670654 27.0965279151 1.26428233175
+5.88531805689 8.06469629657 3516.78164319 6.82633523752 0.369835409717
+18.0088647873 16.6100728345 4579.87577335 17.4438437459 0.805853481825
+34.7802097857 24.2973471677 840.583924372 26.7416755674 0.122057578107
+18.86005569 12.7793595054 600.77223936 13.1711718714 0.396499136928
+22.0814391487 34.1337385533 1679.16475161 26.1392323304 1.28169004214
+30.3817405228 16.2164374358 1645.63837736 17.735110139 1.22600866719
+28.410913789 24.9982852821 3293.67271263 27.5143431808 0.00772944640353
+21.0539912234 34.2438928521 3238.98734288 29.7641927895 0.900319302197
+18.7789430387 10.7191943056 374.407780308 16.4327304953 0.881062962036
+24.7584183298 9.70199236383 3265.45296874 20.6562497756 0.434870174388
+12.3483016706 34.9287177858 545.377153594 23.7081759885 0.258293561129
+3.15988664466 15.4645309409 1383.95689571 11.1801529386 0.317182193674
+23.2368438875 32.9751133301 539.985710525 31.3732808569 1.12233595241
+23.3591247064 15.3304453125 2061.96977879 17.856053444 0.985978374926
+9.2394399591 6.01907515465 1241.28126914 6.34025162777 0.713383675627
+26.1380739938 15.7985224379 2548.34603392 23.3574088589 1.46627673482
+22.6392583509 20.6898952748 1205.00450399 21.040381576 0.518258484535
+31.9076566653 34.4699092809 2103.41364574 34.1244698533 1.4476340765
+29.4614220722 31.7552975913 2507.27179425 29.4618611702 0.295889211451
+22.6885190743 3.04202371649 539.899035316 14.0278288308 1.3834477555
+29.0320355121 20.2088017477 4045.22494656 21.2510612504 0.0610653937431
+25.2669514214 7.15356205977 336.796033199 7.95010618237 1.31928222454
+20.5763689708 32.1356325369 1087.40201633 22.946159184 0.0485343488412
+14.9215565915 9.94683852897 649.912568572 13.0336505907 0.959433364446
+25.5928190281 32.9597052663 2710.79740564 30.3788994777 0.37904990168
+32.2026049061 14.4879082331 439.436129645 16.7428832817 0.788713429615
+23.132334904 30.8920320604 1672.50196014 28.2138674799 0.49590079452
+15.5184030524 27.3193116526 298.001308406 20.7338000146 1.05742209288
+25.3881688752 14.5145185722 4611.61086874 14.8429919777 1.3651089252
+25.3955141182 4.26571596322 2487.38652832 19.7005697629 0.289269150025
+8.38648178897 18.3027728059 3778.47083861 13.100913944 0.531337232741
+21.7611246728 32.1804703572 4849.91621092 29.4099077066 1.24221991983
+22.1318893599 9.5373796328 1535.11728158 17.6121345777 1.07404897283
+21.7840342408 26.4770046064 2688.48902285 21.793448335 1.481833754
 detecting in  u
-sourceDetection INFO: Detected 36 positive sources to 5 sigma.
+sourceDetection INFO: Detected 10 positive sources to 5 sigma.
+sourceDetection.background WARN: Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(2, 2) < 6]
+sourceDetection.background WARN: Reducing approxOrder to 1
 sourceDetection INFO: Resubtracting the background after object detection
 detecting in  g
-sourceDetection INFO: Detected 32 positive sources to 5 sigma.
+sourceDetection INFO: Detected 8 positive sources to 5 sigma.
+sourceDetection.background WARN: Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(2, 2) < 6]
+sourceDetection.background WARN: Reducing approxOrder to 1
 sourceDetection INFO: Resubtracting the background after object detection
 detecting in  r
-sourceDetection INFO: Detected 33 positive sources to 5 sigma.
+sourceDetection INFO: Detected 8 positive sources to 5 sigma.
+sourceDetection.background WARN: Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(2, 2) < 6]
+sourceDetection.background WARN: Reducing approxOrder to 1
 sourceDetection INFO: Resubtracting the background after object detection
 detecting in  i
-sourceDetection INFO: Detected 35 positive sources to 5 sigma.
+sourceDetection INFO: Detected 8 positive sources to 5 sigma.
+sourceDetection.background WARN: Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(2, 2) < 6]
+sourceDetection.background WARN: Reducing approxOrder to 1
 sourceDetection INFO: Resubtracting the background after object detection
 detecting in  z
-sourceDetection INFO: Detected 35 positive sources to 5 sigma.
+sourceDetection INFO: Detected 8 positive sources to 5 sigma.
+sourceDetection.background WARN: Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(2, 2) < 6]
+sourceDetection.background WARN: Reducing approxOrder to 1
 sourceDetection INFO: Resubtracting the background after object detection
 detecting in  y
-sourceDetection INFO: Detected 34 positive sources to 5 sigma.
+sourceDetection INFO: Detected 8 positive sources to 5 sigma.
+sourceDetection.background WARN: Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(2, 2) < 6]
+sourceDetection.background WARN: Reducing approxOrder to 1
 sourceDetection INFO: Resubtracting the background after object detection
-Total merged objects 34
+Total merged objects 8
 deblend, measure u
-measurement INFO: Measuring 141 sources (34 parents, 107 children) 
+measurement INFO: Measuring 49 sources (8 parents, 41 children) 
 deblend, measure g
-measurement INFO: Measuring 141 sources (34 parents, 107 children) 
+measurement INFO: Measuring 49 sources (8 parents, 41 children) 
 deblend, measure r
-measurement INFO: Measuring 141 sources (34 parents, 107 children) 
+measurement INFO: Measuring 49 sources (8 parents, 41 children) 
 deblend, measure i
-measurement INFO: Measuring 141 sources (34 parents, 107 children) 
+measurement INFO: Measuring 49 sources (8 parents, 41 children) 
 deblend, measure z
-measurement INFO: Measuring 141 sources (34 parents, 107 children) 
+measurement INFO: Measuring 49 sources (8 parents, 41 children) 
 deblend, measure y
-measurement INFO: Measuring 141 sources (34 parents, 107 children) 
+measurement INFO: Measuring 49 sources (8 parents, 41 children) 
