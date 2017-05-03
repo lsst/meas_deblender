@@ -92,22 +92,6 @@ def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, di
         plt.show()
     return fp, peaks
 
-def reconstructTemplate(seds, intensities, fidx , pkIdx, shape=None, psfOp=None):
-    """Calculate the template for a single peak for a single filter
-    
-    Use the SED matrix ``seds``, intensity matrix ``intensities``, and optionally the PSF operator,
-     to reconstruct the flux in the  image due to the selected peak, in the selected filter.
-    """
-    # Optionally convolve the intensities with the PSF
-    if psfOp is not None:
-        img = psfOp[fidx].dot(intensities[pkIdx,:].flatten()).reshape(intensities[pkIdx,:].shape)
-    else:
-        img = intensities[pkIdx]
-    template = seds[fidx,pkIdx]*img
-    if shape is not None:
-        template = template.reshape(shape)
-    return template
-
 def buildNmfData(calexps, footprint):
     """Build NMF data matrix
     
@@ -139,7 +123,7 @@ def buildNmfData(calexps, footprint):
     
     return data, mask, variance
 
-def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None, vmax=None,
+def compareMeasToSim(footprint, seds, intensities, Tx, Ty, realTable, filters, vmin=None, vmax=None,
                      display=False, poolSize=-1, psfOp=None, fluxPortions=None):
     """Compare measurements to simulated "true" data
     
@@ -156,13 +140,13 @@ def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None
         logger.info("Object {0} at ({1},{2})".format(k, footprint.getPeaks()[k].getIx(),
                                                      footprint.getPeaks()[k].getIy()))
         for fidx, f in enumerate(filters):
-            template = reconstructTemplate(seds, intensities, fidx , pkIdx=k, shape=shape, psfOp=psfOp)
+            template = pnmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             measFlux = np.sum(template)
             realFlux = realTable[idx][k]['flux_'+f]
             logger.info("Filter {0}: template flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
                         f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
         for fidx, f in enumerate(filters):
-            template = reconstructTemplate(seds, intensities, fidx , pkIdx=k, shape=shape, psfOp=psfOp)
+            template = pnmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             realFlux = realTable[idx][k]['flux_'+f]
             if fluxPortions is not None:
                 flux = fluxPortions[fidx, k]
@@ -321,7 +305,7 @@ class DeblendedParent:
         result = pnmf.nmf_deblender(data, K=len(self.peakCoords), max_iter=maxiter,
                                     peaks=self.peakCoords, W=variance, constraints=constraints,
                                     psf_thresh=self.psfThresh, **kwargs)
-        seds, intensities, self.model, self.psfOp, self.errors = result
+        seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
         self.seds = seds
         self.intensities = intensities
 
@@ -331,12 +315,8 @@ class DeblendedParent:
             pixels = intensities.shape[1]*intensities.shape[2]
             # Show information about the fit
             for fidx, f in enumerate(self.filters):
-                if self.usePsf:
-                    convolved = [self.psfOp[fidx].dot(intensities[pk,:].flatten()).reshape(self.shape) for pk in range(peakCount)]
-                    convolved = np.array(convolved)
-                    model = np.dot(seds, convolved.reshape(bands, pixels)).reshape(self.data.shape)
-                else:
-                    model = np.dot(seds, intensities.reshape(bands, pixels)).reshape(self.data.shape)
+                model = pnmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
+                
                 diff = (model-self.data)[fidx].reshape(self.shape)
                 logger.info('Filter {0}'.format(f))
                 logger.info('Pixel range: {0} to {1}'.format(np.min(self.data), np.max(self.data)))
@@ -344,8 +324,8 @@ class DeblendedParent:
                 logger.info('Residual difference {0:.1f}%'.format(
                     100*np.abs(np.sum(diff)/np.sum(self.data[fidx]))))
             if self.expDeblend.simTable is not None:
-                compareMeasToSim(self.footprint, seds, intensities, self.expDeblend.simTable, 
-                                 self.filters, display=False, psfOp=self.psfOp,
+                compareMeasToSim(self.footprint, seds, intensities, self.Tx, self.Ty,
+                                 self.expDeblend.simTable, self.filters, display=False, psfOp=self.psfOp,
                                  fluxPortions=self.getFluxPortion())
 
             # Show the new templates for each object
@@ -359,27 +339,35 @@ class DeblendedParent:
 
         return seds, intensities
 
-    def getTemplate(self, fidx, pkIdx, seds=None, intensities=None):
+    def getTemplate(self, fidx, pkIdx, seds=None, intensities=None, Tx=None, Ty=None):
         """Apply the SED to the intensities to get the template for a given filter
         """
         if seds is None:
             seds = self.seds
         if intensities is None:
             intensities = self.intensities
+        if Tx is None:
+            Tx = self.Tx
+        if Ty is None:
+            Ty = self.Ty
         if self.usePsf:
             psfOp = self.psfOp
         else:
             psfOp = None
-        return reconstructTemplate(seds, intensities, fidx , pkIdx, self.shape, psfOp)
+        return pnmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=self.shape, k=pkIdx)[fidx]
 
     def displayImage(self, pkIdx, fidx=0, imgType='template', useMask=True, cutoff=None, seds=None,
                         intensities=None, imgLimits=False, cmap='inferno', **displayKwargs):
         """Display an appropriately scaled template
         """
+        if intensities is None:
+            intensities = self.intensities
+        if seds is None:
+            seds = self.seds
         if imgType.lower() == 'template':
             img = self.getTemplate(fidx, pkIdx, seds, intensities)
         elif imgType.lower() == 'intensity':
-            img = self.intensities[pkIdx]
+            img = intensities[pkIdx]
         else:
             raise Exception("imgType must be either 'template' or 'intensity'")
         if imgLimits:
