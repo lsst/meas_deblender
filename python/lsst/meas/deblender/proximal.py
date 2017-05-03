@@ -344,6 +344,7 @@ class DeblendedParent:
                                           contrast=contrast, adjustZero=adjustZero, figsize=(5,5))
             debDisplay.plotSeds(seds)
             plt.imshow(diff, interpolation='none', cmap='inferno')
+            plt.colorbar()
             plt.show()
 
         return seds, intensities
