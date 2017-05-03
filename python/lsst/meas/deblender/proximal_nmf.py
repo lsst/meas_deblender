@@ -583,13 +583,16 @@ def diagonalsToSparse(diagonals, shape, dtype=np.float64):
     diagonalArr = scipy.sparse.diags(diags, offsets, dtype=dtype)
     return diagonalArr
 
-def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=1):
+def getRadialMonotonicOp(shape, useNearest=True, minGradient=1):
     """Create an operator to constrain radial monotonicity
 
     This version of the radial monotonicity operator selects all of the pixels closer to the peak
     for each pixel and weights their flux based on their alignment with a vector from the pixel
     to the peak. In order to quickly create this using sparse matrices, its construction is a bit opaque.
     """
+    # Center on the center pixel
+    px = int(shape[1]/2)
+    py = int(shape[0]/2)
     # Calculate the distance between each pixel and the peak
     size = shape[0]*shape[1]
     x = np.arange(shape[1])
@@ -829,23 +832,9 @@ def init_A(B, K, peaks=None, I=None):
         A = np.empty((B,K))
         for k in range(K):
             px,py = peaks[k]
-            A[:,k] = I[:,py,px]
+            A[:,k] = I[:,int(py),int(px)]
     A = prox_unity_plus(A, 0)
     return A
-
-def old_init_S(N, M, K, peaks=None, I=None):
-    # init S with intensity of peak pixels
-    if peaks is None:
-        S = np.random.rand(K,N*M)
-    else:
-        assert I is not None
-        assert len(peaks) == K
-        S = np.zeros((K,N*M))
-        tiny = 1e-10
-        for k in range(K):
-            px,py = peaks[k]
-            S[k,py*M+px] = np.abs(I[:,py,px].mean()) + tiny
-    return S
 
 def init_S(N, M, K, peaks=None, data=None):
     cx, cy = int(M/2), int(N/2)
@@ -855,7 +844,7 @@ def init_S(N, M, K, peaks=None, data=None):
     else:
         tiny = 1e-10
         for pk, (px,py) in enumerate(peaks):
-            S[pk, cy*M+cx] = np.abs(data[:,py,px].mean()) + tiny
+            S[pk, cy*M+cx] = np.abs(data[:,int(py),int(px)].mean()) + tiny
     return S
 
 def adapt_PSF(P, B, shape, threshold=1e-2):
@@ -871,11 +860,10 @@ def adapt_PSF(P, B, shape, threshold=1e-2):
 def get_constraint_op(constraint, (N,M), useNearest=True):
     """Get appropriate constraint operator
     """
-    px, py = M>>1, N>>1
     if constraint == " ":
         return scipy.sparse.identity(N*M)
     elif constraint == "M":
-        return getRadialMonotonicOp((N,M), px, py, useNearest=useNearest)
+        return getRadialMonotonicOp((N,M), useNearest=useNearest)
     elif constraint == "S":
         return getSymmetryOp((N,M))
     raise ValueError("'constraint' should be in [' ', 'M', 'S'] but received '{0}'".format(constraint))
