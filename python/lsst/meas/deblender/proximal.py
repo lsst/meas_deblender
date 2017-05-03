@@ -406,31 +406,33 @@ class DeblendedParent:
         self.intensities[intensities<cutoff] = 0
     
     def getFluxPortion(self):
-        """Use the intensity templates to estimate the flux for all of the sources
+        """Use the deblended models to apportion the flux data to all sources
         """
         filters = len(self.data)
         peakCount = len(self.intensities)
         peakFlux = np.zeros((filters, peakCount))
+
         for fidx in range(filters):
             data = self.data[fidx]
             weight = self.variance[fidx]
             totalWeight = np.sum(weight)
-            if self.psfOp is not None:
-                intensities = np.zeros_like(self.intensities)
-                psfOp = self.psfOp[fidx]
-                for pk in range(peakCount):
-                    intensities[pk,:] = psfOp.dot(self.intensities[pk,:].flatten()).reshape(
-                                                  self.intensities[pk,:].shape)
-            else:
-                intensities = self.intensities
-            totalFlux = np.sum(intensities, axis=0)
+
+            # Calculate the model for each source
+            templates = np.zeros_like(self.intensities)
+            for pk in range(peakCount):
+                templates[pk] = pnmf.get_peak_model(self.seds, self.intensities,
+                                                    self.Tx, self.Ty, P=self.psfOp,
+                                                    shape=self.shape, k=pk)[fidx]
+            # Normalize the templates to divide up the observed flux
+            totalFlux = np.sum(templates, axis=0)
             normalization = totalFlux*totalWeight
             zeroFlux = normalization==0
             normalization[zeroFlux] = 1
             normalization = 1/normalization
 
+            # Use the template weights to re-distribute the flux
             for pk in range(peakCount):
-                flux = weight*data*intensities[pk]*normalization
+                flux = weight*data*templates[pk]*normalization
                 flux[zeroFlux] = 0
                 peakFlux[fidx][pk] = np.sum(flux)*data.size
 
