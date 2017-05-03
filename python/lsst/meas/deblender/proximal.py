@@ -203,8 +203,7 @@ class DeblendedParent:
         self.peakFlux = None
         self.correlations = None
 
-    def initNMF(self, displaySeds=False, displayTemplates=False,
-                filterIndices=None, contrast=100, adjustZero=True, usePsf=None):
+    def initNMF(self, filterIndices=None, contrast=100, adjustZero=True, usePsf=None):
         """Initialize the parameters needed for NMF deblending and (optionally) display the results
         """
         from . import proximal_nmf
@@ -216,45 +215,8 @@ class DeblendedParent:
         
         # Create the data matrices
         self.data, self.mask, self.variance = buildNmfData(self.calexps, self.footprint)
-
-        if displaySeds:
-            debDisplay.plotSeds(self.initSeds)
-        if displayTemplates:
-            # The following steps are currently done in Peters deblender by we
-            # initialize them here for vizualization
-            B,N,M = self.data.shape
-            K = len(self.peakCoords)
-            self.initSeds = proximal_nmf.init_A(B, K, peaks=self.peakCoords, I=self.data)
-            self.initIntensities = proximal_nmf.init_S(N, M, K, peaks=self.peakCoords, I=self.data)
-            self.psfOp = [proximal_nmf.getPSFOp(psfImg, self.data[0].shape, threshold=self.psfThresh)
-                            for psfImg in self.psfs]
-            if filterIndices is None:
-                filterIndices = [2,1,0]
-            for pk in range(K):
-                templates = [self.getTemplate(n, pk, self.initSeds, self.initIntensities) for n in filterIndices]
-                templates = np.array(templates)
-                debDisplay.plotColorImage(templates, filterIndices=range(len(templates)), contrast=contrast,
-                                          adjustZero=adjustZero)
-            #debDisplay.plotIntensities(self.initSeds, self.initIntensities, self.shape, **displayKwargs)
-
         return self.data, self.mask, self.variance, self.initSeds, self.initIntensities
-    
-    def getSymmetryOp(self):
-        """Create the operator to constrain symmetry
-        
-        Currently this is implemented in Peters algorithm but it is likely to be moved to this class later
-        """
-        #self.symmetryOp = getSymmetryOperator(self.footprint)
-        return #self.symmetryOp
-    
-    def getMonotonicOp(self):
-        """Create the operator to constrain monotonicity
-        
-        Currently this is implemented in Peters algorithm but it is likely to be moved to this class later
-        """
-        #self.monotonicOp = getMonotonicOperator(self.footprint, getMonotonic)
-        return #self.monotonicOp
-    
+
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 display=False, filterIndices=None, contrast=100, adjustZero=False,
                 psfThresh=None, usePsf=None, peakCoords=None, recenterPeaks=True, **kwargs):
@@ -587,9 +549,8 @@ class ExposureDeblend:
                                               adjustZero)
         return footprint, peaks
     
-    def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
-                      displaySeds=False, displayTemplates=False, constraints="M", maxiter=50,
-                      filterIndices=None, contrast=100, adjustZero=False, **kwargs):
+    def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False, constraints="MS",
+                      maxiter=50, filterIndices=None, contrast=100, adjustZero=False, **kwargs):
         """Deblend a single parent footprint
 
         Deblend a parent selected by passing a ``parentIdx`` and ``condition``
@@ -600,7 +561,7 @@ class ExposureDeblend:
         footprint, peaks = self.getParentFootprint(parentIdx, condition, display,
                                                    filterIndices, contrast, adjustZero)
         deblend = DeblendedParent(self, footprint, peaks)
-        deblend.initNMF(initPsf, displaySeds, displayTemplates, filterIndices, contrast, adjustZero)
+        deblend.initNMF(initPsf, filterIndices, contrast, adjustZero)
         deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
     
