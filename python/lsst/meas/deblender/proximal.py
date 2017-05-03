@@ -137,8 +137,9 @@ def compareMeasToSim(footprint, seds, intensities, Tx, Ty, realTable, filters, v
     shape = (footprint.getBBox().getHeight(), footprint.getBBox().getWidth())
     
     for k in range(len(seds[0])):
-        logger.info("Object {0} at ({1},{2})".format(k, footprint.getPeaks()[k].getIx(),
-                                                     footprint.getPeaks()[k].getIy()))
+        logger.info("Object {0} at ({1},{2}) or exactly ({3},{4})".format(
+            k, footprint.getPeaks()[k].getIx(),footprint.getPeaks()[k].getIy(),
+            realTable["x"][idx][k], realTable["y"][idx][k]))
         for fidx, f in enumerate(filters):
             template = pnmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             measFlux = np.sum(template)
@@ -256,7 +257,7 @@ class DeblendedParent:
     
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 display=False, filterIndices=None, contrast=100, adjustZero=False,
-                psfThresh=None, usePsf=None, **kwargs):
+                psfThresh=None, usePsf=None, peakCoords=None, recenterPeaks=True, **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
@@ -290,6 +291,14 @@ class DeblendedParent:
         data[mask] = 0
         debDisplay.maskPlot(data[0], data[0]==0)
         
+        if peakCoords is None:
+            peakCoords = self.peakCoords
+        elif recenterPeaks:
+            x0 = self.calexps[0].getX0()
+            y0 = self.calexps[0].getY0()
+            xmin = self.bbox.getMinX()
+            ymin = self.bbox.getMinY()
+            peakCoords = [(peak[0]-xmin,peak[1]-ymin) for peak in peakCoords]
 
         if usePsf is None:
             usePsf = self.usePsf
@@ -302,8 +311,8 @@ class DeblendedParent:
             #              for psfImg in self.psfs]
             kwargs['P'] = self.psfs
         logger.info("constraints: {0}".format(constraints))
-        result = pnmf.nmf_deblender(data, K=len(self.peakCoords), max_iter=maxiter,
-                                    peaks=self.peakCoords, W=variance, constraints=constraints,
+        result = pnmf.nmf_deblender(data, K=len(peakCoords), max_iter=maxiter,
+                                    peaks=peakCoords, W=variance, constraints=constraints,
                                     psf_thresh=self.psfThresh, **kwargs)
         seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
         self.seds = seds
