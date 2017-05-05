@@ -55,28 +55,52 @@ def l2sq(x):
 def l2(x):
     return np.sqrt((x**2).sum())
 
+def convolve_band(P, I):
+    if isinstance(P, list) is False:
+        return P.dot(I.T).T
+    else:
+        PI = np.empty(I.shape)
+        B = I.shape[0]
+        for b in range(B):
+            PI[b] = P[b].dot(I[b])
+        return PI
+
 def get_peak_model(A, S, Tx, Ty, P=None, shape=None, k=None):
     """Get the model for a single source
     """
-    # If the full matrices were passed, only select the elements for source k
+    # Allow the user to send full A,S, ... matrices or matrices for a single source
     if k is not None:
         Ak = A[:, k]
         Sk = S[k]
-        Txk = Tx[k]
-        Tyk = Ty[k]
+        if Tx is not None or Ty is not None:
+            Txk = Tx[k]
+            Tyk = Ty[k]
     else:
         Ak, Sk, Txk, Tyk = A, S.copy(), Tx, Ty
     # Check for a flattened or 2D array
     if len(Sk.shape)==2:
         Sk = Sk.flatten()
     B,N = Ak.shape[0], Sk.shape[0]
-    model = np.empty((B,N))
-    if P is None:
-        Gamma = Tyk.dot(Txk)
-    for b in range(B):
-        if P is not None:
-            Gamma = Tyk.dot(P[b].dot(Txk))
-        model[b] = Ak[b] * Gamma.dot(Sk)
+    model = np.zeros((B,N))
+
+    # NMF without translation
+    if Tx is None or Ty is None:
+        if Tx is not None or Ty is not None:
+            raise ValueError("Expected Tx and Ty to both be None or neither to be None")
+        for b in range(B):
+            if P is None:
+                model[b] = A[b]*Sk
+            else:
+                model[b] = Ak[b] * P[b].dot(Sk)
+    # NMF with translation
+    else:
+        if P is None:
+            Gamma = Tyk.dot(Txk)
+        for b in range(B):
+            if P is not None:
+                Gamma = Tyk.dot(P[b].dot(Txk))
+            model[b] = Ak[b] * Gamma.dot(Sk)
+    # Reshape the image into a 2D array
     if shape is not None:
         model = model.reshape((B, shape[0], shape[1]))
     return model
@@ -89,13 +113,23 @@ def get_model(A, S, Tx, Ty, P=None, shape=None):
         N = S.shape[1]*S.shape[2]
         S = S.reshape(K,N)
     model = np.zeros((B,N))
-    for pk in range(K):
-        for b in range(B):
-            if P is None:
-                Gamma = Ty[pk].dot(Tx[pk])
-            else:
-                Gamma = Ty[pk].dot(P[b].dot(Tx[pk]))
-            model[b] += A[b,pk]*Gamma.dot(S[pk])
+
+    if Tx is None or Ty is None:
+        if Tx is not None or Ty is not None:
+            raise ValueError("Expected Tx and Ty to both be None or neither to be None")
+        model = A.dot(S)
+        if P is not None:
+            model = convolve_band(P, model)
+        if shape is not None:
+            model = model.reshape(B, shape[0], shape[1])
+    else:
+        for pk in range(K):
+            for b in range(B):
+                if P is None:
+                    Gamma = Ty[pk].dot(Tx[pk])
+                else:
+                    Gamma = Ty[pk].dot(P[b].dot(Tx[pk]))
+                model[b] += A[b,pk]*Gamma.dot(S[pk])
     if shape is not None:
         model = model.reshape(B, shape[0], shape[1])
     return model
@@ -127,7 +161,7 @@ def delta_data(A, S, Y, Gamma, D, W=1):
             for b in range(B):
                 result[pk] += A[b,pk]*Gamma[pk][b].T.dot(diff[b])
     elif D == 'A':
-        result = np.empty((B,K))
+        result = np.zeros((B,K))
         for pk in range(K):
             for b in range(B):
                 result[b][pk] = diff[b].dot(Gamma[pk][b].dot(S[pk]))
@@ -197,7 +231,7 @@ def check_NMF_convergence(it, newX, oldX, e_rel, K, min_iter=10):
     norms[:,0] = [newX[k].dot(oldX[k]) for k in range(K)]
     norms[:,1] = [l2sq(oldX[k]) for k in range(K)]
 
-    convergent = it > min_iter and np.all([ct > (1-e_rel**2)*o2 for ct,o2 in norms])
+    convergent = it > min_iter and np.all([ct >= (1-e_rel**2)*o2 for ct,o2 in norms])
     return convergent, norms
 
 def get_variable_errors(A, AX, Z, U, e_rel):
@@ -402,7 +436,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
     G = []
     for pk in range(K):
         if P is None:
-            gamma = Ty[pk].dot(Tx[pk])
+            gamma = [Ty[pk].dot(Tx[pk])]*N1
         else:
             gamma = []
             for b in range(N1):
@@ -450,7 +484,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
         # I include it here in case we need it for testing later, but it is turned off
         if False:
             if P is not None:
-                model = np.empty(data.shape)
+                model = np.zeros(data.shape)
                 for b in range(data.shape[0]):
                     model[b] = P[b].dot(np.dot(X2.T, X1[b]))
             else:
@@ -748,11 +782,16 @@ def getTranslationOp(deltaX, deltaY, shape, threshold=1e-8):
         dy = 0
 
     # Build the x and y translation matrices
-    bx = scipy.sparse.diags([(1-dx), dx], [Dx, Dx+np.sign(deltaX)],
+    signX = int(np.sign(deltaX))
+    if signX==0:
+        signX = 1
+    bx = scipy.sparse.diags([(1-dx), dx], [Dx, Dx+signX],
                             shape=(width, width), dtype=np.float64)
+    signY = int(np.sign(deltaY))
+    if signY==0:
+        signY = 1
     tx = scipy.sparse.block_diag([bx]*height)
-    ty = scipy.sparse.diags([(1-dy), dy], [Dy*width, (Dy+np.sign(deltaY))*width],
-                            shape=(size, size), dtype=np.float64)
+    ty = scipy.sparse.diags([(1-dy), dy], [Dy*width, (Dy+signY)*width], shape=(size, size), dtype=np.float64)
     # Create the single translation operator (used for A and S likelihoods)
     transOp = ty.dot(tx.T)
 
@@ -829,7 +868,7 @@ def init_A(B, K, peaks=None, I=None):
     else:
         assert I is not None
         assert len(peaks) == K
-        A = np.empty((B,K))
+        A = np.zeros((B,K))
         for k in range(K):
             px,py = peaks[k]
             A[:,k] = I[:,int(py),int(px)]
@@ -921,9 +960,9 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         # Linear Operator for each constraint
         constraint_ops = [get_constraint_op(c, (N,M), useNearest=monotonicUseNearest) for c in constraints]
         # Weight of the linear operator (to test for convergence)
-        constraint_norm = np.array([np.real(scipy.sparse.linalg.eigs(C.T.dot(C), k=1,
-                                    return_eigenvectors=False)[0]) for C in constraint_ops])
-        #constraint_norm = np.array([scipy.sparse.linalg.norm(C) for C in constraint_ops])
+        constraint_norm = np.array([scipy.sparse.linalg.norm(C) for C in constraint_ops])
+        #constraint_norm = np.sqrt(constraint_norm)
+        logger.info("Norm2: {0}".format(constraint_norm))
     else:
         constraint_prox = None
         constraint_ops = None
