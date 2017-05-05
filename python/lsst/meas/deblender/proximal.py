@@ -17,7 +17,7 @@ from .baseline import newDeblend
 from . import plugins as debPlugins
 from . import utils as debUtils
 from . import sim
-from . import proximal_nmf as pnmf
+from . import proximal_nmf, old_proximal_nmf
 from . import display as debDisplay
 
 logging.basicConfig()
@@ -136,18 +136,20 @@ def compareMeasToSim(footprint, seds, intensities, Tx, Ty, realTable, filters, v
     d2, idx = kdtree.query(peakCoords, n_jobs=poolSize)
     shape = (footprint.getBBox().getHeight(), footprint.getBBox().getWidth())
     
+    logger.info("Matching indices: {0}".format(idx))
+    
     for k in range(len(seds[0])):
         logger.info("Object {0} at ({1},{2}) or exactly ({3},{4})".format(
             k, footprint.getPeaks()[k].getIx(),footprint.getPeaks()[k].getIy(),
             realTable["x"][idx][k], realTable["y"][idx][k]))
         for fidx, f in enumerate(filters):
-            template = pnmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
+            template = proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             measFlux = np.sum(template)
             realFlux = realTable[idx][k]['flux_'+f]
             logger.info("Filter {0}: template flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
                         f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
         for fidx, f in enumerate(filters):
-            template = pnmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
+            template = proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             realFlux = realTable[idx][k]['flux_'+f]
             if fluxPortions is not None:
                 flux = fluxPortions[fidx, k]
@@ -219,7 +221,8 @@ class DeblendedParent:
 
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 display=False, filterIndices=None, contrast=100, adjustZero=False,
-                psfThresh=None, usePsf=None, peakCoords=None, recenterPeaks=True, **kwargs):
+                psfThresh=None, usePsf=None, peakCoords=None, recenterPeaks=True,
+                pnmf=proximal_nmf, **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
@@ -269,8 +272,6 @@ class DeblendedParent:
         if psfThresh is not None:
             self.psfThresh = psfThresh
         if usePsf and 'P' not in kwargs:
-            #self.psfOp = [pnmf.getPSFOp(psfImg, self.data[0].shape, threshold=self.psfThresh)
-            #              for psfImg in self.psfs]
             kwargs['P'] = self.psfs
         logger.info("constraints: {0}".format(constraints))
         result = pnmf.nmf_deblender(data, K=len(peakCoords), max_iter=maxiter,
@@ -286,7 +287,7 @@ class DeblendedParent:
             pixels = intensities.shape[1]*intensities.shape[2]
             # Show information about the fit
             for fidx, f in enumerate(self.filters):
-                model = pnmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
+                model = proximal_nmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
                 
                 diff = (model-self.data)[fidx].reshape(self.shape)
                 logger.info('Filter {0}'.format(f))
@@ -326,7 +327,7 @@ class DeblendedParent:
             psfOp = self.psfOp
         else:
             psfOp = None
-        return pnmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=self.shape, k=pkIdx)[fidx]
+        return proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=self.shape, k=pkIdx)[fidx]
 
     def displayImage(self, pkIdx, fidx=0, imgType='template', useMask=True, cutoff=None, seds=None,
                         intensities=None, imgLimits=False, cmap='inferno', **displayKwargs):
@@ -382,7 +383,7 @@ class DeblendedParent:
             # Calculate the model for each source
             templates = np.zeros_like(self.intensities)
             for pk in range(peakCount):
-                templates[pk] = pnmf.get_peak_model(self.seds, self.intensities,
+                templates[pk] = proximal_nmf.get_peak_model(self.seds, self.intensities,
                                                     self.Tx, self.Ty, P=self.psfOp,
                                                     shape=self.shape, k=pk)[fidx]
             # Normalize the templates to divide up the observed flux

@@ -160,7 +160,7 @@ def check_NMF_convergence(it, newX, oldX, e_rel, K, min_iter=10):
     norms[:,0] = [newX[k].dot(oldX[k]) for k in range(K)]
     norms[:,1] = [l2sq(oldX[k]) for k in range(K)]
 
-    convergent = it > min_iter and np.all([ct > (1-e_rel**2)*o2 for ct,o2 in norms])
+    convergent = it > min_iter and np.all([ct >= (1-e_rel**2)*o2 for ct,o2 in norms])
     return convergent, norms
 
 def get_variable_errors(A, AX, Z, U, e_rel):
@@ -824,6 +824,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                   l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3, psf_thresh=1e-2,
                   monotonicUseNearest=False, nonSymmetricFill=1, algorithm="ADMM", outer_max_iter=50):
 
+    logger.warn("Using old NMF deblender!")
     # vectorize image cubes
     B,N,M = I.shape
     if sky is None:
@@ -922,4 +923,4 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     model = model.reshape(B,N,M)
     S = S.reshape(K,N,M)
 
-    return A,S,model,P_, errors
+    return A,S,model,P_, None, None,errors
