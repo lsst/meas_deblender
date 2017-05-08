@@ -17,7 +17,7 @@ from .baseline import newDeblend
 from . import plugins as debPlugins
 from . import utils as debUtils
 from . import sim
-from . import proximal_nmf as pnmf
+from . import proximal_nmf, old_proximal_nmf
 from . import display as debDisplay
 
 logging.basicConfig()
@@ -92,22 +92,6 @@ def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, di
         plt.show()
     return fp, peaks
 
-def reconstructTemplate(seds, intensities, fidx , pkIdx, shape=None, psfOp=None):
-    """Calculate the template for a single peak for a single filter
-    
-    Use the SED matrix ``seds``, intensity matrix ``intensities``, and optionally the PSF operator,
-     to reconstruct the flux in the  image due to the selected peak, in the selected filter.
-    """
-    # Optionally convolve the intensities with the PSF
-    if psfOp is not None:
-        img = psfOp[fidx].dot(intensities[pkIdx,:].flatten()).reshape(intensities[pkIdx,:].shape)
-    else:
-        img = intensities[pkIdx]
-    template = seds[fidx,pkIdx]*img
-    if shape is not None:
-        template = template.reshape(shape)
-    return template
-
 def buildNmfData(calexps, footprint):
     """Build NMF data matrix
     
@@ -139,7 +123,7 @@ def buildNmfData(calexps, footprint):
     
     return data, mask, variance
 
-def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None, vmax=None,
+def compareMeasToSim(footprint, seds, intensities, Tx, Ty, realTable, filters, vmin=None, vmax=None,
                      display=False, poolSize=-1, psfOp=None, fluxPortions=None):
     """Compare measurements to simulated "true" data
     
@@ -152,17 +136,20 @@ def compareMeasToSim(footprint, seds, intensities, realTable, filters, vmin=None
     d2, idx = kdtree.query(peakCoords, n_jobs=poolSize)
     shape = (footprint.getBBox().getHeight(), footprint.getBBox().getWidth())
     
+    logger.info("Matching indices: {0}".format(idx))
+    
     for k in range(len(seds[0])):
-        logger.info("Object {0} at ({1},{2})".format(k, footprint.getPeaks()[k].getIx(),
-                                                     footprint.getPeaks()[k].getIy()))
+        logger.info("Object {0} at ({1},{2}) or exactly ({3},{4})".format(
+            k, footprint.getPeaks()[k].getIx(),footprint.getPeaks()[k].getIy(),
+            realTable["x"][idx][k], realTable["y"][idx][k]))
         for fidx, f in enumerate(filters):
-            template = reconstructTemplate(seds, intensities, fidx , pkIdx=k, shape=shape, psfOp=psfOp)
+            template = proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             measFlux = np.sum(template)
             realFlux = realTable[idx][k]['flux_'+f]
             logger.info("Filter {0}: template flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
                         f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
         for fidx, f in enumerate(filters):
-            template = reconstructTemplate(seds, intensities, fidx , pkIdx=k, shape=shape, psfOp=psfOp)
+            template = proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             realFlux = realTable[idx][k]['flux_'+f]
             if fluxPortions is not None:
                 flux = fluxPortions[fidx, k]
@@ -218,8 +205,7 @@ class DeblendedParent:
         self.peakFlux = None
         self.correlations = None
 
-    def initNMF(self, displaySeds=False, displayTemplates=False,
-                filterIndices=None, contrast=100, adjustZero=True, usePsf=None):
+    def initNMF(self, filterIndices=None, contrast=100, adjustZero=True, usePsf=None):
         """Initialize the parameters needed for NMF deblending and (optionally) display the results
         """
         from . import proximal_nmf
@@ -231,48 +217,12 @@ class DeblendedParent:
         
         # Create the data matrices
         self.data, self.mask, self.variance = buildNmfData(self.calexps, self.footprint)
-
-        if displaySeds:
-            debDisplay.plotSeds(self.initSeds)
-        if displayTemplates:
-            # The following steps are currently done in Peters deblender by we
-            # initialize them here for vizualization
-            B,N,M = self.data.shape
-            K = len(self.peakCoords)
-            self.initSeds = proximal_nmf.init_A(B, K, peaks=self.peakCoords, I=self.data)
-            self.initIntensities = proximal_nmf.init_S(N, M, K, peaks=self.peakCoords, I=self.data)
-            self.psfOp = [proximal_nmf.getPSFOp(psfImg, self.data[0].shape, threshold=self.psfThresh)
-                            for psfImg in self.psfs]
-            if filterIndices is None:
-                filterIndices = [2,1,0]
-            for pk in range(K):
-                templates = [self.getTemplate(n, pk, self.initSeds, self.initIntensities) for n in filterIndices]
-                templates = np.array(templates)
-                debDisplay.plotColorImage(templates, filterIndices=range(len(templates)), contrast=contrast,
-                                          adjustZero=adjustZero)
-            #debDisplay.plotIntensities(self.initSeds, self.initIntensities, self.shape, **displayKwargs)
-
         return self.data, self.mask, self.variance, self.initSeds, self.initIntensities
-    
-    def getSymmetryOp(self):
-        """Create the operator to constrain symmetry
-        
-        Currently this is implemented in Peters algorithm but it is likely to be moved to this class later
-        """
-        #self.symmetryOp = getSymmetryOperator(self.footprint)
-        return #self.symmetryOp
-    
-    def getMonotonicOp(self):
-        """Create the operator to constrain monotonicity
-        
-        Currently this is implemented in Peters algorithm but it is likely to be moved to this class later
-        """
-        #self.monotonicOp = getMonotonicOperator(self.footprint, getMonotonic)
-        return #self.monotonicOp
-    
+
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 display=False, filterIndices=None, contrast=100, adjustZero=False,
-                psfThresh=None, usePsf=None, **kwargs):
+                psfThresh=None, usePsf=None, peakCoords=None, recenterPeaks=True,
+                pnmf=proximal_nmf, **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
@@ -306,6 +256,14 @@ class DeblendedParent:
         data[mask] = 0
         debDisplay.maskPlot(data[0], data[0]==0)
         
+        if peakCoords is None:
+            peakCoords = self.peakCoords
+        elif recenterPeaks:
+            x0 = self.calexps[0].getX0()
+            y0 = self.calexps[0].getY0()
+            xmin = self.bbox.getMinX()
+            ymin = self.bbox.getMinY()
+            peakCoords = [(peak[0]-xmin,peak[1]-ymin) for peak in peakCoords]
 
         if usePsf is None:
             usePsf = self.usePsf
@@ -314,14 +272,12 @@ class DeblendedParent:
         if psfThresh is not None:
             self.psfThresh = psfThresh
         if usePsf and 'P' not in kwargs:
-            #self.psfOp = [pnmf.getPSFOp(psfImg, self.data[0].shape, threshold=self.psfThresh)
-            #              for psfImg in self.psfs]
             kwargs['P'] = self.psfs
         logger.info("constraints: {0}".format(constraints))
-        result = pnmf.nmf_deblender(data, K=len(self.peakCoords), max_iter=maxiter,
-                                    peaks=self.peakCoords, W=variance, constraints=constraints,
+        result = pnmf.nmf_deblender(data, K=len(peakCoords), max_iter=maxiter,
+                                    peaks=peakCoords, W=variance, constraints=constraints,
                                     psf_thresh=self.psfThresh, **kwargs)
-        seds, intensities, self.model, self.psfOp, self.errors = result
+        seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
         self.seds = seds
         self.intensities = intensities
 
@@ -331,12 +287,8 @@ class DeblendedParent:
             pixels = intensities.shape[1]*intensities.shape[2]
             # Show information about the fit
             for fidx, f in enumerate(self.filters):
-                if self.usePsf:
-                    convolved = [self.psfOp[fidx].dot(intensities[pk,:].flatten()).reshape(self.shape) for pk in range(peakCount)]
-                    convolved = np.array(convolved)
-                    model = np.dot(seds, convolved.reshape(bands, pixels)).reshape(self.data.shape)
-                else:
-                    model = np.dot(seds, intensities.reshape(bands, pixels)).reshape(self.data.shape)
+                model = proximal_nmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
+                
                 diff = (model-self.data)[fidx].reshape(self.shape)
                 logger.info('Filter {0}'.format(f))
                 logger.info('Pixel range: {0} to {1}'.format(np.min(self.data), np.max(self.data)))
@@ -344,8 +296,8 @@ class DeblendedParent:
                 logger.info('Residual difference {0:.1f}%'.format(
                     100*np.abs(np.sum(diff)/np.sum(self.data[fidx]))))
             if self.expDeblend.simTable is not None:
-                compareMeasToSim(self.footprint, seds, intensities, self.expDeblend.simTable, 
-                                 self.filters, display=False, psfOp=self.psfOp,
+                compareMeasToSim(self.footprint, seds, intensities, self.Tx, self.Ty,
+                                 self.expDeblend.simTable, self.filters, display=False, psfOp=self.psfOp,
                                  fluxPortions=self.getFluxPortion())
 
             # Show the new templates for each object
@@ -355,31 +307,40 @@ class DeblendedParent:
                                           contrast=contrast, adjustZero=adjustZero, figsize=(5,5))
             debDisplay.plotSeds(seds)
             plt.imshow(diff, interpolation='none', cmap='inferno')
+            plt.colorbar()
             plt.show()
 
         return seds, intensities
 
-    def getTemplate(self, fidx, pkIdx, seds=None, intensities=None):
+    def getTemplate(self, fidx, pkIdx, seds=None, intensities=None, Tx=None, Ty=None):
         """Apply the SED to the intensities to get the template for a given filter
         """
         if seds is None:
             seds = self.seds
         if intensities is None:
             intensities = self.intensities
+        if Tx is None:
+            Tx = self.Tx
+        if Ty is None:
+            Ty = self.Ty
         if self.usePsf:
             psfOp = self.psfOp
         else:
             psfOp = None
-        return reconstructTemplate(seds, intensities, fidx , pkIdx, self.shape, psfOp)
+        return proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=self.shape, k=pkIdx)[fidx]
 
     def displayImage(self, pkIdx, fidx=0, imgType='template', useMask=True, cutoff=None, seds=None,
                         intensities=None, imgLimits=False, cmap='inferno', **displayKwargs):
         """Display an appropriately scaled template
         """
+        if intensities is None:
+            intensities = self.intensities
+        if seds is None:
+            seds = self.seds
         if imgType.lower() == 'template':
             img = self.getTemplate(fidx, pkIdx, seds, intensities)
         elif imgType.lower() == 'intensity':
-            img = self.intensities[pkIdx]
+            img = intensities[pkIdx]
         else:
             raise Exception("imgType must be either 'template' or 'intensity'")
         if imgLimits:
@@ -408,31 +369,33 @@ class DeblendedParent:
         self.intensities[intensities<cutoff] = 0
     
     def getFluxPortion(self):
-        """Use the intensity templates to estimate the flux for all of the sources
+        """Use the deblended models to apportion the flux data to all sources
         """
         filters = len(self.data)
         peakCount = len(self.intensities)
         peakFlux = np.zeros((filters, peakCount))
+
         for fidx in range(filters):
             data = self.data[fidx]
             weight = self.variance[fidx]
             totalWeight = np.sum(weight)
-            if self.psfOp is not None:
-                intensities = np.zeros_like(self.intensities)
-                psfOp = self.psfOp[fidx]
-                for pk in range(peakCount):
-                    intensities[pk,:] = psfOp.dot(self.intensities[pk,:].flatten()).reshape(
-                                                  self.intensities[pk,:].shape)
-            else:
-                intensities = self.intensities
-            totalFlux = np.sum(intensities, axis=0)
+
+            # Calculate the model for each source
+            templates = np.zeros_like(self.intensities)
+            for pk in range(peakCount):
+                templates[pk] = proximal_nmf.get_peak_model(self.seds, self.intensities,
+                                                    self.Tx, self.Ty, P=self.psfOp,
+                                                    shape=self.shape, k=pk)[fidx]
+            # Normalize the templates to divide up the observed flux
+            totalFlux = np.sum(templates, axis=0)
             normalization = totalFlux*totalWeight
             zeroFlux = normalization==0
             normalization[zeroFlux] = 1
             normalization = 1/normalization
 
+            # Use the template weights to re-distribute the flux
             for pk in range(peakCount):
-                flux = weight*data*intensities[pk]*normalization
+                flux = weight*data*templates[pk]*normalization
                 flux[zeroFlux] = 0
                 peakFlux[fidx][pk] = np.sum(flux)*data.size
 
@@ -587,9 +550,8 @@ class ExposureDeblend:
                                               adjustZero)
         return footprint, peaks
     
-    def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False,
-                      displaySeds=False, displayTemplates=False, constraints="M", maxiter=50,
-                      filterIndices=None, contrast=100, adjustZero=False, **kwargs):
+    def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False, constraints="MS",
+                      maxiter=50, filterIndices=None, contrast=100, adjustZero=False, **kwargs):
         """Deblend a single parent footprint
 
         Deblend a parent selected by passing a ``parentIdx`` and ``condition``
@@ -600,7 +562,7 @@ class ExposureDeblend:
         footprint, peaks = self.getParentFootprint(parentIdx, condition, display,
                                                    filterIndices, contrast, adjustZero)
         deblend = DeblendedParent(self, footprint, peaks)
-        deblend.initNMF(initPsf, displaySeds, displayTemplates, filterIndices, contrast, adjustZero)
+        deblend.initNMF(initPsf, filterIndices, contrast, adjustZero)
         deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
     

@@ -65,140 +65,69 @@ def convolve_band(P, I):
             PI[b] = P[b].dot(I[b])
         return PI
 
-def get_peak_model(A, S, Tx, Ty, P=None, shape=None, k=None):
-    """Get the model for a single source
-    """
-    # Allow the user to send full A,S, ... matrices or matrices for a single source
-    if k is not None:
-        Ak = A[:, k]
-        Sk = S[k]
-        if Tx is not None or Ty is not None:
-            Txk = Tx[k]
-            Tyk = Ty[k]
+def delta_data(A, S, Y, W=1, P=None):
+    if P is None:
+        return W*(np.dot(A,S) - Y)
     else:
-        Ak, Sk, Txk, Tyk = A, S.copy(), Tx, Ty
-    # Check for a flattened or 2D array
-    if len(Sk.shape)==2:
-        Sk = Sk.flatten()
-    B,N = Ak.shape[0], Sk.shape[0]
-    model = np.zeros((B,N))
-
-    # NMF without translation
-    if Tx is None or Ty is None:
-        if Tx is not None or Ty is not None:
-            raise ValueError("Expected Tx and Ty to both be None or neither to be None")
-        for b in range(B):
-            if P is None:
-                model[b] = A[b]*Sk
-            else:
-                model[b] = Ak[b] * P[b].dot(Sk)
-    # NMF with translation
-    else:
-        if P is None:
-            Gamma = Tyk.dot(Txk)
-        for b in range(B):
-            if P is not None:
-                Gamma = Tyk.dot(P[b].dot(Txk))
-            model[b] = Ak[b] * Gamma.dot(Sk)
-    # Reshape the image into a 2D array
-    if shape is not None:
-        model = model.reshape((B, shape[0], shape[1]))
-    return model
-
-def get_model(A, S, Tx, Ty, P=None, shape=None):
-    """Build the model for an entire blend
-    """
-    B,K,N = A.shape[0], A.shape[1], S.shape[1]
-    if len(S.shape)==3:
-        N = S.shape[1]*S.shape[2]
-        S = S.reshape(K,N)
-    model = np.zeros((B,N))
-
-    if Tx is None or Ty is None:
-        if Tx is not None or Ty is not None:
-            raise ValueError("Expected Tx and Ty to both be None or neither to be None")
-        model = A.dot(S)
-        if P is not None:
-            model = convolve_band(P, model)
-        if shape is not None:
-            model = model.reshape(B, shape[0], shape[1])
-    else:
-        for pk in range(K):
+        # all the tranposes are needed to allow for the sparse matrix dot
+        # products to be callable
+        if isinstance(P, list) is False:
+            return P.T.dot(W.T*(P.dot(np.dot(S.T, A.T)) - Y.T)).T
+        else:
+            B,N = A.shape[0], S.shape[1]
+            EWP = np.empty((B,N))
             for b in range(B):
-                if P is None:
-                    Gamma = Ty[pk].dot(Tx[pk])
-                else:
-                    Gamma = Ty[pk].dot(P[b].dot(Tx[pk]))
-                model[b] += A[b,pk]*Gamma.dot(S[pk])
-    if shape is not None:
-        model = model.reshape(B, shape[0], shape[1])
-    return model
+                EWP[b] = P[b].T.dot(W[b]*(P[b].dot(np.dot(S.T, A[b])) - Y[b]))
+            return EWP
 
-def delta_data(A, S, Y, Gamma, D, W=1):
-    """Gradient of model with respect to A or S
-    """
-    import matplotlib
-    import matplotlib.pyplot as plt
-    
-    B,K,N = A.shape[0], A.shape[1], S.shape[1]
-    # We need to calculate the model for each source individually and sum them
-    model = np.zeros((B,N))
-    for pk in range(K):
-        for b in range(B):
-            model[b] += A[b,pk]*Gamma[pk][b].dot(S[pk])
-        #plt.imshow(A[b,pk]*Gamma[pk][b].dot(S[pk]).reshape(71,104))
-        #plt.show()
-    
-    #plt.imshow(model[2].reshape(71,104))
-    #plt.title("model")
-    #plt.show()
-    
-    diff = W*(model-Y)
-    
-    if D == 'S':
-        result = np.zeros((K,N))
-        for pk in range(K):
-            for b in range(B):
-                result[pk] += A[b,pk]*Gamma[pk][b].T.dot(diff[b])
-    elif D == 'A':
-        result = np.zeros((B,K))
-        for pk in range(K):
-            for b in range(B):
-                result[b][pk] = diff[b].dot(Gamma[pk][b].dot(S[pk]))
-    else:
-        raise ValueError("Expected either 'A' or 'S' for variable `D`")
-    return result
+def grad_likelihood_A(A, S, Y, W=1, P=None):
+    D = delta_data(A, S, Y, W=W, P=P)
+    return np.dot(D, S.T)
 
-
-def grad_likelihood_A(A, S, Y, Gamma=None, W=1):
-    return delta_data(A, S, Y, D='A', Gamma=Gamma, W=W)
-
-def grad_likelihood_S(S, A, Y, Gamma=None, W=1):
-    return delta_data(A, S, Y, D='S', W=W, Gamma=Gamma)
+def grad_likelihood_S(S, A, Y, W=1, P=None):
+    D = delta_data(A, S, Y, W=W, P=P)
+    return np.dot(A.T, D)
 
 # executes one proximal step of likelihood gradient, folloVed by prox_g
-def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1, Gamma=None):
-    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, Gamma=Gamma), step)
+def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1, P=None):
+    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=P), step)
 
-def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=1, Gamma=None):
-    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, Gamma=Gamma), step)
+def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=1, P=None):
+    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=P), step)
+
+# split X into K components along axis
+# apply prox_list[k] to each component k
+# stack results to reconstruct shape of X
+def prox_components(X, step, prox_list=[], axis=0):
+    assert X.shape[axis] == len(prox_list)
+    K = X.shape[axis]
+
+    if np.isscalar(step):
+        step = [step for k in range(K)]
+
+    if axis == 0:
+        Pk = [prox_list[k](X[k], step[k]) for k in range(K)]
+    if axis == 1:
+        Pk = [prox_list[k](X[:,k], step[k]) for k in range(K)]
+    return np.stack(Pk, axis=axis)
 
 def dot_components(C, X, axis=0, transpose=False):
-    """Apply a linear constraint C to each peak in X
-    """
+    assert X.shape[axis] == len(C)
     K = X.shape[axis]
 
     if axis == 0:
         if not transpose:
-            CX = [C.dot(X[k]) for k in range(K)]
+            CX = [C[k].dot(X[k]) for k in range(K)]
         else:
-            CX = [C.T.dot(X[k]) for k in range(K)]
+            CX = [C[k].T.dot(X[k]) for k in range(K)]
     if axis == 1:
         if not transpose:
-            CX = [C.dot(X[:,k]) for k in range(K)]
+            CX = [C[k].dot(X[:,k]) for k in range(K)]
         else:
-            CX = [C.T.dot(X[:,k]) for k in range(K)]
+            CX = [C[k].T.dot(X[:,k]) for k in range(K)]
     return np.stack(CX, axis=axis)
+
+
 
 # accelerated proximal gradient method
 # Combettes 2009, Algorithm 3.6
@@ -248,13 +177,13 @@ def get_variable_errors(A, AX, Z, U, e_rel):
         e_dual2 = e_rel**2*l2sq(dot_components(A, U, transpose=True))
     return e_pri2, e_dual2
 
-def get_linearization(C, X, Z, U):
+def get_quadratic_regularization(A, X, Z, U):
     """Get the quadratic regularization term for a linear operator
     
     Using the method of augmented Lagrangians requires a quadratic regularization used
     to updated the X matrix in ADMM. This method calculates those terms.
     """
-    return dot_components(C, dot_components(C, X) - Z + U, transpose=True)
+    return dot_components(A, dot_components(A, X) - Z + U, transpose=True)
 
 # Alternating direction method of multipliers
 # initial: initial guess of solution
@@ -277,7 +206,7 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
             X = prox_f(Z - U, step_f)
             AX = X
         else:
-            X = prox_f(X - (step_f/step_g)[:,None] * get_linearization(A, X, Z, U), step_f)
+            X = prox_f(X - (step_f/step_g)[:,None] * get_quadratic_regularization(A, X, Z, U), step_f)
             AX = dot_components(A, X)
         Z_ = prox_g(AX + U, step_g)
         # this uses relaxation parameter of 1
@@ -310,7 +239,7 @@ def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constrain
     variables for the intensity matrix linear constraints.
     
     """
-    linearization = [step_f/proxSteps[i] * get_linearization(c, X, Y[i], Z[i])
+    linearization = [step_f/proxSteps[i] * get_quadratic_regularization(c, X, Y[i], Z[i])
                      for i, c in enumerate(constraints)]
     X_ = prox_f(X - np.sum(linearization, axis=0), step=step_f)
     # Iterate over the different constraints
@@ -394,7 +323,7 @@ def SDMM(X0, prox_f, step_f, prox_g, step_g, constraints, max_iter=1000, e_rel=1
             break
     return n, X, Z, U, all_errors
 
-def GLMM(shape, data, X10, X20, peaks, W, P,
+def GLMM(data, X10, X20, W, P,
         prox_f1, prox_f2, prox_g1, prox_g2,
         constraints1, constraints2, lM1, lM2, max_iter=1000, e_rel=1e-3, beta=1, min_iter=20):
     """ Solve for both the SED and Intensity Matrices at the same time
@@ -405,7 +334,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
     # TODO: Allow for constraints
     #Y1 = np.zeros((len(constraints1), N1, M1))
     #Z1 = np.zeros_like(Y1)
-    Z1 = X10.copy()
+    Z1 = np.zeros_like(X1)
     U1 = np.zeros_like(Z1)
 
     # Initialize Intensity matrix
@@ -420,30 +349,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
         W_max = W.max()
     else:
         W = W_max = 1
-    
-    # Initialize the translation operators
-    Tx = []
-    Ty = []
-    cx, cy = int(shape[1]/2), int(shape[0]/2)
-    for pk, (px, py) in enumerate(peaks):
-        dx = cx - px
-        dy = cy - py
-        tx, ty, _ = getTranslationOp(dx, dy, shape, threshold=1e-8)
-        Tx.append(tx)
-        Ty.append(ty)
-    
-    # TODO: This is only temporary until we fit for dx, dy
-    G = []
-    for pk in range(K):
-        if P is None:
-            gamma = [Ty[pk].dot(Tx[pk])]*N1
-        else:
-            gamma = []
-            for b in range(N1):
-                g = Ty[pk].dot(P[b].dot(Tx[pk]))
-                gamma.append(g)
-        G.append(gamma)
-    
+
     # Evaluate the solution
     logger.info("Beginning Loop")
 
@@ -457,7 +363,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
         step_f1 = beta**it / lipschitz_const(X2) / W_max
 
         # Update SED matrix
-        prox_like_f1 = partial(prox_likelihood_A, S=X2, Y=data, prox_g=prox_f1, W=W, Gamma=G)
+        prox_like_f1 = partial(prox_likelihood_A, S=X2, Y=data, prox_g=prox_f1, W=W, P=P)
         # TODO: Implement the more general version using `update_sdmm_variables`
         X1 = prox_like_f1(Z1-U1, step_f1)
         Z1 = prox_f1(X1+U1, step_f1)
@@ -466,9 +372,8 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
         # Update Intensity Matrix
         step_f2 = beta**it / lipschitz_const(X1) / W_max
         step_g2 = step_f2 * lM2
-        prox_like_f2 = partial(prox_likelihood_S, A=X1, Y=data, prox_g=prox_f2, W=W, Gamma=G)
-        X2_, Z2_, U2, CX = update_sdmm_variables(X2, Z2, U2, prox_like_f2, step_f2, prox_g2, step_g2,
-                                                 constraints2)
+        prox_like_f2 = partial(prox_likelihood_S, A=X1, Y=data, prox_g=prox_f2, W=W, P=P)
+        X2_, Z2_, U2, CX = update_sdmm_variables(X2, Z2, U2, prox_like_f2, step_f2, prox_g2, step_g2, constraints2)
 
         ## Convergence crit from Langville 2014, section 5 ?
         NMF_converge, norms = check_NMF_convergence(it, X2_, X2, e_rel, K, min_iter)
@@ -484,7 +389,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
         # I include it here in case we need it for testing later, but it is turned off
         if False:
             if P is not None:
-                model = np.zeros(data.shape)
+                model = np.empty(data.shape)
                 for b in range(data.shape[0]):
                     model[b] = P[b].dot(np.dot(X2.T, X1[b]))
             else:
@@ -506,32 +411,84 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
     logger.info("{0} iterations".format(it))
-    return X1, X2, Tx, Ty, all_errors
+    return X1, X2, all_errors
 
 def lipschitz_const(M):
     return np.real(np.linalg.eigvals(np.dot(M, M.T)).max())
 
-def getSymmetryOp(shape):
-    """Create a linear operator to symmetrize an image
-    
-    Given the ``shape`` of an image, create a linear operator that
-    acts on the flattened image to return its symmetric version.
+def getPeakSymmetry(shape, px, py, fillValue=0):
+    """Build the operator to symmetrize a the intensities for a single row
     """
-    size = shape[0]*shape[1]
-    idx = np.arange(shape[0]*shape[1])
-    sidx = idx[::-1]
-    symmetryOp = scipy.sparse.identity(size)
-    symmetryOp -= scipy.sparse.coo_matrix((np.ones(size),(idx, sidx)), shape=(size,size))
-    return symmetryOp
+    center = (np.array(shape)-1)/2.0
+    # If the peak is centered at the middle of the footprint,
+    # make the entire footprint symmetric
+    if px==center[1] and py==center[0]:
+        return scipy.sparse.coo_matrix(np.fliplr(np.eye(shape[0]*shape[1])))
+
+    # Otherwise, find the bounding box that contains the minimum number of pixels needed to symmetrize
+    if py<(shape[0]-1)/2.:
+        ymin = 0
+        ymax = 2*py+1
+    elif py>(shape[0]-1)/2.:
+        ymin = 2*py-shape[0]+1
+        ymax = shape[0]
+    else:
+        ymin = 0
+        ymax = shape[0]
+    if px<(shape[1]-1)/2.:
+        xmin = 0
+        xmax = 2*px+1
+    elif px>(shape[1]-1)/2.:
+        xmin = 2*px-shape[1]+1
+        xmax = shape[1]
+    else:
+        xmin = 0
+        xmax = shape[1]
+
+    fpHeight, fpWidth = shape
+    fpSize = fpWidth*fpHeight
+    tWidth = xmax-xmin
+    tHeight = ymax-ymin
+    extraWidth = fpWidth-tWidth
+    pixels = (tHeight-1)*fpWidth+tWidth
+
+    # This is the block of the matrix that symmetrizes intensities at the peak position
+    subOp = np.eye(pixels, pixels)
+    for i in range(0,tHeight-1):
+        for j in range(extraWidth):
+            idx = (i+1)*tWidth+(i*extraWidth)+j
+            subOp[idx, idx] = fillValue
+    subOp = np.fliplr(subOp)
+
+    smin = ymin*fpWidth+xmin
+    smax = (ymax-1)*fpWidth+xmax
+    if fillValue!=0:
+        symmetryOp = np.identity(fpSize)*fillValue
+    else:
+        symmetryOp = np.zeros((fpSize, fpSize))
+    symmetryOp[smin:smax,smin:smax] = subOp
+
+    # Return a sparse matrix, which greatly speeds up the processing
+    return scipy.sparse.coo_matrix(symmetryOp)
+
+def getPeakSymmetryOp(shape, px, py, fillValue=0):
+    """Operator to calculate the difference from the symmetric intensities
+    """
+    symOp = getPeakSymmetry(shape, px, py, fillValue)
+    diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
+    # In cases where the symmetry operator is very small (eg. a small isolated source)
+    # scipy doesn't return a sparse matrix, so we test whether or not the matrix is sparse
+    # and if it is, use a sparse matrix that works best with the proximal operators.
+    if hasattr(diffOp, "tocoo"):
+        diffOp = diffOp.tocoo()
+    return diffOp
 
 def getOffsets(width, coords=None):
     """Get the offset and slices for a sparse band diagonal array
-
     For an operator that interacts with its neighbors we want a band diagonal matrix,
     where each row describes the 8 pixels that are neighbors for the reference pixel
     (the diagonal). Regardless of the operator, these 8 bands are always the same,
     so we make a utility function that returns the offsets (passed to scipy.sparse.diags).
-
     See `diagonalizeArray` for more on the slices and format of the array used to create
     NxN operators that act on a data vector.
     """
@@ -545,18 +502,14 @@ def getOffsets(width, coords=None):
 
 def diagonalizeArray(arr, shape=None, dtype=np.float64):
     """Convert an array to a matrix that compares each pixel to its neighbors
-
     Given an array with length N, create an 8xN array, where each row will be a
     diagonal in a diagonalized array. Each column in this matrix is a row in the larger
     NxN matrix used for an operator, except that this 2D array only contains the values
     used to create the bands in the band diagonal matrix.
-
     Because the off-diagonal bands have less than N elements, ``getOffsets`` is used to
     create a mask that will set the elements of the array that are outside of the matrix to zero.
-
     ``arr`` is the vector to diagonalize, for example the distance from each pixel to the peak,
     or the angle of the vector to the peak.
-
     ``shape`` is the shape of the original image.
     """
     if shape is None:
@@ -593,11 +546,9 @@ def diagonalizeArray(arr, shape=None, dtype=np.float64):
 
 def diagonalsToSparse(diagonals, shape, dtype=np.float64):
     """Convert a diagonalized array into a sparse diagonal matrix
-
     ``diagonalizeArray`` creates an 8xN array representing the bands that describe the
     interactions of a pixel with its neighbors. This function takes that 8xN array and converts
     it into a sparse diagonal matrix.
-
     See `diagonalizeArray` for the details of the 8xN array.
     """
     height, width = shape
@@ -617,16 +568,12 @@ def diagonalsToSparse(diagonals, shape, dtype=np.float64):
     diagonalArr = scipy.sparse.diags(diags, offsets, dtype=dtype)
     return diagonalArr
 
-def getRadialMonotonicOp(shape, useNearest=True, minGradient=1):
+def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=1):
     """Create an operator to constrain radial monotonicity
-
     This version of the radial monotonicity operator selects all of the pixels closer to the peak
     for each pixel and weights their flux based on their alignment with a vector from the pixel
     to the peak. In order to quickly create this using sparse matrices, its construction is a bit opaque.
     """
-    # Center on the center pixel
-    px = int(shape[1]/2)
-    py = int(shape[0]/2)
     # Calculate the distance between each pixel and the peak
     size = shape[0]*shape[1]
     x = np.arange(shape[1])
@@ -698,11 +645,9 @@ def getRadialMonotonicOp(shape, useNearest=True, minGradient=1):
 
 def getPSFOp(psfImg, imgShape, threshold=1e-2):
     """Create an operator to convolve intensities with the PSF
-
     Given a psf image ``psfImg`` and the shape of the blended image ``imgShape``,
     make a banded matrix out of all the pixels in ``psfImg`` above ``threshold``
     that acts as the PSF operator.
-
     TODO: Optimize this algorithm to
     """
     height, width = imgShape
@@ -760,42 +705,6 @@ def getPSFOp(psfImg, imgShape, threshold=1e-2):
     # Return the transpose, which correctly convolves the data with the PSF
     return psfOp.T.tocoo()
 
-def getTranslationOp(deltaX, deltaY, shape, threshold=1e-8):
-    """ Operator to translate an image by deltaX, deltaY pixels
-    
-    deltaX and deltaY can both be real numbers, which uses a linear interpolation to
-    shift the peak by a fractional pixel amount.
-    """
-    Dx, Dy = int(deltaX), int(deltaY)
-    dx = np.abs(deltaX-Dx)
-    dy = np.abs(deltaY-Dy)
-
-    height, width = shape
-    size = width * height
-
-    # If dx or dy are less than the shift threshold, set them to zero
-    if dx < threshold:
-        Dx = int(np.ceil(deltaX))
-        dx = 0
-    if dy < threshold:
-        Dy = int(np.ceil(deltaY))
-        dy = 0
-
-    # Build the x and y translation matrices
-    signX = int(np.sign(deltaX))
-    if signX==0:
-        signX = 1
-    bx = scipy.sparse.diags([(1-dx), dx], [Dx, Dx+signX],
-                            shape=(width, width), dtype=np.float64)
-    signY = int(np.sign(deltaY))
-    if signY==0:
-        signY = 1
-    tx = scipy.sparse.block_diag([bx]*height)
-    ty = scipy.sparse.diags([(1-dy), dy], [Dy*width, (Dy+signY)*width], shape=(size, size), dtype=np.float64)
-    # Create the single translation operator (used for A and S likelihoods)
-    transOp = ty.dot(tx.T)
-
-    return tx, ty, transOp
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
         max_iter=1000, W=None, P=None, e_rel=1e-3, algorithm='ADMM',
@@ -868,22 +777,25 @@ def init_A(B, K, peaks=None, I=None):
     else:
         assert I is not None
         assert len(peaks) == K
-        A = np.zeros((B,K))
+        A = np.empty((B,K))
         for k in range(K):
             px,py = peaks[k]
-            A[:,k] = I[:,int(py),int(px)]
+            A[:,k] = I[:,py,px]
     A = prox_unity_plus(A, 0)
     return A
 
-def init_S(N, M, K, peaks=None, data=None):
-    cx, cy = int(M/2), int(N/2)
-    S = np.zeros((K, N*M))
-    if data is None or peaks is None:
-        S[:,cy*M+cx] = 1
+def init_S(N, M, K, peaks=None, I=None):
+    # init S with intensity of peak pixels
+    if peaks is None:
+        S = np.random.rand(K,N*M)
     else:
+        assert I is not None
+        assert len(peaks) == K
+        S = np.zeros((K,N*M))
         tiny = 1e-10
-        for pk, (px,py) in enumerate(peaks):
-            S[pk, cy*M+cx] = np.abs(data[:,int(py),int(px)].mean()) + tiny
+        for k in range(K):
+            px,py = peaks[k]
+            S[k,py*M+px] = np.abs(I[:,py,px].mean()) + tiny
     return S
 
 def adapt_PSF(P, B, shape, threshold=1e-2):
@@ -896,21 +808,23 @@ def adapt_PSF(P, B, shape, threshold=1e-2):
         P_.append(getPSFOp(P[b], shape, threshold=threshold))
     return P_
 
-def get_constraint_op(constraint, (N,M), useNearest=True):
+
+def get_constraints(constraint, (px, py), (N, M), useNearest=True, fillValue=1):
     """Get appropriate constraint operator
     """
     if constraint == " ":
         return scipy.sparse.identity(N*M)
-    elif constraint == "M":
-        return getRadialMonotonicOp((N,M), useNearest=useNearest)
-    elif constraint == "S":
-        return getSymmetryOp((N,M))
+    if constraint.upper() == "M":
+        return getRadialMonotonicOp((N,M), px, py, useNearest=useNearest)
+    if constraint.upper() == "S":
+        return getPeakSymmetryOp((N,M), px, py, fillValue=fillValue)
     raise ValueError("'constraint' should be in [' ', 'M', 'S'] but received '{0}'".format(constraint))
 
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None,
                   l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3, psf_thresh=1e-2,
-                  monotonicUseNearest=False, algorithm="GLMM", outer_max_iter=50):
+                  monotonicUseNearest=False, nonSymmetricFill=1, algorithm="ADMM", outer_max_iter=50):
 
+    logger.warn("Using old NMF deblender!")
     # vectorize image cubes
     B,N,M = I.shape
     if sky is None:
@@ -925,12 +839,10 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         P_ = P
     else:
         P_ = adapt_PSF(P, B, (N,M), threshold=psf_thresh)
-    
-    logger.info("Shape: {0}".format((N,M)))
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
-    S = init_S(N, M, K, data=I, peaks=peaks)
+    S = init_S(N, M, K, I=I, peaks=peaks)
 
     # define constraints for A and S via proximal operators
     # A: ||A_k||_2 = 1 with A_ik >= 0 for all columns k
@@ -948,41 +860,67 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         else:
             prox_S = partial(prox_soft_plus, l=l1_thresh)
 
-    # Load linear constraint operators
+    # ... additional constraint for each component of S
     if constraints is not None:
-        linear_constraints = {
+        prox_constraints = {
             " ": prox_id,    # do nothing
             "M": partial(prox_min, l=gradient_thresh), # positive gradients
-            "S": prox_zero,   # zero deviation of mirrored pixels
+            "S": prox_zero   # zero deviation of mirrored pixels
         }
-        # Proximal Operator for each constraint
-        constraint_prox = [linear_constraints[c] for c in constraints]
-        # Linear Operator for each constraint
-        constraint_ops = [get_constraint_op(c, (N,M), useNearest=monotonicUseNearest) for c in constraints]
-        # Weight of the linear operator (to test for convergence)
-        constraint_norm = np.array([scipy.sparse.linalg.norm(C) for C in constraint_ops])
-        #constraint_norm = np.sqrt(constraint_norm)
-        logger.info("Norm2: {0}".format(constraint_norm))
+        M2 = []
+        # Expand the constraints if the user passed an abbreviated format and
+        # build the constraint operators and proximal operators
+        if algorithm=="ADMM":
+            if len(constraints)==1:
+                constraints = constraints*K
+            elif len(constraints)!=K:
+                raise ValueError("'constraints' in ADMM should either be a single constraint to"
+                                 "use on each peak, or a string of constraints, with an entry for each peak")
+            M2 = [get_constraints(constraints[pk], peak, (N, M),
+                                  monotonicUseNearest, nonSymmetricFill) for pk, peak in enumerate(peaks)]
+            lM2 = np.array([np.real(scipy.sparse.linalg.eigs(np.dot(C.T,C), k=1,
+                                    return_eigenvectors=False)[0]) for C in M2])
+            prox_S2 = partial(prox_components, prox_list=[prox_constraints[c] for c in constraints], axis=0)
+
+        elif algorithm=="SDMM" or algorithm=="GLMM":
+            if isinstance(constraints, basestring):
+                constraints = [constraint*K for constraint in constraints]
+            elif all([len(constraint)==K for constraint in constraints]):
+                raise ValueError("'constraints' in SDMM must either be a string of constraints to apply to"
+                                 "each peak or a list of constraints for each peak")
+            M2 = []
+            lM2 = []
+            prox_S2 = []
+            for constraint in constraints:
+                M2.append([])
+                lM2.append([])
+                for pk, peak in enumerate(peaks):
+                    C = get_constraints(constraint[pk], peak, (N, M), monotonicUseNearest, nonSymmetricFill)
+                    M2[-1].append(C)
+                    lM2[-1].append(C.T.dot(C))
+                prox_S2.append(partial(prox_components, prox_list=[prox_constraints[c] for c in constraint], axis=0))
+            lM2 = np.sum(lM2, axis=0)
+            lM2 = np.array([np.real(scipy.sparse.linalg.eigs(l, k=1, return_eigenvectors=False)[0]) for l in lM2])
     else:
-        constraint_prox = None
-        constraint_ops = None
-        constraint_norm = None
+        prox_S2 = M2 = lM2 = None
 
     # run the NMF with those constraints
     if algorithm=="ADMM" or algorithm=="SDMM":
-        raise NotImplemented("ADMM and SDMM have not yet been updated to the centered S matrices")
         A,S, errors = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter,
                   W=W_, P=P_, e_rel=e_rel, algorithm=algorithm, outer_max_iter=outer_max_iter)
         f = None
     elif algorithm=="GLMM":
         # TODO: Improve this, the following is for testing purposes only
-        A, S, Tx, Ty, errors = GLMM(shape=(N, M), data=Y, X10=A, X20=S, peaks=peaks, W=W_, P=P_,
-                                    prox_f1=prox_A, prox_f2=prox_S, prox_g1=None, prox_g2=constraint_prox,
-                                    constraints1=None, constraints2=constraint_ops, lM1=1,
-                                    lM2=constraint_norm, max_iter=max_iter, e_rel=e_rel, beta=1.0)
+        A, S, errors = GLMM(data=Y, X10=A, X20=S, W=W_, P=P_,
+                            prox_f1=prox_A, prox_f2=prox_S, prox_g1=None, prox_g2=prox_S2,
+                            constraints1=None, constraints2=M2, lM1=1, lM2=lM2, max_iter=max_iter,
+                            e_rel=e_rel, beta=1.0)
 
-    # create the model and reshape to have shape B,N,M
-    model = get_model(A, S, Tx, Ty, P_, (N,M))
+    # reshape to have shape B,N,M
+    model = np.dot(A,S)
+    if P is not None:
+        model = convolve_band(P_, model)
+    model = model.reshape(B,N,M)
     S = S.reshape(K,N,M)
 
-    return A, S, model, P_, Tx, Ty, errors
+    return A,S,model,P_, None, None,errors
