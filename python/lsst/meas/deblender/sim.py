@@ -29,10 +29,22 @@ def loadSimCatalog(filename):
     for col in cat.getSchema().getNames():
         names.append(col)
         columns.append(cat.columns.get(col))
-    catTable = ApTable(columns, names=tuple(names))
-    return cat, catTable
+    simTable = ApTable(columns, names=tuple(names))
+    return cat, simTable
 
 def getNoise(calexps):
+    """Get the median noise in each exposure
+    
+    Parameters
+    ----------
+    calexps: list of calexp's (`lsst.afw.image.imageLib.ExposureF`)
+        List of calibrated exposures to estimate the noise
+    
+    Returns
+    -------
+    avgNoise: list of floats
+        A list of the median value for all pixels in each ``calexp``.
+    """
     avgNoise = []
     for calexp in calexps:
         var = calexp.getMaskedImage().getVariance()
@@ -42,6 +54,22 @@ def getNoise(calexps):
     return avgNoise
 
 def buildPeakTable(expDb, filters):
+    """Create a table of peak info to compare to simulated data
+    
+    Parameters
+    ----------
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+    filters: list of strings
+        Names of filters used for each flux measurement
+    
+    Returns
+    -------
+    peakTable: `astropy.table.Table`
+        Table with parent ID, peak index (in the parent), (x,y) coordinates, if the object is blended,
+        peaks contained in the footprint, the parent footprint (containing the peak), and the flux in each
+        filter.
+    """
     parents = []
     peakIdx = []
     peaks = []
@@ -74,6 +102,37 @@ def buildPeakTable(expDb, filters):
 
 def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNoise=None,
                display=True, calexp=None):
+    """Match a peakTable to the simulated Table
+    
+    Parameters
+    ----------
+    peakTable: `astropy.table.Table` returned from `buildPeakTable`
+        Table with information about all of the peaks in an image, not just the parents
+    simTable: `astropy.table.Table`
+        The second object returned from `loadSimCatalog`, containing the true values of the simulated data.
+    filters: list of strings
+        Names of the filters in the ``peakTable`` and ``simTable``.
+    maxSeparation: int, default=3
+        Maximum separation distance (in pixels) between two sources to be considered a match
+    poolSize: int, default=-1
+        Number of processes to use in the kdTree search. ``poolSize=-1`` use the maximum number of
+        available processors.
+    avgNoise: list of floats, default=None
+        Average noise for the image in each filter. If ``avgNoise`` is not ``None`` and
+        ``display`` is ``True``, then the average noise in each image is plotted
+    display: bool
+        Whether or not to display plots of the matched data.
+    calexp: `lsst.afw.image.imageLib.ExposureF`, default=``None``
+        If ``display`` is True and ``calexp`` is not ``None``, the image is displayed with
+        sources labeled.
+    
+    Returns
+    -------
+    matchTable: `astropy.table.Table`
+        Table of 
+    idx: `numpy.ndarray`
+        Array of indices to match the simTable to the peakTable.
+    """
     # Create arrays that scipy.spatial.cKDTree can recognize and find matches for each peak
     peakCoords = np.array(list(zip(peakTable['x'], peakTable['y'])))
     simCoords = np.array(list(zip(simTable['x'], simTable['y'])))
@@ -113,47 +172,63 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
         plt.ylabel("Total Flux")
         plt.show()
 
-    if calexp is not None:
-        
-        unmatched = peakTable[~matchTable["matched"]]
-        unmatchedParents = np.unique(unmatched["parent"])
-        
-        for pid in unmatchedParents:
-            footprint = peakTable[peakTable["parent"]==pid][0]["parent footprint"]
-            bbox = footprint.getBBox()
-            img = debUtils.extractImage(calexp.getMaskedImage(), bbox)
-            vmin, vmax = debUtils.zscale(img)
-            plt.imshow(img, vmin=vmin, vmax=10*vmax)
-            xmin = bbox.getMinX()
-            ymin = bbox.getMinY()
-            xmax = xmin+bbox.getWidth()
-            ymax = ymin+bbox.getHeight()
+        if calexp is not None:
 
-            peakCuts = ((peakTable["x"]>xmin) &
-                       (peakTable["x"]<xmax) &
-                       (peakTable["y"]>ymin) &
-                       (peakTable["y"]<ymax))
-            goodX = peakTable["x"][peakCuts & matchTable["matched"]]
-            goodY = peakTable["y"][peakCuts & matchTable["matched"]]
-            badX = peakTable["x"][peakCuts & ~matchTable["matched"]]
-            badY = peakTable["y"][peakCuts & ~matchTable["matched"]]
-            plt.plot(goodX-xmin, goodY-ymin, 'gx', mew=2)
+            unmatched = peakTable[~matchTable["matched"]]
+            unmatchedParents = np.unique(unmatched["parent"])
 
-            simCuts = ((simTable['x']>=xmin) &
-                       (simTable['x']<=xmax) &
-                       (simTable['y']>=ymin) &
-                       (simTable['y']<=ymax))
-            simx = simTable['x'][simCuts]-xmin
-            simy = simTable['y'][simCuts]-ymin
-            plt.plot(simx, simy, 'o', ms=20, mec='c', mfc='none')
+            for pid in unmatchedParents:
+                footprint = peakTable[peakTable["parent"]==pid][0]["parent footprint"]
+                bbox = footprint.getBBox()
+                img = debUtils.extractImage(calexp.getMaskedImage(), bbox)
+                vmin, vmax = debUtils.zscale(img)
+                plt.imshow(img, vmin=vmin, vmax=10*vmax)
+                xmin = bbox.getMinX()
+                ymin = bbox.getMinY()
+                xmax = xmin+bbox.getWidth()
+                ymax = ymin+bbox.getHeight()
 
-            plt.plot(badX-xmin, badY-ymin, 'rx', mew=2)
-            plt.xlim([0, bbox.getWidth()])
-            plt.ylim([0, bbox.getHeight()])
-            plt.show()
+                peakCuts = ((peakTable["x"]>xmin) &
+                           (peakTable["x"]<xmax) &
+                           (peakTable["y"]>ymin) &
+                           (peakTable["y"]<ymax))
+                goodX = peakTable["x"][peakCuts & matchTable["matched"]]
+                goodY = peakTable["y"][peakCuts & matchTable["matched"]]
+                badX = peakTable["x"][peakCuts & ~matchTable["matched"]]
+                badY = peakTable["y"][peakCuts & ~matchTable["matched"]]
+                plt.plot(goodX-xmin, goodY-ymin, 'gx', mew=2)
+
+                simCuts = ((simTable['x']>=xmin) &
+                           (simTable['x']<=xmax) &
+                           (simTable['y']>=ymin) &
+                           (simTable['y']<=ymax))
+                simx = simTable['x'][simCuts]-xmin
+                simy = simTable['y'][simCuts]-ymin
+                plt.plot(simx, simy, 'o', ms=20, mec='c', mfc='none')
+
+                plt.plot(badX-xmin, badY-ymin, 'rx', mew=2)
+                plt.xlim([0, bbox.getWidth()])
+                plt.ylim([0, bbox.getHeight()])
+                plt.show()
     return matchTable, idx
 
 def deblendSimExposuresOld(filters, expDb, peakTable=None):
+    """Use the old deblender to deblend an image
+
+    Parameters
+    ----------
+    filters: list of strings
+        Names of filters used for each flux measurement
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+    peakTable: `astropy.table.Table` returned from `buildPeakTable`
+        Table with information about all of the peaks in an image, not just the parents
+
+    Result
+    ------
+    deblenderResults: OrderedDict of `lsst.meas.deblender.baseline.DeblenderResult`s
+        Dictionary of results obtained by running the old deblender on all of the footprints in ``expDb``.
+    """
     plugins = baseline.DEFAULT_PLUGINS
     maskedImages = [calexp.getMaskedImage() for calexp in expDb.calexps]
     psfs = [calexp.getPsf() for calexp in expDb.calexps]
@@ -178,7 +253,27 @@ def deblendSimExposuresOld(filters, expDb, peakTable=None):
 
     return deblenderResults
 
-def displayImage(n, ratio, fidx, expDb):
+def displayImage(idx, ratio, fidx, expDb):
+    """Display an Image
+
+    Called from `calculateIsolatedFlux` when an isolated source has an unusually large difference
+    from the simulated data.
+
+    Parameters
+    ----------
+    idx: int
+        Number of the peak in the `peakTable`
+    ratio: int
+        ``100 *`` ``real flux``/``simulated flux`` for the source
+    fidx: string
+        Index of the filter to use for displaying the image
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+
+    Returns
+    -------
+    None
+    """
     src = expDb.mergedDet[n]
     if expDb.mergedTable["peaks"][n]>=2:
         print("Multiple Peaks in image")
@@ -190,6 +285,19 @@ def displayImage(n, ratio, fidx, expDb):
     plt.show()
 
 def calculateNmfFlux(expDb, peakTable):
+    """Calculate the flux for each object in a peakTable
+
+    Parameters
+    ----------
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+    peakTable: `astropy.table.Table` returned from `buildPeakTable`
+        Table with information about all of the peaks in an image, not just the parents
+
+    Returns
+    -------
+    None, the ``peakTable`` is modified in place.
+    """
     for pk, peak in enumerate(peakTable):
         if peak["parent"] in expDb.deblendedParents:
             deblendedParent = expDb.deblendedParents[peak["parent"]]
@@ -198,6 +306,30 @@ def calculateNmfFlux(expDb, peakTable):
                 peakTable["flux_"+f][pk] = np.sum(template)
 
 def calculateIsolatedFlux(filters, expDb, peakTable, simTable, fluxThresh=100):
+    """Calculate the flux of all isolated sources
+    
+    Get the flux for all of the sources in a ``peakTable`` not in a blend.
+    if the ratio of flux/simFlux or simFlux/flux is low,
+    and the total flux is above ``fluxThresh``, the source is displayed to
+    determine the inconsistency.
+
+    Parameters
+    ----------
+    filters: list of strings
+        Names of filters used for each flux measurement.
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+    peakTable: `astropy.table.Table` returned from `buildPeakTable`
+        Table with information about all of the peaks in an image, not just the parents
+    simTable: `astropy.table.Table`
+        The second object returned from `loadSimCatalog`, containing the true values of the simulated data.
+    fluxThresh: int, default=100
+        Minimum amount of flux an object must have to be flag a discrepancy in measured vs simulated flux.
+
+    Returns
+    -------
+    None, this function updates the ``peakTable`` in place.
+    """
     for n, peak in enumerate(peakTable):
         if peak["blended"] or ~simTable[n]["matched"]:
             continue
@@ -218,6 +350,19 @@ def calculateIsolatedFlux(filters, expDb, peakTable, simTable, fluxThresh=100):
                 displayImage(n, int(flux/simFlux*100), fidx, expDb)
 
 def calculateFluxPortion(expDb, peakTable):
+    """Calculate the flux portion for NMF deblends
+
+    Parameters
+    ----------
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+    peakTable: `astropy.table.Table` returned from `buildPeakTable`
+        Table with information about all of the peaks in an image, not just the parents
+
+    Returns
+    -------
+    None, this function updates the ``peakTable`` in place.
+    """
     for pk, peak in enumerate(peakTable):
         if peak["parent"] in expDb.deblendedParents:
             deblendedParent = expDb.deblendedParents[peak["parent"]]
@@ -227,6 +372,28 @@ def calculateFluxPortion(expDb, peakTable):
                 peakTable["flux_"+f][pk] = deblendedParent.peakFlux[fidx][peak["peakIdx"]]
 
 def calculateSedsFromFlux(tbl, filters, inPlace=True):
+    """Calculate the SED for each source
+
+    For each unblended source, use the flux in each band to calculate the normalized (to one) SED
+    for each source (row) in ``tbl``.
+
+    Parameters
+    ----------
+    tbl: `astropy.table.Table`
+        Table with flux measurements.
+    filters: list of strings
+        Names of filters used for each flux measurement.
+    inPlace: bool, default = ``True``
+        Whether or not to update the ``"sed"`` column in ``tbl`` in place,
+        or just return the value.
+
+    Returns
+    -------
+    seds: `numpy.ndarray`
+        List of seds for each row in ``tbl``.
+    normalization: `numpy.ndarry`
+        Normalization constant for each sources (row) SED, used to normalize the SED to one.
+    """
     fluxCols = ["flux_"+f for f in filters]
     shape = (len(tbl), len(fluxCols))
     seds = tbl[fluxCols].as_array().view(np.float64).reshape(shape)
@@ -237,6 +404,27 @@ def calculateSedsFromFlux(tbl, filters, inPlace=True):
     return seds, normalization
 
 def plotSedComparison(simTable, simSeds, deblendedTables, minFlux):
+    """Compare the SED from simulated data and various flux calculations
+
+    Using the results from a set of deblender results
+    (for example the new deblender templates, re-apportioned flux using the new deblender templates,
+    old deblender results, etc.), compare the SED's calculated using each method with the
+    simulated results.
+
+    Parameters
+    ----------
+    simTable: `astropy.table.Table`
+        The second object returned from `loadSimCatalog`, containing the true values of the simulated data.
+    simSeds: list of floats
+        SED or each source in ``simTable``.
+    deblendedTables: dict of `astropy.table.Table`
+        Dictionary with results using different deblending methods, where the keys of ``deblendedTables``
+        are the labels for each tables SED results in the final plot
+
+    Returns
+    -------
+    None
+    """
     matched = simTable["matched"]
     sed = simSeds[matched]
     goodFlux = simTable["flux_i"][matched]>minFlux
@@ -307,6 +495,31 @@ def plotSedComparison(simTable, simSeds, deblendedTables, minFlux):
     plt.show()
 
 def compareMeasToSim(simTables, deblendedTblDict, filters, minFlux=50):
+    """Compare deblended fluxes to simulated data
+
+    Using the results from a set of deblender results
+    (for example the new deblender templates, re-apportioned flux using the new deblender templates,
+    old deblender results, etc.), compare the flux calculated using each method with the simulated
+    results.
+
+    Parameters
+    ----------
+    simTable: `astropy.table.Table`
+        The second object returned from `loadSimCatalog`, containing the true values of the simulated data.
+    deblendedTblDict: dict of list of `astropy.table.Table`
+        Dictionary with results using different deblending methods, where the keys of ``deblendedTables``
+        are the labels for each tables SED results in the final plot and the values are a list of
+        tables, since the data often comes from multiple images.
+    filters: list of strings
+        Names of filters used for each flux measurement.
+    minFlux: float
+        Minimum flux for a source needed to be included in the statistics.
+
+    Returns
+    -------
+    deblendedTables: OrderedDict of `astropy.table.Table`
+        Combined table of all blends
+    """
     from astropy.table import vstack
 
     simTable = vstack(simTables)
@@ -385,6 +598,17 @@ def compareMeasToSim(simTables, deblendedTblDict, filters, minFlux=50):
 
 def checkForDegeneracy(expDb, minFlux=None, filterIdx=None):
     """Calculate the correlation for each pair of objects and store it in the parent deblends
+    
+    Parameters
+    ----------
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+    minFlux: float, default = ``None``
+        If ``filterIdx`` is not ``None`` and ``minFlux`` is not ``None``, this is the
+        minimum flux needed for a footprint to be displayed
+    filterIdx: string, default = ``None``
+        Index of the filter to use for displaying the image.
+        If ``filterIdx`` is ``None`` then the image is not displayed.
     """
     for parentIdx, parent in expDb.deblendedParents.items():
         logger.info("Parent {0}".format(parentIdx))
