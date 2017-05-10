@@ -809,7 +809,9 @@ def adapt_PSF(P, B, shape, threshold=1e-2):
     return P_
 
 
-def get_constraints(constraint, (px, py), (N, M), useNearest=True, fillValue=1):
+def get_constraints(constraint, peak, shape, useNearest=True, fillValue=1):
+    px, py = peak
+    N, M = shape
     """Get appropriate constraint operator
     """
     if constraint == " ":
