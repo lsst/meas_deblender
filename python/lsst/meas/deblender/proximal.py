@@ -236,7 +236,7 @@ class DeblendedParent:
             self.initNMF()
 
         # Set the variance for bad pixels to zero
-        maskPlane = self.calexps[0].getMaskedImage().getMask().getMaskPlaneDict().asdict()
+        maskPlane = self.calexps[0].getMaskedImage().getMask().getMaskPlaneDict()
         badPixels = (1<<maskPlane["BAD"] |
                      1<<maskPlane["CR"] |
                      1<<maskPlane["NO_DATA"] |
@@ -246,7 +246,7 @@ class DeblendedParent:
         import lsst.afw.image as afwImage
         import lsst.afw.detection as afwDetect
         fpMask = afwImage.MaskU(self.footprint.getBBox())
-        afwDetect.setMaskFromFootprint(fpMask, self.footprint, 1)
+        self.footprint.spans.setMask(fpMask, 1)
         fpMask = ~fpMask.getArray().astype(bool)
         
         mask = ((badPixels & self.mask) | fpMask).astype(bool)

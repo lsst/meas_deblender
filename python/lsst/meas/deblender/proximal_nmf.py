@@ -896,9 +896,10 @@ def adapt_PSF(P, B, shape, threshold=1e-2):
         P_.append(getPSFOp(P[b], shape, threshold=threshold))
     return P_
 
-def get_constraint_op(constraint, (N,M), useNearest=True):
+def get_constraint_op(constraint, shape, useNearest=True):
     """Get appropriate constraint operator
     """
+    N,M = shape
     if constraint == " ":
         return scipy.sparse.identity(N*M)
     elif constraint == "M":
