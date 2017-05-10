@@ -53,6 +53,54 @@ def getNoise(calexps):
         avgNoise.append(np.sqrt(stats.getValue(afwMath.MEDIAN)))
     return avgNoise
 
+def buildFootprintPeakTable(footprint, filters):
+    """Create a table of peak info to compare a single blend to simulated data
+    
+    Parameters
+    ----------
+    footprint: `lsst.meas.afw.detection.Footprint`
+        Footprint containing the peak catalog.
+    filters: list of strings
+        Names of filters used for each flux measurement
+    
+    Returns
+    -------
+    peakTable: `astropy.table.Table`
+        Table with parent ID, peak index (in the parent), (x,y) coordinates, if the object is blended,
+        peaks contained in the footprint, the parent footprint (containing the peak), and the flux in each
+        filter.
+    """
+    # Keep track of blended sources
+    if len(footprint.getPeaks())>=2:
+        blended = True
+    else:
+        blended = False
+    # Make a table of the peaks
+    parents = []
+    peakIdx = []
+    peaks = []
+    x = []
+    y = []
+    blends = []
+    footprints = []
+    fid = footprint.getId()
+    for pk, peak in enumerate(footprint.getPeaks()):
+        parents.append(fid)
+        peakIdx.append(pk)
+        peaks.append(peak)
+        x.append(peak.getIx())
+        y.append(peak.getIy())
+        blends.append(blended)
+        footprints.append(footprint)
+    # Create the peak Table
+    peakTable = ApTable([parents, peakIdx, x, y, blends, peaks, footprints],
+                        names=("parent", "peakIdx", "x", "y", "blended", "peak", "parent footprint"))
+    # Create empty columns to hold fluxes
+    for f in filters:
+        peakTable["flux_"+f] = np.nan
+    
+    return peakTable
+
 def buildPeakTable(expDb, filters):
     """Create a table of peak info to compare to simulated data
     
@@ -146,9 +194,20 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
     matchTable = simTable[idx]
     matchTable["matched"] = matched
     matchTable["distance"] = d2
-    matchTable[~matched] = [None]*len(matchTable.colnames)
     matchTable["duplicate"] = False
     matchTable["duplicate"][matched] = uniqueCounts[uniqueInv]>1
+    # Define zero values for unmatched sources
+    emptyPatch = np.zeros_like(matchTable["intensity_"+filters[0]][0])
+    emptySed = np.zeros_like(matchTable["sed"][0])
+    # Zero out unmatched source data
+    for fidx in filters:
+        matchTable["intensity_"+fidx][~matched] = emptyPatch
+        matchTable["sed"] = emptySed
+        matchTable["flux_"+fidx][~matched] = 0.0
+        matchTable["size"][~matched] = 0.0
+        matchTable["redshift"][~matched] = 0.0
+        matchTable["x"][~matched] = peakTable[~matched]["x"]
+        matchTable["y"][~matched] = peakTable[~matched]["y"]
 
     # Display information about undetected sources
     sidx = set(idx)
