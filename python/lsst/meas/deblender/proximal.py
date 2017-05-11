@@ -66,31 +66,13 @@ def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, di
     """
     idx = np.where(condition)[0][parentIdx]
     src = mergedDet[idx]
-    fp = src.getFootprint()
-    peaks = fp.getPeaks()
+    footprint = src.getFootprint()
+    peaks = footprint.getPeaks()
     
     if display:
-        bbox = fp.getBBox()
-        refBbox = calexps[0].getMaskedImage().getBBox()
-        
-        # Display the full color image
-        xSlice, ySlice = debUtils.getRelativeSlices(bbox, refBbox)
-        colors = debDisplay.imagesToRgb(calexps=calexps, filterIndices=filterIndices,
-                                        xRange=xSlice, yRange=ySlice,
-                                        contrast=contrast, adjustZero=adjustZero)
-        plt.imshow(colors)
-        
-        # Display the footprint border
-        border, filled = debUtils.getFootprintArray(src)
-        plt.imshow(border, interpolation='none', cmap='cool')
-
-        px = [peak.getIx()-bbox.getMinX() for peak in fp.getPeaks()]
-        py = [peak.getIy()-bbox.getMinY() for peak in fp.getPeaks()]
-        plt.plot(px, py, "cx")
-        plt.xlim(0,colors.shape[1]-1)
-        plt.ylim(colors.shape[0]-1, 0)
-        plt.show()
-    return fp, peaks
+        debDisplay.plotImgWithMarkers(calexps, footprint, filterIndices=filterIndices, contrast=contrast,
+                                      adjustZero=adjustZero, show=True)
+    return footprint, peaks
 
 def buildNmfData(calexps, footprint):
     """Build NMF data matrix
