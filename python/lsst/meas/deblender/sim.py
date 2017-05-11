@@ -149,7 +149,7 @@ def buildPeakTable(expDb, filters):
     return peakTable
 
 def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNoise=None,
-               display=True, calexp=None):
+               display=True, calexp=None, bbox=None):
     """Match a peakTable to the simulated Table
     
     Parameters
@@ -180,6 +180,11 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
         Table of 
     idx: `numpy.ndarray`
         Array of indices to match the simTable to the peakTable.
+    unmatchedTable: `astropy.table.Table`
+        Table of simulated sources not detected by the LSST stack.
+        In addition to the columns in ``simTable``, there is also a
+        column that lists the ratio of the ``flux/avgNoise`` in each
+        band to help determine why certain sources are undetected.
     """
     # Create arrays that scipy.spatial.cKDTree can recognize and find matches for each peak
     peakCoords = np.array(list(zip(peakTable['x'], peakTable['y'])))
@@ -210,10 +215,33 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
         matchTable["y"][~matched] = peakTable[~matched]["y"]
 
     # Display information about undetected sources
-    sidx = set(idx)
+    sidx = set(idx[matched])
     srange = set(range(len(simTable)))
-    unmatched = list(srange-sidx)
-    logger.info("Sources not detected: {0}".format(len(unmatched)))
+    unmatched = np.array(list(srange-sidx))
+    logger.info("Sources not detected: {0}\n".format(len(unmatched)))
+
+    # Store data for unmatched sources for later analysis
+    unmatchedTable = simTable[unmatched]
+    allRatios = OrderedDict([(f, []) for f in filters])
+    for sidx in unmatched:
+        ratios = []
+        for fidx,f in enumerate(filters):
+            ratio = np.max(simTable[sidx]["intensity_"+f])/avgNoise[fidx]
+            ratios.append(ratio)
+            allRatios[f].append(ratio)
+    for col, ratios in allRatios.items():
+        unmatchedTable["{0} peak/noise".format(col)] = ratios
+    
+    # Display the unmatched sources ratios
+    ratios = [f+" peak/noise" for f in filters]
+    all_ratios = np.array(unmatchedTable[ratios]).view(np.float64).reshape(len(unmatchedTable), len(ratios))
+    max_ratios = np.max(all_ratios, axis=1)
+    plt.plot(max_ratios, '.')
+    plt.xlabel("Source number")
+    plt.ylabel("peak flux/noise")
+    plt.xlim([-1, len(max_ratios)])
+    plt.title("Unmatched")
+    plt.show()
 
     if display:
         x = range(len(filters))
@@ -269,7 +297,7 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
                 plt.xlim([0, bbox.getWidth()])
                 plt.ylim([0, bbox.getHeight()])
                 plt.show()
-    return matchTable, idx
+    return matchTable, idx, unmatchedTable
 
 def deblendSimExposuresOld(filters, expDb, peakTable=None):
     """Use the old deblender to deblend an image
@@ -312,7 +340,7 @@ def deblendSimExposuresOld(filters, expDb, peakTable=None):
 
     return deblenderResults
 
-def displayImage(idx, ratio, fidx, expDb):
+def displayImage(parent, ratio, fidx, expDb):
     """Display an Image
 
     Called from `calculateIsolatedFlux` when an isolated source has an unusually large difference
@@ -320,8 +348,8 @@ def displayImage(idx, ratio, fidx, expDb):
 
     Parameters
     ----------
-    idx: int
-        Number of the peak in the `peakTable`
+    parent: int
+        Parent ID (in SourceCatalog)
     ratio: int
         ``100 *`` ``real flux``/``simulated flux`` for the source
     fidx: string
@@ -333,9 +361,7 @@ def displayImage(idx, ratio, fidx, expDb):
     -------
     None
     """
-    src = expDb.mergedDet[n]
-    if expDb.mergedTable["peaks"][n]>=2:
-        print("Multiple Peaks in image")
+    src = expDb.mergedDet[expDb.mergedTable["id"]==parent][0]
     mask = debUtils.getFootprintArray(src)[1].mask
     img = debUtils.extractImage(expDb.calexps[fidx].getMaskedImage(), src.getFootprint().getBBox())
     img = np.ma.array(img, mask=mask)
@@ -364,7 +390,7 @@ def calculateNmfFlux(expDb, peakTable):
                 template = deblendedParent.getTemplate(fidx, peak["peakIdx"])
                 peakTable["flux_"+f][pk] = np.sum(template)
 
-def calculateIsolatedFlux(filters, expDb, peakTable, simTable, fluxThresh=100):
+def calculateIsolatedFlux(filters, expDb, peakTable, simTable, avgNoise, fluxThresh=2, fluxRatio=0.5):
     """Calculate the flux of all isolated sources
     
     Get the flux for all of the sources in a ``peakTable`` not in a blend.
@@ -381,7 +407,7 @@ def calculateIsolatedFlux(filters, expDb, peakTable, simTable, fluxThresh=100):
     peakTable: `astropy.table.Table` returned from `buildPeakTable`
         Table with information about all of the peaks in an image, not just the parents
     simTable: `astropy.table.Table`
-        The second object returned from `loadSimCatalog`, containing the true values of the simulated data.
+        Result of ``match2Ref``, which matches the ``peakTable`` and simulated table.
     fluxThresh: int, default=100
         Minimum amount of flux an object must have to be flag a discrepancy in measured vs simulated flux.
 
@@ -402,11 +428,12 @@ def calculateIsolatedFlux(filters, expDb, peakTable, simTable, fluxThresh=100):
             peakTable["flux_"+f][n] = flux
             
             simFlux = simTable["flux_{0}".format(f)][n]
+            maxFlux = np.max(simTable["intensity_{0}".format(f)][n])
             # Display any sources with very large flux differences
-            # (this should be none, since these are )
-            if (flux/simFlux<.6 or simFlux/flux<.5) and simFlux>fluxThresh:
-                logger.info("n: {0}, Filter: {1}, simFlux: {2}, flux: {3}".format(n, f, simFlux, flux))
-                displayImage(n, int(flux/simFlux*100), fidx, expDb)
+            if np.abs(flux-simFlux)/simFlux>.5 and maxFlux/avgNoise[fidx]>fluxThresh:
+                logger.info("n: {0}, Filter: {1}, simFlux: {2}, max flux: {3}, total flux: {4}".format(
+                    n, f, simFlux, maxFlux, flux))
+                displayImage(peak["parent"], int(100*np.abs(flux-simFlux)/simFlux), fidx, expDb)
 
 def calculateFluxPortion(expDb, peakTable):
     """Calculate the flux portion for NMF deblends
