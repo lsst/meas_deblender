@@ -7,6 +7,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
+from . import utils as debUtils
+
 logging.basicConfig()
 logger = logging.getLogger("lsst.meas.deblender.display")
 
@@ -129,3 +131,43 @@ def maskPlot(img, mask=None, hideAxes=True, show=True, **kwargs):
     if show:
         plt.show()
     return plt
+
+def plotImgWithMarkers(calexps, footprint, filterIndices=None, contrast=100, adjustZero=False, show=True,
+                       ax=None, img_kwargs=None, footprint_kwargs=None, **plot_kwargs):
+    """Plot an RGB image with the footprint and peaks marked
+    
+    Use the bounding box of a footprint to extract image data from a set of calexps in a set of colors
+    and plot the image, with the outline of the footprint and the footprint peaks marked
+    """
+    if ax is None:
+        fig = plt.figure(figsize=(8,8))
+        ax = fig.add_subplot(1,1,1)
+    if img_kwargs is None:
+        img_kwargs = {}
+    if footprint_kwargs is None:
+        footprint_kwargs = {}
+    bbox = footprint.getBBox()
+    refBbox = calexps[0].getMaskedImage().getBBox()
+    
+    # Display the full color image
+    xSlice, ySlice = debUtils.getRelativeSlices(bbox, refBbox)
+    colors = imagesToRgb(calexps=calexps, filterIndices=filterIndices, xRange=xSlice, yRange=ySlice,
+                         contrast=contrast, adjustZero=adjustZero)
+    ax.imshow(colors, **img_kwargs)
+    
+    # Display the footprint border
+    border, filled = debUtils.getFootprintArray(footprint)
+    if "interpolation" not in footprint_kwargs:
+        footprint_kwargs["interpolation"] = "none"
+    if "cmap" not in footprint_kwargs:
+        footprint_kwargs["cmap"] = "cool"
+    ax.imshow(border, **footprint_kwargs)
+
+    px = [peak.getIx()-bbox.getMinX() for peak in footprint.getPeaks()]
+    py = [peak.getIy()-bbox.getMinY() for peak in footprint.getPeaks()]
+    ax.plot(px, py, "cx", mew=2, **plot_kwargs)
+    ax.set_xlim(0,colors.shape[1]-1)
+    ax.set_ylim(colors.shape[0]-1, 0)
+    if show:
+        plt.show()
+    return ax
