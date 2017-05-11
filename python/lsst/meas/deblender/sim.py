@@ -53,7 +53,7 @@ def getNoise(calexps):
         avgNoise.append(np.sqrt(stats.getValue(afwMath.MEDIAN)))
     return avgNoise
 
-def buildFootprintPeakTable(footprint, filters):
+def buildFootprintPeakTable(footprint, filters, sid=None):
     """Create a table of peak info to compare a single blend to simulated data
     
     Parameters
@@ -62,7 +62,9 @@ def buildFootprintPeakTable(footprint, filters):
         Footprint containing the peak catalog.
     filters: list of strings
         Names of filters used for each flux measurement
-    
+    sid: int, default=``None``
+        The source id from the `afw.table.SourceCatalog` that contains the footprint.
+
     Returns
     -------
     peakTable: `astropy.table.Table`
@@ -83,9 +85,10 @@ def buildFootprintPeakTable(footprint, filters):
     y = []
     blends = []
     footprints = []
-    fid = footprint.getId()
+    if sid is None:
+        sid = 0
     for pk, peak in enumerate(footprint.getPeaks()):
-        parents.append(fid)
+        parents.append(sid)
         peakIdx.append(pk)
         peaks.append(peak)
         x.append(peak.getIx())
@@ -340,7 +343,7 @@ def deblendSimExposuresOld(filters, expDb, peakTable=None):
 
     return deblenderResults
 
-def displayImage(parent, ratio, fidx, expDb):
+def displayImage(src, ratio, fidx, expDb):
     """Display an Image
 
     Called from `calculateIsolatedFlux` when an isolated source has an unusually large difference
@@ -361,9 +364,10 @@ def displayImage(parent, ratio, fidx, expDb):
     -------
     None
     """
-    src = expDb.mergedDet[expDb.mergedTable["id"]==parent][0]
     mask = debUtils.getFootprintArray(src)[1].mask
-    img = debUtils.extractImage(expDb.calexps[fidx].getMaskedImage(), src.getFootprint().getBBox())
+    if hasattr(src, 'getFootprint'):
+        src = src.getFootprint()
+    img = debUtils.extractImage(expDb.calexps[fidx].getMaskedImage(), src.getBBox())
     img = np.ma.array(img, mask=mask)
     plt.imshow(img)
     plt.title("Flux Difference: {0}%".format(ratio))
@@ -433,7 +437,7 @@ def calculateIsolatedFlux(filters, expDb, peakTable, simTable, avgNoise, fluxThr
             if np.abs(flux-simFlux)/simFlux>.5 and maxFlux/avgNoise[fidx]>fluxThresh:
                 logger.info("n: {0}, Filter: {1}, simFlux: {2}, max flux: {3}, total flux: {4}".format(
                     n, f, simFlux, maxFlux, flux))
-                displayImage(peak["parent"], int(100*np.abs(flux-simFlux)/simFlux), fidx, expDb)
+                displayImage(peak["parent footprint"], int(100*np.abs(flux-simFlux)/simFlux), fidx, expDb)
 
 def calculateFluxPortion(expDb, peakTable):
     """Calculate the flux portion for NMF deblends
