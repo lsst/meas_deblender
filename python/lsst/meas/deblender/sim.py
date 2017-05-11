@@ -302,6 +302,39 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
                 plt.show()
     return matchTable, idx, unmatchedTable
 
+def deblendFootprintOld(filters, expDb, footprint, peakTable=None):
+    """Use the old deblender to deblend a single ``Footprint``
+
+    Parameters
+    ----------
+    filters: list of strings
+        Names of filters used for each flux measurement
+    expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
+        Object containing all blended objects and catalogs for a ``calexp``.
+    peakTable: `astropy.table.Table` returned from `buildPeakTable`, default=None
+        Table with information about all of the peaks in an image, not just the parents.
+        This table is not needed for the old deblender but is updated in place if it is specified.
+
+    Result
+    ------
+    deblenderResults: OrderedDict of `lsst.meas.deblender.baseline.DeblenderResult`s
+        Dictionary of results obtained by running the old deblender on all of the footprints in ``expDb``.
+    """
+    plugins = baseline.DEFAULT_PLUGINS
+    maskedImages = [calexp.getMaskedImage() for calexp in expDb.calexps]
+    psfs = [calexp.getPsf() for calexp in expDb.calexps]
+    fwhm = [psf.computeShape().getDeterminantRadius() * 2.35 for psf in psfs]
+    footprints = [footprint]*len(expDb.calexps)
+    deblenderResult = baseline.newDeblend(plugins, footprints, maskedImages, psfs, fwhm, filters=filters)
+
+    if peakTable is not None:
+        for p,peak in enumerate(deblenderResult.peaks):
+            cuts = (peakTable["peakIdx"]==p)
+            for f in filters:
+                fluxPortion = peak.deblendedPeaks[f].fluxPortion.getImage().getArray()
+                peakTable["flux_"+f][cuts] = np.sum(fluxPortion)
+    return deblenderResult
+
 def deblendSimExposuresOld(filters, expDb, peakTable=None):
     """Use the old deblender to deblend an image
 
@@ -311,8 +344,9 @@ def deblendSimExposuresOld(filters, expDb, peakTable=None):
         Names of filters used for each flux measurement
     expDb: `lsst.meas.deblender.proximal.ExposureDeblend`
         Object containing all blended objects and catalogs for a ``calexp``.
-    peakTable: `astropy.table.Table` returned from `buildPeakTable`
-        Table with information about all of the peaks in an image, not just the parents
+    peakTable: `astropy.table.Table` returned from `buildPeakTable`, default=None
+        Table with information about all of the peaks in an image, not just the parents.
+        This table is not needed for the old deblender but is updated in place if it is specified.
 
     Result
     ------
