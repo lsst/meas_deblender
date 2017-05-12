@@ -444,7 +444,7 @@ def displayImage(src, ratio, fidx, expDb):
     plt.title("Flux Difference: {0}%".format(ratio))
     plt.show()
 
-def displayODBTemplates(footprint, deblenderResult, apportioned=False, **kwargs):
+def getODBTemplates(footprint, deblenderResult, apportioned=False, display=True, **kwargs):
     """Display templates from the old deblender for a single blend
     
     Parameters
@@ -468,6 +468,7 @@ def displayODBTemplates(footprint, deblenderResult, apportioned=False, **kwargs)
     shape = (height, width)
 
     # Dislay 
+    allTemplates = np.zeros((len(footprint.peaks), len(deblenderResult.deblendedParents), height, width))
     for pk in range(len(deblenderResult.peaks)):
         images = np.zeros((deblenderResult.filterCount, shape[0], shape[1]))
         for fidx, f in enumerate(deblenderResult.deblendedParents.keys()):
@@ -486,7 +487,9 @@ def displayODBTemplates(footprint, deblenderResult, apportioned=False, **kwargs)
             pymax = pymin + bbox.getHeight()
             images[fidx, pymin:pymax, pxmin:pxmax] = img.getArray()
         images = np.array(images)
+        allTemplates[pk] = images
         debDisplay.plotColorImage(images, **kwargs)
+    return allTemplates
 
 def calculateNmfFlux(expDb, peakTable):
     """Calculate the flux for each object in a peakTable
@@ -850,3 +853,17 @@ def checkForDegeneracy(expDb, minFlux=None, filterIdx=None):
         plt.title("Correlation between peak templates")
         plt.colorbar()
         plt.show()
+
+def calculateOverlaps(templates):
+    """Calculate the overlap between each pair of templates
+    """
+    K = len(templates)
+    t2 = templates**2
+    if len(tempaltes.shape)==3:
+        sumT2 = np.sum(t2, axis=(1,2))
+    else:
+        sumT2 = np.sum(t2)
+    overlap = {}
+    for n in range(K-2):
+        for m in range(n+1, K):
+            overlap[(n,m)] = t2[n]*t2[m]/(sumT2[n]*sumT2[n])
