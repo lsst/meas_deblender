@@ -444,7 +444,7 @@ def displayImage(src, ratio, fidx, expDb):
     plt.title("Flux Difference: {0}%".format(ratio))
     plt.show()
 
-def displayODBTemplates(footprint, deblenderResult, apportioned=False):
+def displayODBTemplates(footprint, deblenderResult, apportioned=False, **kwargs):
     """Display templates from the old deblender for a single blend
     
     Parameters
@@ -453,7 +453,8 @@ def displayODBTemplates(footprint, deblenderResult, apportioned=False):
         Parent `Footprint` containing the blend.
     deblenderResult: `lsst.meas.deblender.DeblenderResult`
         Result from using the old deblender
-    
+    kwargs: keyword arguments
+        Keyword arguments passed to `meas_deblender.display.plotColorImage`
     Returns
     -------
     None
@@ -485,7 +486,7 @@ def displayODBTemplates(footprint, deblenderResult, apportioned=False):
             pymax = pymin + bbox.getHeight()
             images[fidx, pymin:pymax, pxmin:pxmax] = img.getArray()
         images = np.array(images)
-        debDisplay.plotColorImage(images)
+        debDisplay.plotColorImage(images, **kwargs)
 
 def calculateNmfFlux(expDb, peakTable):
     """Calculate the flux for each object in a peakTable
