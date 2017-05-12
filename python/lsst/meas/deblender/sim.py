@@ -854,16 +854,48 @@ def checkForDegeneracy(expDb, minFlux=None, filterIdx=None):
         plt.colorbar()
         plt.show()
 
-def calculateOverlaps(templates):
-    """Calculate the overlap between each pair of templates
+def calculateOverlaps(templates, addSymmetric=False):
+    """Calculate the overlap between each pair of templates.
+    
+    Parameters
+    ----------
+    templates: `numpy.ndarray`
+        Either a 4 dimensional array (peak, band, y, x) or a 3D array (peak, y,x) of templates,
+        used to calculate the overlap. If dimension=4, then the overlap is calculated for each band.
+    addSymmetric: bool, default=``True``
+        Whether or not to add reversed indices.
+        For example: for 3 peaks the indices are ``[](0,1), (0,2), (1,2)]``; but if ``addSymmetric=True``,
+        then ``overlap`` will also contain ``[(1,0), (2,0), (2,1)]``.
+
+    Returns
+    -------
+    overlap: dict
+        Dictionary of peak indices for each overlap calculation.
     """
-    K = len(templates)
+    peakCount = len(templates)
+    # Only calculate the square of each template and its sum once for each peak
     t2 = templates**2
-    if len(tempaltes.shape)==3:
-        sumT2 = np.sum(t2, axis=(1,2))
+    if len(templates.shape)==4:
+        sumT2 = np.sum(t2, axis=(2,3))
+        bands = len(templates[0])
     else:
-        sumT2 = np.sum(t2)
+        sumT2 = np.sum(t2, axis=(1,2))
+        bands = 1
+    # Calculate the overlap for each pair of templates
     overlap = {}
-    for n in range(K-2):
-        for m in range(n+1, K):
-            overlap[(n,m)] = t2[n]*t2[m]/(sumT2[n]*sumT2[n])
+    for n in range(peakCount-1):
+        for m in range(n+1, peakCount):
+            if np.all(sumT2[n]>0) and np.all(sumT2[m]>0):
+                if bands>1:
+                    overlap[(n,m)] = np.sum(t2[n]*t2[m]/(sumT2[n]*sumT2[m])[:,np.newaxis,np.newaxis],
+                                            axis=(1,2))
+                else:
+                    overlap[(n,m)] = np.sum(t2[n]*t2[m]/(sumT2[n]*sumT2[m]))
+                
+            else:
+                overlap[(n,m)] = 0
+    # Add the symmetric indices
+    if addSymmetric:
+        for k, v in list(overlap.items()):
+            overlap[k[::-1]] = v
+    return overlap
