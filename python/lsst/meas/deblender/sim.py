@@ -488,6 +488,7 @@ def getODBTemplates(footprint, deblenderResult, apportioned=False, display=True,
             images[fidx, pymin:pymax, pxmin:pxmax] = img.getArray()
         images = np.array(images)
         allTemplates[pk] = images
+
         debDisplay.plotColorImage(images, **kwargs)
     return allTemplates
 
@@ -884,7 +885,7 @@ def calculateOverlaps(templates, addSymmetric=False, sumOverlap=True):
         sumT2 = np.sum(t2, axis=(1,2))
         bands = 1
     # Calculate the overlap for each pair of templates
-    overlap = {}
+    overlap = OrderedDict()
     for n in range(peakCount-1):
         for m in range(n+1, peakCount):
             if np.all(sumT2[n]>0) and np.all(sumT2[m]>0):
