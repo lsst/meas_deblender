@@ -25,7 +25,7 @@ logger = logging.getLogger("lsst.meas.deblender.proximal")
 
 def loadCalExps(filters, filename):
     """Load calexps for testing the deblender.
-    
+
     This function is only for testing and will be removed before merging.
     Given a list of filters and a filename template, load a set of calibrated exposures.
     """
@@ -42,7 +42,7 @@ def loadCalExps(filters, filename):
 
 def loadMergedDetections(filename):
     """Load mergedDet catalog ``filename``
-    
+
     This function is for testing only and will be removed before merging.
     """
     mergedDet = afwTable.SourceCatalog.readFits(filename)
@@ -61,38 +61,37 @@ def loadMergedDetections(filename):
     return mergedDet, mergedTable
 
 def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, display=True,
-                       filterIndices=None, contrast=100, adjustZero=True):
+                       filterIndices=None, Q=8):
     """Load the parent footprint and peaks, and (optionally) display the image and footprint border
     """
     idx = np.where(condition)[0][parentIdx]
     src = mergedDet[idx]
     footprint = src.getFootprint()
     peaks = footprint.getPeaks()
-    
+
     if display:
-        debDisplay.plotImgWithMarkers(calexps, footprint, filterIndices=filterIndices, contrast=contrast,
-                                      adjustZero=adjustZero, show=True)
+        debDisplay.plotImgWithMarkers(calexps, footprint, filterIndices=filterIndices, Q=Q, show=True)
     return footprint, peaks
 
 def buildNmfData(calexps, footprint):
     """Build NMF data matrix
-    
+
     Given an ordered dict of exposures in each band,
     create a matrix with rows as the image pixels in each band.
-    
+
     Eventually we will also want to mask pixels, but for now we ignore masking.
     """
     # Since these are calexps, they should all have the same x0, y0 (initial pixel positions)
     x0 = calexps[0].getX0()
     y0 = calexps[0].getY0()
-    
+
     bbox = footprint.getBBox()
     xmin = bbox.getMinX()-x0
     xmax = xmin+bbox.getWidth()
     ymin = bbox.getMinY()-y0
     ymax = ymin+bbox.getHeight()
     bandCount = len(calexps)
-    
+
     # Add the image in each filter as a row in data
     data = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.float64)
     mask = np.zeros((bandCount, bbox.getHeight(), bbox.getWidth()), dtype=np.int64)
@@ -102,13 +101,13 @@ def buildNmfData(calexps, footprint):
         data[n] = img[ymin:ymax, xmin:xmax]
         mask[n] = m[ymin:ymax, xmin:xmax]
         variance[n] = var[ymin:ymax, xmin:xmax]
-    
+
     return data, mask, variance
 
 def compareMeasToSim(footprint, seds, intensities, Tx, Ty, realTable, filters, vmin=None, vmax=None,
                      display=False, poolSize=-1, psfOp=None, fluxPortions=None):
     """Compare measurements to simulated "true" data
-    
+
     If running nmf on simulations, this matches the detections to the simulation catalog and
     compares the measured flux of each object to the simulated flux.
     """
@@ -117,9 +116,9 @@ def compareMeasToSim(footprint, seds, intensities, Tx, Ty, realTable, filters, v
     kdtree = scipy.spatial.cKDTree(simCoords)
     d2, idx = kdtree.query(peakCoords, n_jobs=poolSize)
     shape = (footprint.getBBox().getHeight(), footprint.getBBox().getWidth())
-    
+
     logger.info("Matching indices: {0}".format(idx))
-    
+
     for k in range(len(seds[0])):
         logger.info("Object {0} at ({1},{2}) or exactly ({3},{4})".format(
             k, footprint.getPeaks()[k].getIx(),footprint.getPeaks()[k].getIy(),
@@ -162,7 +161,7 @@ class DeblendedParent:
         self.peaks = peaks
         self.shape = (self.bbox.getHeight(), self.bbox.getWidth())
         self.usePsf = usePsf
-        
+
         # Get the position of the peaks
         # (needed by Peters code to calculate the initial matrices)
         x0 = self.calexps[0].getX0()
@@ -171,7 +170,7 @@ class DeblendedParent:
         ymin = self.bbox.getMinY()
         peaks = [(pk.getIx()-xmin, pk.getIy()-ymin) for pk in self.peaks]
         self.peakCoords = peaks
-        
+
         # Initialize attributes to be assigned later
         self.data = None
         self.mask = None
@@ -187,16 +186,16 @@ class DeblendedParent:
         self.peakFlux = None
         self.correlations = None
 
-    def initNMF(self, filterIndices=None, contrast=100, adjustZero=True, usePsf=None):
+    def initNMF(self, filterIndices=None, Q=8, usePsf=None):
         """Initialize the parameters needed for NMF deblending and (optionally) display the results
         """
         from . import proximal_nmf
-        
+
         if usePsf is not None:
             self.usePsf = usePsf
         else:
             usePsf = self.usePsf
-        
+
         # Create the data matrices
         self.data, self.mask, self.variance = buildNmfData(self.calexps, self.footprint)
         return self.data, self.mask, self.variance, self.initSeds, self.initIntensities
@@ -230,14 +229,14 @@ class DeblendedParent:
         fpMask = afwImage.MaskU(self.footprint.getBBox())
         self.footprint.spans.setMask(fpMask, 1)
         fpMask = ~fpMask.getArray().astype(bool)
-        
+
         mask = ((badPixels & self.mask) | fpMask).astype(bool)
         variance = np.copy(self.variance)
         variance[mask] = 0
         data = self.data.copy()
-        data[mask] = 0
+        #data[mask] = 0
         debDisplay.maskPlot(data[0], data[0]==0)
-        
+
         if peakCoords is None:
             peakCoords = self.peakCoords
         elif recenterPeaks:
@@ -270,7 +269,7 @@ class DeblendedParent:
             # Show information about the fit
             for fidx, f in enumerate(self.filters):
                 model = proximal_nmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
-                
+
                 diff = (model-self.data)[fidx].reshape(self.shape)
                 logger.info('Filter {0}'.format(f))
                 logger.info('Pixel range: {0} to {1}'.format(np.min(self.data), np.max(self.data)))
@@ -286,7 +285,7 @@ class DeblendedParent:
             for pk in range(len(intensities)):
                 templates = np.array([self.getTemplate(n, pk) for n in range(len(self.calexps))])
                 debDisplay.plotColorImage(images=templates, filterIndices=filterIndices,
-                                          contrast=contrast, adjustZero=adjustZero, figsize=(5,5))
+                                          Q=8, figsize=(5,5))
             debDisplay.plotSeds(seds)
             plt.imshow(diff, interpolation='none', cmap='inferno')
             plt.colorbar()
@@ -295,7 +294,7 @@ class DeblendedParent:
         return seds, intensities
 
     def getTemplate(self, fidx, pkIdx, seds=None, intensities=None, Tx=None, Ty=None):
-        """Apply the SED to the intensities to get the template for a given filter
+        """Get the convolved image for a given peak in a given band
         """
         if seds is None:
             seds = self.seds
@@ -310,6 +309,17 @@ class DeblendedParent:
         else:
             psfOp = None
         return proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=self.shape, k=pkIdx)[fidx]
+
+    def getAllTemplates(self, seds=None, intensities=None, Tx=None, Ty=None):
+        """Get the convolved image for each peak in each band
+        """
+        if seds is None:
+            seds = self.seds
+        templates = np.zeros((seds.shape[1], seds.shape[0], self.shape[0], self.shape[1]))
+        for pk in range(seds.shape[1]):
+            for fidx in range(seds.shape[0]):
+                templates[pk, fidx] = self.getTemplate(fidx, pk, seds, intensities, Tx, Ty)
+        return templates
 
     def displayImage(self, pkIdx, fidx=0, imgType='template', useMask=True, cutoff=None, seds=None,
                         intensities=None, imgLimits=False, cmap='inferno', **displayKwargs):
@@ -349,7 +359,7 @@ class DeblendedParent:
         seds = np.max(self.seds, axis=0)
         intensities = (self.intensities.T*seds).T
         self.intensities[intensities<cutoff] = 0
-    
+
     def getFluxPortion(self):
         """Use the deblended models to apportion the flux data to all sources
         """
@@ -386,7 +396,7 @@ class DeblendedParent:
 
     def getCorrelations(self, minFlux=None):
         """Calculate the correlation between two footprints
-        
+
         LSST Footprints will not be added to the NMF deblender until after the new footprints
         are merged with master. Until then, users can specify ``minFlux``, which will clip the
         "footprint" to regions with flux above ``minFlux``.
@@ -395,7 +405,7 @@ class DeblendedParent:
         if minFlux is not None:
             intensities[intensities<minFlux] = 0
         totalIntensity = np.sum(intensities, axis=(1,2))
-        
+
         peakCount = len(self.peaks)
         correlations = np.zeros((peakCount, peakCount))
         for i in range(peakCount-1):
@@ -405,7 +415,7 @@ class DeblendedParent:
                     correlations[i,j] = np.sum(intensities[i]*intensities[j])/norm
         self.correlations = correlations
         return correlations
-        
+
         templates = [self.getTemplate(0, pk) for pk in range(len(self.peaks))]
         if minFlux is not None:
             for n, t in enumerate(templates):
@@ -417,7 +427,7 @@ class DeblendedParent:
                 norm = np.sum(templates[i])*np.sum(templates[j])
                 if norm>0:
                     degenerateFlux[i,j] = np.sum(templates[i]*templates[j])/norm
-        
+
         self.correlations = degenerateFlux
         return degenerateFlux
 
@@ -496,7 +506,7 @@ class ExposureDeblend:
 
         # Load Images and Catalogs
         self.loadFiles(imgFilename, mergedDetFilename, simFilename)
-    
+
     def loadFiles(self, imgFilename=None, mergedDetFilename=None, simFilename=None):
         """Load images in each filter, the merged catalog and (optionally) a sim catalog
         """
@@ -515,11 +525,11 @@ class ExposureDeblend:
         # initialize the psf operator)
         #self.psfs = [psf.computeImage().getArray()/np.max(psf.computeImage().getArray()) for psf in expPsfs]
         self.psfs = [psf.computeImage().getArray() for psf in expPsfs]
-    
+
     def getParentFootprint(self, parentIdx=0, condition=None, display=True,
-                           filterIndices=None, contrast=100, adjustZero=True):
+                           filterIndices=None, Q=8):
         """Get the parent footprint, peaks, and (optionally) display them
-        
+
         ``parentIdx`` is the index of the parent footprint in ``self.mergedTable[condition]``, where
         condition is some array or index used to select some subset of the catalog, for example
         ``self.mergedTable["peaks"]>0``.
@@ -528,12 +538,11 @@ class ExposureDeblend:
             condition = np.ones((len(self.mergedTable),), dtype=bool)
         # Load the footprint and peaks for parent[parentIdx]
         footprint, peaks = getParentFootprint(self.mergedTable, self.mergedDet, self.calexps,
-                                              condition, parentIdx, display, filterIndices, contrast,
-                                              adjustZero)
+                                              condition, parentIdx, display, filterIndices, Q)
         return footprint, peaks
-    
+
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False, constraints="MS",
-                      maxiter=50, filterIndices=None, contrast=100, adjustZero=False, **kwargs):
+                      maxiter=50, filterIndices=None, Q=8, **kwargs):
         """Deblend a single parent footprint
 
         Deblend a parent selected by passing a ``parentIdx`` and ``condition``
@@ -542,12 +551,12 @@ class ExposureDeblend:
         maximum number of iterations (maxiter) for each step in the ADMM algorithm.
         """
         footprint, peaks = self.getParentFootprint(parentIdx, condition, display,
-                                                   filterIndices, contrast, adjustZero)
+                                                   filterIndices, Q)
         deblend = DeblendedParent(self, footprint, peaks)
-        deblend.initNMF(initPsf, filterIndices, contrast, adjustZero)
+        deblend.initNMF(initPsf, filterIndices, Q)
         deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
-    
+
     def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
@@ -557,4 +566,3 @@ class ExposureDeblend:
                 result = self.deblendParent(parentIdx, condition, initPsf,
                                             constraints=constraints, maxiter=maxiter, **kwargs)
                 self.deblendedParents[src.getId()] = result
-    

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 def getFootprintArray(src):
     """Get the border and filled in arrays of a footprint
-    
+
     Extracting the mask is currently implemented in ``Footprints``, but since this functionality has
     been moved to ``SpanSet``s we will fix it later.
     """
@@ -21,10 +21,10 @@ def getFootprintArray(src):
     minY = bbox.getMinY()
     filled = np.ma.array(np.zeros((bbox.getHeight(), bbox.getWidth()), dtype=bool))
     border = np.ma.array(np.zeros((bbox.getHeight(), bbox.getWidth()), dtype=bool))
-    
+
     if filled.shape[0]==0:
         return border, filled
-    
+
     for n,span in enumerate(spans):
         y = span.getY();
         filled[y-minY, span.getMinX()-minX:span.getMaxX()-minX] = 1
@@ -40,7 +40,7 @@ def getFootprintArray(src):
 
 def zscale(img, contrast=0.25, samples=500):
     """Calculate minimum and maximum pixel values based on the image
-    
+
     From RHL, via Bob
     """
     ravel = img.ravel()
@@ -52,7 +52,7 @@ def zscale(img, contrast=0.25, samples=500):
     n = len(imsort)
     idx = np.arange(n)
 
-    med = imsort[n/2]
+    med = imsort[int(n/2)]
     w = 0.25
     i_lo, i_hi = int((0.5-w)*n), int((0.5+w)*n)
     p = np.polyfit(idx[i_lo:i_hi], imsort[i_lo:i_hi], 1)

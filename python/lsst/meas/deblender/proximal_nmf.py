@@ -139,7 +139,7 @@ def delta_data(A, S, Y, Gamma, D, W=1):
     """
     import matplotlib
     import matplotlib.pyplot as plt
-    
+
     B,K,N = A.shape[0], A.shape[1], S.shape[1]
     # We need to calculate the model for each source individually and sum them
     model = np.zeros((B,N))
@@ -148,13 +148,13 @@ def delta_data(A, S, Y, Gamma, D, W=1):
             model[b] += A[b,pk]*Gamma[pk][b].dot(S[pk])
         #plt.imshow(A[b,pk]*Gamma[pk][b].dot(S[pk]).reshape(71,104))
         #plt.show()
-    
+
     #plt.imshow(model[2].reshape(71,104))
     #plt.title("model")
     #plt.show()
-    
+
     diff = W*(model-Y)
-    
+
     if D == 'S':
         result = np.zeros((K,N))
         for pk in range(K):
@@ -223,7 +223,7 @@ def APGM(X, prox, step, e_rel=1e-6, max_iter=1000):
 
 def check_NMF_convergence(it, newX, oldX, e_rel, K, min_iter=10):
     """Check the that NMF converges
-    
+
     Uses the check from Langville 2014, Section 5, to check if the NMF
     deblender has converged
     """
@@ -236,7 +236,7 @@ def check_NMF_convergence(it, newX, oldX, e_rel, K, min_iter=10):
 
 def get_variable_errors(A, AX, Z, U, e_rel):
     """Get the errors in a single multiplier method step
-    
+
     For a given linear operator A, (and its dot product with X to save time),
     calculate the errors in the prime and dual variables, used by the
     Boyd 2011 Section 3 stopping criteria.
@@ -250,7 +250,7 @@ def get_variable_errors(A, AX, Z, U, e_rel):
 
 def get_linearization(C, X, Z, U):
     """Get the quadratic regularization term for a linear operator
-    
+
     Using the method of augmented Lagrangians requires a quadratic regularization used
     to updated the X matrix in ADMM. This method calculates those terms.
     """
@@ -305,10 +305,10 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
 
 def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constraints):
     """Update the prime and dual variables for multiple linear constraints
-    
+
     Both SDMM and GLMM require the same method of updating the prime and dual
     variables for the intensity matrix linear constraints.
-    
+
     """
     linearization = [step_f/proxSteps[i] * get_linearization(c, X, Y[i], Z[i])
                      for i, c in enumerate(constraints)]
@@ -328,7 +328,7 @@ def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constrain
 
 def test_multiple_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constraints, e_rel):
     """Calculate if all constraints have converged
-    
+
     Using the stopping criteria from Boyd 2011, Sec 3.3.1, calculate whether the
     variables for each constraint have converged.
     """
@@ -349,10 +349,10 @@ def test_multiple_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constr
 
 def SDMM(X0, prox_f, step_f, prox_g, step_g, constraints, max_iter=1000, e_rel=1e-3):
     """Implement Simultaneous-Direction Method of Multipliers
-    
+
     This implements the SDMM algorithm derived from Algorithm 7.9 from Combettes and Pesquet (2009),
     Section 4.4.2 in Parikh and Boyd (2013), and Eq. 2.2 in Andreani et al. (2007).
-    
+
     In Combettes and Pesquet (2009) they use a matrix inverse to solve the problem.
     In our case that is the inverse of a sparse matrix, which is no longer sparse and too
     costly to implement.
@@ -360,11 +360,11 @@ def SDMM(X0, prox_f, step_f, prox_g, step_g, constraints, max_iter=1000, e_rel=1
     using Algorithm 7.9 directly still does not yield the correct result,
     as the treatment of penalties due to constraints are on equal footing with our likelihood
     proximal operator and require a significant change in the way we calculate step sizes to converge.
-    
+
     Instead we calculate the constraint vectors (as in SDMM) but extend the update of the ``X`` matrix
     using a modified version of the ADMM X update function (from Parikh and Boyd, 2009),
     using an augmented Lagrangian for multiple linear constraints as given in Andreani et al. (2007).
-    
+
     In the language of Combettes and Pesquet (2009), constraints = list of Li,
     proxOps = list of ``prox_{gamma g i}``.
     """
@@ -420,7 +420,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
         W_max = W.max()
     else:
         W = W_max = 1
-    
+
     # Initialize the translation operators
     Tx = []
     Ty = []
@@ -431,7 +431,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
         tx, ty, _ = getTranslationOp(dx, dy, shape, threshold=1e-8)
         Tx.append(tx)
         Ty.append(ty)
-    
+
     # TODO: This is only temporary until we fit for dx, dy
     G = []
     for pk in range(K):
@@ -443,7 +443,7 @@ def GLMM(shape, data, X10, X20, peaks, W, P,
                 g = Ty[pk].dot(P[b].dot(Tx[pk]))
                 gamma.append(g)
         G.append(gamma)
-    
+
     # Evaluate the solution
     logger.info("Beginning Loop")
 
@@ -513,7 +513,7 @@ def lipschitz_const(M):
 
 def getSymmetryOp(shape):
     """Create a linear operator to symmetrize an image
-    
+
     Given the ``shape`` of an image, create a linear operator that
     acts on the flattened image to return its symmetric version.
     """
@@ -762,7 +762,7 @@ def getPSFOp(psfImg, imgShape, threshold=1e-2):
 
 def getTranslationOp(deltaX, deltaY, shape, threshold=1e-8):
     """ Operator to translate an image by deltaX, deltaY pixels
-    
+
     deltaX and deltaY can both be real numbers, which uses a linear interpolation to
     shift the peak by a fractional pixel amount.
     """
@@ -926,7 +926,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         P_ = P
     else:
         P_ = adapt_PSF(P, B, (N,M), threshold=psf_thresh)
-    
+
     logger.info("Shape: {0}".format((N,M)))
 
     # init matrices
