@@ -906,3 +906,84 @@ def calculateOverlaps(templates, addSymmetric=False, sumOverlap=True):
         for k, v in list(overlap.items()):
             overlap[k[::-1]] = v
     return overlap
+
+def getSimTemplates(simTable, filters):
+    """Extract template image from a simTable
+
+    Parameters
+    ----------
+    simTable: `astropy.table.Table`
+        A table that has been matched with a `peakTable`
+    filters: list of strings
+        Names of filters used for each flux measurement
+
+    Returns
+    -------
+    simTemplates: `numpy.ndarray`
+        4D array of templates: (band number, peak number, y, x), the image of a
+        peak in each filter.
+    """
+    width = int(np.sqrt(simTable["intensity_{0}".format(filters[0])][0].shape[0]))
+    shape = (width, width)
+    simTemplates = np.zeros((len(simTable), len(filters), width, width))
+    for pk in range(len(simTable)):
+        for fidx,f in enumerate(filters):
+            simTemplates[pk, fidx] = simTable["intensity_"+f][pk].reshape(width, width)
+    return simTemplates
+
+def compareOverlap(simTemplates, debTemplates, show=True, fidx=0):
+    """Compare the overlapping intensities between two sources
+
+    Parameters
+    ----------
+    simTemplates: `numpy.ndarray`
+        4D array, with indices (band, peak, y, x), which gives the image for each
+        source, in each band.
+    debTemplates: `numpy.ndarray`
+        Either a 4D result from the deblender (band, peak, y, x).
+
+    Result
+    ------
+    simOverlapSum: `OrderedDict`
+        Overlap for each pair of peaks. The keys of the ``OrderedDict`` are tuples of
+        peak numbers, so that ``(0,1)`` is the overlap of peaks ``0`` and ``1``.
+        The value is a list that contains the overlap in each filter.
+    debOverlapSum: `OrderedDict`
+        Overlap for each pair of peaks in the ``debTemplate``s.
+    """
+    # Get the total overlap for each pair
+    simOverlapSum = calculateOverlaps(simTemplates, sumOverlap=True)
+    debOverlapSum = calculateOverlaps(debTemplates, sumOverlap=True)
+    # Plot the overlap for each pair of peaks
+    for peakPair in simOverlapSum:
+        simSum = simOverlapSum[peakPair]
+        debSum = debOverlapSum[peakPair]
+        diff = debSum-simOverlapSum[peakPair]
+        plt.loglog(simSum, debSum, '.-', mew=2, label=peakPair)
+    plt.xlabel("Simulated Overlap")
+    plt.ylabel("Measured Overlap")
+    x = [np.min([s for _,s in simOverlapSum.items()]), np.max([s for _,s in simOverlapSum.items()])]
+    plt.plot(x,x, 'r')
+    plt.show()
+    if show:
+        simOverlap = calculateOverlaps(simTemplates, sumOverlap=False)
+        debOverlap = calculateOverlaps(debTemplates, sumOverlap=False)
+        radiusX = int(.5*(debOverlap[(0,1)][fidx].shape[1]-1))
+        radiusY = int(.5*(debOverlap[(0,1)][fidx].shape[0]-1))
+        for oidx in simOverlap:
+            logger.info("Overlap between {0} and {1}".format(oidx[0], oidx[1]))
+            simImg = simOverlap[oidx]
+            #print(np.unravel_index(np.argmax(simImg[0]), simImg[0].shape))
+            py, px = np.unravel_index(np.argmax(simImg[0]), simImg[0].shape)
+            simImg = simImg[fidx][py-radiusY:py+radiusY+1, px-radiusX:px+radiusX+1]
+            fig = plt.figure(figsize=(12,4))
+            ax1 = fig.add_subplot(1,2,1)
+            ax1.set_title("Total: {0:.1e}".format(simOverlapSum[oidx][fidx]))
+            p1 = ax1.imshow(simImg)
+            ax2 = fig.add_subplot(1,2,2)
+            ax2.set_title("Total: {0:.1e}".format(debOverlapSum[oidx][fidx]))
+            p2 = ax2.imshow(debOverlap[oidx][fidx])
+            fig.colorbar(p1, ax=ax1)
+            fig.colorbar(p2, ax=ax2)
+            plt.show()
+    return simOverlapSum, debOverlapSum

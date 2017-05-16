@@ -74,17 +74,23 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
         xSlice = xRange
     # Select the subset of 3 images to use for the RGB image
     images = images[filterIndices,ySlice, xSlice]
-    colors = rgb.AsinhZScaleMapping(images, **kwargs)
+    images = images.astype(np.float32)
+    print(images.shape, images.dtype)
+    try:
+        colors = rgb.AsinhZScaleMapping(images, **kwargs)
+    except:
+        logger.warning("Could not use ZScale, using  AsinhMapping with scaling")
+        colors = rgb.AsinhMapping(np.min(images), np.max(images)-np.min(images))
 
     return colors.makeRgbImage(*images)
 
 def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None,
-                   contrast=100, adjustZero=True, figsize=(5,5)):
+                   Q=8, figsize=(5,5)):
     """Display a collection of images or calexp's as an RGB image
 
     See `imagesToRgb` for more info.
     """
-    colors = imagesToRgb(images, calexps, filterIndices, xRange, yRange, contrast, adjustZero)
+    colors = imagesToRgb(images, calexps, filterIndices, xRange, yRange, Q=Q)
     plt.figure(figsize=figsize)
     plt.imshow(colors)
     plt.show()
@@ -108,8 +114,8 @@ def maskPlot(img, mask=None, hideAxes=True, show=True, **kwargs):
         plt.show()
     return plt
 
-def plotImgWithMarkers(calexps, footprint, filterIndices=None, contrast=100, adjustZero=False, show=True,
-                       ax=None, img_kwargs=None, footprint_kwargs=None, **plot_kwargs):
+def plotImgWithMarkers(calexps, footprint, filterIndices=None, show=True,
+                       ax=None, img_kwargs=None, footprint_kwargs=None, Q=8, **plot_kwargs):
     """Plot an RGB image with the footprint and peaks marked
 
     Use the bounding box of a footprint to extract image data from a set of calexps in a set of colors
@@ -128,8 +134,7 @@ def plotImgWithMarkers(calexps, footprint, filterIndices=None, contrast=100, adj
     # Display the full color image
     xSlice, ySlice = debUtils.getRelativeSlices(bbox, refBbox)
     colors = imagesToRgb(calexps=calexps, filterIndices=filterIndices, xRange=xSlice, yRange=ySlice,
-                         Q=8)
-    print("AFTER:", colors.shape)
+                         Q=Q)
     ax.imshow(colors, **img_kwargs)
 
     # Display the footprint border
