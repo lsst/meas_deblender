@@ -27,6 +27,73 @@ def plotSeds(seds):
                fancybox=True, shadow=True, ncol=seds.shape[1])
     plt.show()
 
+def compareSeds(tables, filters, ax=None, show=True, color_cycle=None):
+    """Compare SEDs from using multiple detection methods
+
+    This allows the user to compare the SEDs of a common set of peaks using multiple detection
+    methods.
+
+    Parameters
+    ----------
+    tables: list of `astropy.table.Table`s and `numpy.ndarray`s
+        Either a peak table, with flux columns ``flux_{i}``, where ``{i}`` is the name of a filter
+        in ``filters``, or an SED matrix, where each column is the SED for a different peak.
+    filters: list of strings
+        Names of the filters in the ``peakTable`` and ``simTable``.
+    ax: `matplotlib.axes`, default = None
+        Optional axes to plot the SEDs.
+    show: bool, default = True
+        Whether or not to show the plots or just update ``ax`` with the new plots
+    color_cycle: list, default = None
+        A list of colors to use for plotting the peaks. If ``color_cycle=None`` then a
+        default color_cycle is used.
+
+    Returns
+    -------
+    allSeds: list of `numpy.ndarray`
+        Seds for each table/matrix in ``tables``.
+    """
+    # If the user didn't specify an axis, create a new figure
+    if ax is None:
+        fig = plt.figure(figsize=(10,8))
+        ax = fig.add_subplot(1,1,1)
+    # Use a default color cycle so that peaks have consistent colors in all tables
+    if color_cycle is None:
+        color_cycle = [u'#4c72b0', u'#55a868', u'#c44e52', u'#8172b2', u'#ccb974', u'#64b5cd']
+    allSeds = []
+    markers = [".-", ".--", ".:", ".-."]
+    midx = 0
+    for n, tbl in enumerate(tables):
+        # If tbl is an array, it is already an SED matrix
+        if hasattr(tbl, "shape"):
+            seds = tbl
+        # otherwise extract the SED matrix from tbl
+        else:
+            seds = np.array([np.array(tbl["flux_{0}".format(f)]).tolist() for f in filters])
+            norm = np.sum(seds, axis=0)
+            seds = seds/norm
+        # Plot the SED for each peak for the current table
+        cidx = 0
+        for pk in range(seds.shape[1]):
+            if n==0:
+                label = "Peak {0}".format(pk)
+            else:
+                label=None
+            ax.plot(seds[:, pk], markers[midx], label=label, color=color_cycle[cidx])
+            cidx += 1
+            if cidx==len(color_cycle):
+                cidx = 0
+        allSeds.append(seds)
+        midx += 1
+        if midx>len(markers):
+            midx = 0
+    # Display the plot
+    if show:
+        plt.title("SEDs")
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
+        plt.show()
+    return allSeds
+
 def plotIntensities(seds, intensities, shape, fidx=0,
                     vmin=None, vmax=None, useMask=False):
     """Plot the template image for each source
@@ -153,3 +220,67 @@ def plotImgWithMarkers(calexps, footprint, filterIndices=None, show=True,
     if show:
         plt.show()
     return ax
+
+def plotFluxDifference(tables, simTable, filters, ax=None, show=True, color_cycle=None):
+    """Plot the difference between measurements and simulated data
+
+    Given a set of peakTables, compare the flux in each band to
+    simultated data.
+
+    Parameters
+    ----------
+    tables: list of `astropy.table.Table`
+        Either a peak table, with flux columns ``flux_{i}``, where ``{i}`` is the name of a filter
+        in ``filters``, or an SED matrix, where each column is the SED for a different peak.
+    simTable: `astropy.table.Table`
+        A table that has been matched with a `peakTable`
+    filters: list of strings
+        Names of the filters in the ``peakTable`` and ``simTable``.
+    ax: `matplotlib.axes`, default = None
+        Optional axes to plot the SEDs.
+    show: bool, default = True
+        Whether or not to show the plots or just update ``ax`` with the new plots
+    color_cycle: list, default = None
+        A list of colors to use for plotting the peaks. If ``color_cycle=None`` then a
+        default color_cycle is used.
+
+    Returns
+    -------
+    None
+    """
+    # If the user didn't specify an axis, create a new figure
+    if ax is None:
+        fig = plt.figure(figsize=(10,8))
+        ax = fig.add_subplot(1,1,1)
+    # Use a default color cycle so that peaks have consistent colors in all tables
+    if color_cycle is None:
+        color_cycle = [u'#4c72b0', u'#55a868', u'#c44e52', u'#8172b2', u'#ccb974', u'#64b5cd']
+    markers = [".-", ".--", ".:", ".-."]
+    midx = 0
+    for n, tbl in enumerate(tables):
+        cidx = 0
+        for pk in range(len(simTable)):
+            if n==0:
+                label = "Peak {0}".format(pk)
+            else:
+                label = None
+            flux_diff = []
+            for f in filters:
+                diff = ((tbl["flux_"+f][pk]-simTable["flux_"+f][pk])/simTable["flux_"+f][pk])
+                flux_diff.append(diff)
+            ax.plot(flux_diff, markers[midx], color=color_cycle[cidx], label=label)
+            cidx += 1
+            if cidx==len(color_cycle):
+                cidx = 0
+
+        midx += 1
+        if midx==len(markers):
+            midx = 0
+
+    if show:
+        ax.set_xlabel("Peak Number")
+        ax.set_ylabel("(Measured-Sim)/Sim Flux")
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
+        ax.yaxis.grid(True)
+        ax.xaxis.grid(True)
+        plt.show()
