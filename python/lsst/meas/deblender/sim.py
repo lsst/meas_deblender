@@ -53,7 +53,7 @@ def getNoise(calexps):
         avgNoise.append(np.sqrt(stats.getValue(afwMath.MEDIAN)))
     return avgNoise
 
-def buildFootprintPeakTable(footprint, filters, sid=None):
+def buildFootprintPeakTable(footprint, filters, sid=None, peaks=None):
     """Create a table of peak info to compare a single blend to simulated data
 
     Parameters
@@ -64,6 +64,9 @@ def buildFootprintPeakTable(footprint, filters, sid=None):
         Names of filters used for each flux measurement
     sid: int, default=``None``
         The source id from the `afw.table.SourceCatalog` that contains the footprint.
+    peaks: `numpy.ndarray`, default=None
+        If peaks is specified, then the specified peaks are used instead of the
+        peaks from the ``Footprint`` peak catalog.
 
     Returns
     -------
@@ -72,27 +75,28 @@ def buildFootprintPeakTable(footprint, filters, sid=None):
         peaks contained in the footprint, the parent footprint (containing the peak), and the flux in each
         filter.
     """
+    # Extract the peak catalog
+    if peaks is None:
+        peaks = np.array([[peak.getIx(), peak.getIy()] for peak in footprint.getPeaks()])
     # Keep track of blended sources
-    if len(footprint.getPeaks())>=2:
+    if len(peaks)>=2:
         blended = True
     else:
         blended = False
     # Make a table of the peaks
     parents = []
     peakIdx = []
-    peaks = []
     x = []
     y = []
     blends = []
     footprints = []
     if sid is None:
         sid = 0
-    for pk, peak in enumerate(footprint.getPeaks()):
+    for pk, peak in enumerate(peaks):
         parents.append(sid)
         peakIdx.append(pk)
-        peaks.append(peak)
-        x.append(peak.getIx())
-        y.append(peak.getIy())
+        x.append(peak[0])
+        y.append(peak[1])
         blends.append(blended)
         footprints.append(footprint)
     # Create the peak Table
@@ -121,9 +125,11 @@ def buildPeakTable(expDb, filters):
         peaks contained in the footprint, the parent footprint (containing the peak), and the flux in each
         filter.
     """
+    # Extract the peak catalog
+    if peaks is None:
+        peaks = np.array([[peak.getIx(), peak.getIy()] for peak in footprint.getPeaks()])
     parents = []
     peakIdx = []
-    peaks = []
     x = []
     y = []
     blends = []
@@ -138,9 +144,8 @@ def buildPeakTable(expDb, filters):
         for pk, peak in enumerate(footprint.getPeaks()):
             parents.append(sid)
             peakIdx.append(pk)
-            peaks.append(peak)
-            x.append(peak.getIx())
-            y.append(peak.getIy())
+            x.append(peak[0])
+            y.append(peak[1])
             blends.append(blended)
             footprints.append(footprint)
     peakTable = ApTable([parents, peakIdx, x, y, blends, peaks, footprints],
@@ -172,18 +177,40 @@ def matchFootprintToRef(footprint, peakTable, simTable, filters, maxSeparation=3
         # Estimate the noise in the image
         avgNoise = getNoise(expDb.calexps)
     # Match the simulated data to the detected peaks
-    matchTable, idx, unmatchedTable = matchToRef(peakTable, simTable[simCuts], filters,
-                                                     avgNoise=avgNoise, display=False)
+    matchTable, idx, unmatchedTable = matchToRef(peakTable, simTable[simCuts], filters, display=False)
 
     if display:
-        ax = debDisplay.plotImgWithMarkers(expDb.calexps, footprint, show=False, ax=None, label="Detected Peaks")
+        x = list(range(len(filters)))
+        for pk, src in enumerate(matchTable):
+            flux = np.array([np.max(src["intensity_{0}".format(f)]) for f in filters])
+            plt.semilogy(x, flux, 'k.-', label="Detected")
+        for src in unmatchedTable:
+            flux = np.array([np.max(src["intensity_{0}".format(f)]) for f in filters])
+            plt.plot(x, flux, '.-', c="#4c72b0", label="Not Detected")
+        if avgNoise is not None:
+            plt.semilogy(x, avgNoise, '.-', c="#c44e52", label="Background")
+            plt.semilogy(x, 2*np.array(avgNoise), '.--', c="#c44e52", label="2$\\times$Background")
+        plt.legend(loc='center left', bbox_to_anchor=(1, .5),
+                   fancybox=True, shadow=True)
+        plt.xticks([-.25]+x+[x[-1]+.25], [""]+[f for f in filters]+[""])
+        plt.xlabel("Filter")
+        plt.ylabel("Peak Flux")
+        plt.show()
+
+        fig = plt.figure(figsize=(8,8))
+        ax = fig.add_subplot(1,1,1)
+        calexps = [calexp[footprint.getBBox()] for calexp in expDb.calexps]
+        ax = debDisplay.plotColorImage(calexps=calexps, ax=ax, show=False)
         px = [src["x"]-xmin for src in unmatchedTable]
         py = [src["y"]-ymin for src in unmatchedTable]
         plt.plot(px, py, "rx", mew=2, label="Not detected peaks")
-        px = [peak.getIx()-bbox.getMinX() for peak in footprint.getPeaks()]
-        py = [peak.getIy()-bbox.getMinY() for peak in footprint.getPeaks()]
-        ax.plot(px, py, "cx", mew=2)
+        px = [src["x"]-xmin for src in matchTable]
+        py = [src["y"]-ymin for src in matchTable]
+        ax.plot(px, py, "cx", mew=2, label="Detected peaks")
         plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
+        # Sometimes, if sources are near the edge, the plot extends beyond the image size
+        plt.xlim([0,footprint.getBBox().getWidth()-1])
+        plt.ylim([footprint.getBBox().getHeight()-1, 0])
         plt.show()
 
     return matchTable, idx, unmatchedTable
@@ -273,32 +300,19 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
         unmatchedTable["{0} peak/noise".format(col)] = ratios
 
     # Display the unmatched sources ratios
-    ratios = [f+" peak/noise" for f in filters]
-    all_ratios = np.array(unmatchedTable[ratios]).view(np.float64).reshape(len(unmatchedTable), len(ratios))
-    max_ratios = np.max(all_ratios, axis=1)
-    plt.plot(max_ratios, '.')
-    plt.xlabel("Source number")
-    plt.ylabel("peak flux/noise")
-    plt.xlim([-1, len(max_ratios)])
-    plt.title("Unmatched")
-    plt.show()
-
-    if display:
-        x = range(len(filters))
-
-        for src in simTable[unmatched]:
-            flux = np.array([src["flux_{0}".format(f)] for f in filters])
-            plt.plot(x, flux, '.-', c="#4c72b0")
-        plt.plot(x, flux, '.-', c="#4c72b0", label="Not Detected")
-        if avgNoise is not None:
-            plt.plot(x, avgNoise, '.-', c="#c44e52", label="Background")
-        plt.legend(loc='center left', bbox_to_anchor=(1, .5),
-                   fancybox=True, shadow=True)
-        plt.xticks([-.25]+x+[x[-1]+.25], [""]+[f for f in filters]+[""])
-        plt.xlabel("Filter")
-        plt.ylabel("Total Flux")
+    if len(unmatchedTable)>0:
+        ratios = [f+" peak/noise" for f in filters]
+        all_ratios = np.array(unmatchedTable[ratios]).view(np.float64).reshape(len(unmatchedTable),
+                                                                               len(ratios))
+        max_ratios = np.max(all_ratios, axis=1)
+        plt.plot(max_ratios, '.')
+        plt.xlabel("Source number")
+        plt.ylabel("peak flux/noise")
+        plt.xlim([-1, len(max_ratios)])
+        plt.title("Unmatched")
         plt.show()
 
+    if display:
         if calexp is not None:
 
             unmatched = peakTable[~matchTable["matched"]]
@@ -361,15 +375,28 @@ def deblendFootprintOld(filters, expDb, footprint, peakTable=None):
     maskedImages = [calexp.getMaskedImage() for calexp in expDb.calexps]
     psfs = [calexp.getPsf() for calexp in expDb.calexps]
     fwhm = [psf.computeShape().getDeterminantRadius() * 2.35 for psf in psfs]
-    footprints = [footprint]*len(expDb.calexps)
+    if peakTable is not None:
+        from lsst.afw.detection import Footprint
+        # Use the peaks in the peakTable, which might be different than the peaks in the footprint
+        fp = Footprint(footprint.getSpans())
+        for pk in range(len(peakTable)):
+            px, py = peakTable["x","y"][pk]
+            px, py = int(np.round(px)), int(np.round(py))
+            intensity = expDb.calexps[0].getMaskedImage().getImage().getArray()[py, px]
+            fp.addPeak(int(np.round(px)), int(np.round(py)), intensity)
+    footprints = [fp]*len(expDb.calexps)
     deblenderResult = baseline.newDeblend(plugins, footprints, maskedImages, psfs, fwhm, filters=filters)
 
     if peakTable is not None:
         for p,peak in enumerate(deblenderResult.peaks):
             cuts = (peakTable["peakIdx"]==p)
             for f in filters:
-                fluxPortion = peak.deblendedPeaks[f].fluxPortion.getImage().getArray()
-                peakTable["flux_"+f][cuts] = np.sum(fluxPortion)
+                if peak.deblendedPeaks[f].fluxPortion is not None:
+                    fluxPortion = peak.deblendedPeaks[f].fluxPortion.getImage().getArray()
+                    peakTable["flux_"+f][cuts] = np.sum(fluxPortion)
+                else:
+                    peakTable["flux_"+f][cuts] = 0
+
     return deblenderResult
 
 def deblendSimExposuresOld(filters, expDb, peakTable=None):
@@ -443,54 +470,6 @@ def displayImage(src, ratio, fidx, expDb):
     plt.imshow(img)
     plt.title("Flux Difference: {0}%".format(ratio))
     plt.show()
-
-def getODBTemplates(footprint, deblenderResult, apportioned=False, display=True, **kwargs):
-    """Display templates from the old deblender for a single blend
-
-    Parameters
-    ----------
-    footprint: `lsst.afw.detection.Footprint`
-        Parent `Footprint` containing the blend.
-    deblenderResult: `lsst.meas.deblender.DeblenderResult`
-        Result from using the old deblender
-    kwargs: keyword arguments
-        Keyword arguments passed to `meas_deblender.display.plotColorImage`
-    Returns
-    -------
-    None
-    """
-    xmin = footprint.getBBox().getMinX()
-    ymin = footprint.getBBox().getMinY()
-    width = footprint.getBBox().getWidth()
-    height = footprint.getBBox().getHeight()
-    xmax = xmin + width
-    ymax = ymin + height
-    shape = (height, width)
-
-    # Dislay
-    allTemplates = np.zeros((len(footprint.peaks), len(deblenderResult.deblendedParents), height, width))
-    for pk in range(len(deblenderResult.peaks)):
-        images = np.zeros((deblenderResult.filterCount, shape[0], shape[1]))
-        for fidx, f in enumerate(deblenderResult.deblendedParents.keys()):
-            # Choose either the Template Image or Weighted Data
-            if apportioned:
-                img = deblenderResult.peaks[pk].deblendedPeaks[f].fluxPortion.getImage()
-                bbox = img.getBBox()
-
-            else:
-                img = deblenderResult.peaks[pk].deblendedPeaks[f].templateImage
-                bbox = img.getBBox()
-            # Add the extracted image to the full color image
-            pxmin = bbox.getMinX() - xmin
-            pymin = bbox.getMinY() - ymin
-            pxmax = pxmin + bbox.getWidth()
-            pymax = pymin + bbox.getHeight()
-            images[fidx, pymin:pymax, pxmin:pxmax] = img.getArray()
-        images = np.array(images)
-        allTemplates[pk] = images
-
-        debDisplay.plotColorImage(images, **kwargs)
-    return allTemplates
 
 def calculateNmfFlux(expDb, peakTable):
     """Calculate the flux for each object in a peakTable
@@ -907,7 +886,61 @@ def calculateOverlaps(templates, addSymmetric=False, sumOverlap=True):
             overlap[k[::-1]] = v
     return overlap
 
-def getSimTemplates(simTable, filters):
+def getODBTemplates(footprint, deblenderResult, apportioned=False, display=True, **kwargs):
+    """Display templates from the old deblender for a single blend
+
+    Parameters
+    ----------
+    footprint: `lsst.afw.detection.Footprint`
+        Parent `Footprint` containing the blend.
+    deblenderResult: `lsst.meas.deblender.DeblenderResult`
+        Result from using the old deblender
+    kwargs: keyword arguments
+        Keyword arguments passed to `meas_deblender.display.plotColorImage`
+    Returns
+    -------
+    None
+    """
+    xmin = footprint.getBBox().getMinX()
+    ymin = footprint.getBBox().getMinY()
+    width = footprint.getBBox().getWidth()
+    height = footprint.getBBox().getHeight()
+    xmax = xmin + width
+    ymax = ymin + height
+    shape = (height, width)
+
+    # Dislay
+    allTemplates = np.zeros((len(deblenderResult.peaks), len(deblenderResult.deblendedParents),
+                             height, width))
+    for pk in range(len(deblenderResult.peaks)):
+        images = np.zeros((deblenderResult.filterCount, shape[0], shape[1]))
+        for fidx, f in enumerate(deblenderResult.deblendedParents.keys()):
+            # Choose either the Template Image or Weighted Data
+            if apportioned:
+                if deblenderResult.peaks[pk].deblendedPeaks[f].fluxPortion is None:
+                    continue
+                img = deblenderResult.peaks[pk].deblendedPeaks[f].fluxPortion.getImage()
+                bbox = img.getBBox()
+
+            else:
+                img = deblenderResult.peaks[pk].deblendedPeaks[f].templateImage
+                if img is None:
+                    continue
+                bbox = img.getBBox()
+            # Add the extracted image to the full color image
+            pxmin = bbox.getMinX() - xmin
+            pymin = bbox.getMinY() - ymin
+            pxmax = pxmin + bbox.getWidth()
+            pymax = pymin + bbox.getHeight()
+            images[fidx, pymin:pymax, pxmin:pxmax] = img.getArray()
+        images = np.array(images)
+        allTemplates[pk] = images
+
+        if display:
+            debDisplay.plotColorImage(images, **kwargs)
+    return allTemplates
+
+def getSimTemplates(simTable, filters, bbox=None, footprint=None, display=True, **kwargs):
     """Extract template image from a simTable
 
     Parameters
@@ -923,12 +956,29 @@ def getSimTemplates(simTable, filters):
         4D array of templates: (band number, peak number, y, x), the image of a
         peak in each filter.
     """
+    if footprint is not None:
+        if bbox is not None:
+            logger.warn("Received both a footprint and bbox, using bbox")
+        else:
+            bbox = footprint.getBBox()
     width = int(np.sqrt(simTable["intensity_{0}".format(filters[0])][0].shape[0]))
     shape = (width, width)
-    simTemplates = np.zeros((len(simTable), len(filters), width, width))
+    if bbox is not None:
+        xmin = bbox.getMinX()
+        xmax = bbox.getMinX()+bbox.getWidth()
+        ymin = bbox.getMinY()
+        ymax = bbox.getMinY()+bbox.getHeight()
+    else:
+        fpWidth = width
+        fpHeight = width
+    simTemplates = np.zeros((len(simTable), len(filters), ymax-ymin, xmax-xmin))
     for pk in range(len(simTable)):
         for fidx,f in enumerate(filters):
-            simTemplates[pk, fidx] = simTable["intensity_"+f][pk].reshape(width, width)
+            template = simTable["intensity_"+f][pk].reshape(width, width)
+            simTemplates[pk, fidx] = template[ymin:ymax, xmin:xmax]
+
+        if display:
+            debDisplay.plotColorImage(simTemplates[pk], **kwargs)
     return simTemplates
 
 def compareOverlap(simTemplates, debTemplates, show=True, fidx=0):
