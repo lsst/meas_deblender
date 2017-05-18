@@ -126,7 +126,7 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
     if len(images)<3:
         raise ValueError("Expected either an array of 3 or more images or a list of 3 or more calexps")
     if filterIndices is None:
-        filterIndices = [2,1,0]
+        filterIndices = [3,2,1]
     if yRange is None:
         ySlice = slice(None, None)
     elif not isinstance(yRange, slice):
@@ -294,3 +294,60 @@ def plotFluxDifference(tables, simTable, filters, ax=None, show=True, color_cycl
         ax.yaxis.grid(True)
         ax.xaxis.grid(True)
         plt.show()
+
+def plotPeakTemplates(templates, columns=3, figsize=None, **plotKwargs):
+    """Plot a set of templates for a given peak
+
+    Parameters
+    ----------
+    templates: dict
+        Dictionary of templates for the given peak.
+        The keys of the dictionary will be the title for each image
+        while the values are the templates themselves.
+    columns: int, default=3
+        Number of columns in the figure
+    figsize: tuple, None
+        Size of the figure. If None, this will be calculated automatically,
+        using a width of size 12 and a height proportional to the shape of
+        the images.
+    plotKwargs:
+        Optional keyword arguments passed to
+        `lsst.meas.deblender.display.plotColorImage`.
+
+    Returns
+    -------
+    None
+    """
+    titles = list(templates.keys())
+    shape = templates[titles[0]][0].shape
+    ratio = shape[0]/shape[1]
+    # Calculate the figure grid and create the figure
+    rows = 1+len(templates)//columns
+    if np.mod(len(templates),columns)==0:
+        rows -= 1
+    fig = plt.figure(figsize=(12, 12*ratio/1.618))
+    # Plot the image using all of the templates
+    for n, (title, template) in enumerate(templates.items()):
+        ax = fig.add_subplot(rows, columns, n+1)
+        ax.axis("off")
+        plotColorImage(template, ax=ax, show=False, **plotKwargs)
+        ax.set_title(title)
+    plt.show()
+
+def plotAllTemplates(allTemplates, columns=3, figsize=None, **plotKwargs):
+    """Plot a set of templates for all peaks in a blend
+
+    Parameters
+    ----------
+    allTemplates: dict
+        Dictionary of templates.
+        The keys of the dictionary will be the title for each image
+        while the values are 3D templates, with axes (peak, y, x).
+
+    See `plotPeakTemplates` for a description of the other parameters
+    """
+    _, template = list(allTemplates.items())[0]
+    for pk in range(len(template)):
+        logger.info("Peak {0}".format(pk))
+        templates = OrderedDict([(t, template[pk]) for t, template in allTemplates.items()])
+        plotPeakTemplates(templates, columns=columns, figsize=figsize, **plotKwargs)
