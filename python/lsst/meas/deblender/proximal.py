@@ -61,17 +61,54 @@ def loadMergedDetections(filename):
     return mergedDet, mergedTable
 
 def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, display=True,
-                       filterIndices=None, Q=8):
+                       filterIndices=None, Q=8, simTable=None):
     """Load the parent footprint and peaks, and (optionally) display the image and footprint border
     """
     idx = np.where(condition)[0][parentIdx]
     src = mergedDet[idx]
     footprint = src.getFootprint()
-    peaks = footprint.getPeaks()
+
+    # Because detection may have missed peaks, and the peaks are centered on pixels,
+    # it can be useful to use the detected coordinates for all of the sources
+    # created in the simulated catalog
+    if simTable is not None:
+        from lsst.afw.detection import Footprint
+
+        bbox = footprint.getBBox()
+        xmin = bbox.getMinX()
+        xmax = bbox.getMaxX()
+        ymin = bbox.getMinY()
+        ymax = bbox.getMaxY()
+        simCuts = ((simTable["x"]>=xmin) &
+                   (simTable["x"]<=xmax) &
+                   (simTable["y"]>=ymin) &
+                   (simTable["y"]<=ymax))
+        sims = simTable[simCuts]
+        peaks = np.array(sims["x","y"]).view(np.float64).reshape((len(sims), 2))
+        # Sort Peaks in order of total flux
+        flux_columns = [col for col in sims.colnames if col.startswith("flux_")]
+        total_flux = np.array(sims[flux_columns]).view(np.float64)
+        total_flux = total_flux.reshape(len(sims), len(flux_columns))
+        total_flux = np.sum(total_flux, axis=1)
+        idx = np.argsort(total_flux)
+        peaks = peaks[idx][::-1]
+
+        # Update the footprint with the new peaks
+        fp = Footprint(footprint.getSpans())
+        for pk in range(len(peaks)):
+            px, py = peaks[pk]
+            ix, iy = int(np.round(px)), int(np.round(py))
+            intensity = calexps[0].getMaskedImage().getImage().getArray()[iy, ix]
+            fp.addPeak(px, py, intensity)
+    else:
+        # Extract the peak positions from the peak catalog
+        fp = footprint
+        peaks = footprint.getPeaks()
+        peaks = np.array([[pk.getIx(), pk.getIy()] for pk in peaks])
 
     if display:
         debDisplay.plotImgWithMarkers(calexps, footprint, filterIndices=filterIndices, Q=Q, show=True)
-    return footprint, peaks
+    return fp, peaks
 
 def buildNmfData(calexps, footprint):
     """Build NMF data matrix
@@ -104,25 +141,23 @@ def buildNmfData(calexps, footprint):
 
     return data, mask, variance
 
-def compareMeasToSim(footprint, seds, intensities, Tx, Ty, realTable, filters, vmin=None, vmax=None,
+def compareMeasToSim(footprint, seds, intensities, Tx, Ty, peaks, realTable, filters, vmin=None, vmax=None,
                      display=False, poolSize=-1, psfOp=None, fluxPortions=None):
     """Compare measurements to simulated "true" data
 
     If running nmf on simulations, this matches the detections to the simulation catalog and
     compares the measured flux of each object to the simulated flux.
     """
-    peakCoords = np.array([[peak.getIx(),peak.getIy()] for peak in footprint.getPeaks()])
     simCoords = np.array(list(zip(realTable['x'], realTable['y'])))
     kdtree = scipy.spatial.cKDTree(simCoords)
-    d2, idx = kdtree.query(peakCoords, n_jobs=poolSize)
+    d2, idx = kdtree.query(peaks, n_jobs=poolSize)
     shape = (footprint.getBBox().getHeight(), footprint.getBBox().getWidth())
 
     logger.info("Matching indices: {0}".format(idx))
 
     for k in range(len(seds[0])):
-        logger.info("Object {0} at ({1},{2}) or exactly ({3},{4})".format(
-            k, footprint.getPeaks()[k].getIx(),footprint.getPeaks()[k].getIy(),
-            realTable["x"][idx][k], realTable["y"][idx][k]))
+        logger.info("Object {0} at ({1:.2f},{2:.2f})".format(
+            k, peaks[k][0], peaks[k][1]))
         for fidx, f in enumerate(filters):
             template = proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             measFlux = np.sum(template)
@@ -162,15 +197,6 @@ class DeblendedParent:
         self.shape = (self.bbox.getHeight(), self.bbox.getWidth())
         self.usePsf = usePsf
 
-        # Get the position of the peaks
-        # (needed by Peters code to calculate the initial matrices)
-        x0 = self.calexps[0].getX0()
-        y0 = self.calexps[0].getY0()
-        xmin = self.bbox.getMinX()
-        ymin = self.bbox.getMinY()
-        peaks = [(pk.getIx()-xmin, pk.getIy()-ymin) for pk in self.peaks]
-        self.peakCoords = peaks
-
         # Initialize attributes to be assigned later
         self.data = None
         self.mask = None
@@ -200,9 +226,22 @@ class DeblendedParent:
         self.data, self.mask, self.variance = buildNmfData(self.calexps, self.footprint)
         return self.data, self.mask, self.variance, self.initSeds, self.initIntensities
 
+    def peaksToBbox(self, peaks=None):
+        """Convert peak positions to positions in the footprint bbox
+        """
+        if peaks is None:
+            peaks = self.peaks.copy()
+        # Get the position of the peaks in the footprint
+        #x0 = self.calexps[0].getX0()
+        #y0 = self.calexps[0].getY0()
+        xmin = self.bbox.getMinX()
+        ymin = self.bbox.getMinY()
+        peaks = peaks - np.array([xmin, ymin])
+        return peaks
+
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 display=False, filterIndices=None, contrast=100, adjustZero=False,
-                psfThresh=None, usePsf=None, peakCoords=None, recenterPeaks=True,
+                psfThresh=None, usePsf=None, peaks=None, recenterPeaks=True,
                 pnmf=proximal_nmf, **kwargs):
         """Run the NMF deblender
 
@@ -237,14 +276,12 @@ class DeblendedParent:
         #data[mask] = 0
         debDisplay.maskPlot(data[0], data[0]==0)
 
-        if peakCoords is None:
-            peakCoords = self.peakCoords
-        elif recenterPeaks:
-            x0 = self.calexps[0].getX0()
-            y0 = self.calexps[0].getY0()
-            xmin = self.bbox.getMinX()
-            ymin = self.bbox.getMinY()
-            peakCoords = [(peak[0]-xmin,peak[1]-ymin) for peak in peakCoords]
+        if peaks is None:
+            peaks = self.peaks
+        else:
+            self.peaks = peaks
+        if recenterPeaks:
+            peaks = self.peaksToBbox(peaks)
 
         if usePsf is None:
             usePsf = self.usePsf
@@ -255,8 +292,8 @@ class DeblendedParent:
         if usePsf and 'P' not in kwargs:
             kwargs['P'] = self.psfs
         logger.info("constraints: {0}".format(constraints))
-        result = pnmf.nmf_deblender(data, K=len(peakCoords), max_iter=maxiter,
-                                    peaks=peakCoords, W=variance, constraints=constraints,
+        result = pnmf.nmf_deblender(data, K=len(peaks), max_iter=maxiter,
+                                    peaks=peaks, W=variance, constraints=constraints,
                                     psf_thresh=self.psfThresh, **kwargs)
         seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
         self.seds = seds
@@ -277,15 +314,14 @@ class DeblendedParent:
                 logger.info('Residual difference {0:.1f}%'.format(
                     100*np.abs(np.sum(diff)/np.sum(self.data[fidx]))))
             if self.expDeblend.simTable is not None:
-                compareMeasToSim(self.footprint, seds, intensities, self.Tx, self.Ty,
+                compareMeasToSim(self.footprint, seds, intensities, self.Tx, self.Ty, self.peaks,
                                  self.expDeblend.simTable, self.filters, display=False, psfOp=self.psfOp,
                                  fluxPortions=self.getFluxPortion())
 
             # Show the new templates for each object
             for pk in range(len(intensities)):
                 templates = np.array([self.getTemplate(n, pk) for n in range(len(self.calexps))])
-                debDisplay.plotColorImage(images=templates, filterIndices=filterIndices,
-                                          Q=8, figsize=(5,5))
+                debDisplay.plotColorImage(images=templates, filterIndices=filterIndices, Q=8)
             debDisplay.plotSeds(seds)
             plt.imshow(diff, interpolation='none', cmap='inferno')
             plt.colorbar()
@@ -489,7 +525,8 @@ class DeblendedParent:
 class ExposureDeblend:
     """Container for the objects and results of the NMF deblender
     """
-    def __init__(self, filters, imgFilename, mergedDetFilename, simFilename=None, psfThresh=1e-2):
+    def __init__(self, filters, imgFilename, mergedDetFilename, simFilename=None, psfThresh=1e-2,
+                 useExactPeaks=False):
         self.filters = filters
 
         # Initialize attributes to be assigned later
@@ -503,6 +540,7 @@ class ExposureDeblend:
         self.psfs = None
         self.deblends = None
         self.psfThresh = psfThresh
+        self.useExactPeaks = useExactPeaks
 
         # Load Images and Catalogs
         self.loadFiles(imgFilename, mergedDetFilename, simFilename)
@@ -527,7 +565,7 @@ class ExposureDeblend:
         self.psfs = [psf.computeImage().getArray() for psf in expPsfs]
 
     def getParentFootprint(self, parentIdx=0, condition=None, display=True,
-                           filterIndices=None, Q=8):
+                           filterIndices=None, Q=8, useExactPeaks=True):
         """Get the parent footprint, peaks, and (optionally) display them
 
         ``parentIdx`` is the index of the parent footprint in ``self.mergedTable[condition]``, where
@@ -537,8 +575,13 @@ class ExposureDeblend:
         if condition is None:
             condition = np.ones((len(self.mergedTable),), dtype=bool)
         # Load the footprint and peaks for parent[parentIdx]
+        if useExactPeaks:
+            simTable = self.simTable
+        else:
+            simTable = None
         footprint, peaks = getParentFootprint(self.mergedTable, self.mergedDet, self.calexps,
-                                              condition, parentIdx, display, filterIndices, Q)
+                                              condition, parentIdx, display, filterIndices, Q,
+                                              simTable=simTable)
         return footprint, peaks
 
     def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False, constraints="MS",

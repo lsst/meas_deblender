@@ -142,7 +142,6 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
     # Select the subset of 3 images to use for the RGB image
     images = images[filterIndices,ySlice, xSlice]
     images = images.astype(np.float32)
-    print(images.shape, images.dtype)
     try:
         colors = rgb.AsinhZScaleMapping(images, **kwargs)
     except:
@@ -152,16 +151,27 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
     return colors.makeRgbImage(*images)
 
 def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None,
-                   Q=8, figsize=(5,5)):
+                   Q=8, ax=None, show=True):
     """Display a collection of images or calexp's as an RGB image
 
     See `imagesToRgb` for more info.
     """
-    colors = imagesToRgb(images, calexps, filterIndices, xRange, yRange, Q=Q)
-    plt.figure(figsize=figsize)
-    plt.imshow(colors)
-    plt.show()
-    return colors
+    if ax is None:
+        fig = plt.figure(figsize=(5,5))
+        ax = fig.add_subplot(1,1,1)
+    # afw display struggles if one of the templates has no flux
+    if images is not None:
+        adjustedImages = images.copy()
+        for i, img in enumerate(adjustedImages):
+            if np.sum(img) == 0:
+                adjustedImages[i][0][0] += 1e-9
+    else:
+        adjustedImages = images
+    colors = imagesToRgb(adjustedImages, calexps, filterIndices, xRange, yRange, Q=Q)
+    ax.imshow(colors)
+    if show:
+        plt.show()
+    return ax
 
 def maskPlot(img, mask=None, hideAxes=True, show=True, **kwargs):
     """Plot an image with specified pictures masked out
