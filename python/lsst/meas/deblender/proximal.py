@@ -9,6 +9,9 @@ import numpy as np
 import scipy.sparse
 from astropy.table import Table as ApTable
 
+import proxmin
+import deblender
+
 import lsst.log as log
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
@@ -17,7 +20,6 @@ from .baseline import newDeblend
 from . import plugins as debPlugins
 from . import utils as debUtils
 from . import sim
-from . import proximal_nmf, old_proximal_nmf
 from . import display as debDisplay
 
 logging.basicConfig()
@@ -159,13 +161,14 @@ def compareMeasToSim(footprint, seds, intensities, Tx, Ty, peaks, realTable, fil
         logger.info("Object {0} at ({1:.2f},{2:.2f})".format(
             k, peaks[k][0], peaks[k][1]))
         for fidx, f in enumerate(filters):
-            template = proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
+            template = deblender.nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
             measFlux = np.sum(template)
             realFlux = realTable[idx][k]['flux_'+f]
             logger.info("Filter {0}: template flux={1:.1f}, real={2:.1f}, error={3:.2f}%".format(
                         f, measFlux, realFlux, 100*np.abs(measFlux-realFlux)/realFlux))
         for fidx, f in enumerate(filters):
-            template = proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=shape, k=k)[fidx]
+            template = deblender.nmf.get_peak_model(seds, intensities, Tx, Ty,
+                                                    P=psfOp, shape=shape, k=k)[fidx]
             realFlux = realTable[idx][k]['flux_'+f]
             if fluxPortions is not None:
                 flux = fluxPortions[fidx, k]
@@ -215,7 +218,6 @@ class DeblendedParent:
     def initNMF(self, filterIndices=None, Q=8, usePsf=None):
         """Initialize the parameters needed for NMF deblending and (optionally) display the results
         """
-        from . import proximal_nmf
 
         if usePsf is not None:
             self.usePsf = usePsf
@@ -241,12 +243,11 @@ class DeblendedParent:
 
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 display=False, filterIndices=None, contrast=100, adjustZero=False,
-                psfThresh=None, usePsf=None, peaks=None, recenterPeaks=True,
-                pnmf=proximal_nmf, **kwargs):
+                psfThresh=None, usePsf=None, peaks=None, recenterPeaks=True, **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
-        proximal_nmf. It can also display the deblended footprints and statistics describing the
+        deblender.nmf. It can also display the deblended footprints and statistics describing the
         fit if ``display=True``.
         """
         if displayKwargs is None:
@@ -289,12 +290,12 @@ class DeblendedParent:
             self.usePsf = usePsf
         if psfThresh is not None:
             self.psfThresh = psfThresh
-        if usePsf and 'P' not in kwargs:
-            kwargs['P'] = self.psfs
+        if usePsf and 'psf' not in kwargs:
+            kwargs['psf'] = self.psfs
         logger.info("constraints: {0}".format(constraints))
-        result = pnmf.nmf_deblender(data, K=len(peaks), max_iter=maxiter,
-                                    peaks=peaks, W=variance, constraints=constraints,
-                                    psf_thresh=self.psfThresh, **kwargs)
+        result = deblender.nmf.deblend(img=data, peaks=peaks, constraints=constraints, weights=variance,
+                                       max_iter=maxiter, psf_thresh=psfThresh, **kwargs)
+
         seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
         self.seds = seds
         self.intensities = intensities
@@ -305,7 +306,7 @@ class DeblendedParent:
             pixels = intensities.shape[1]*intensities.shape[2]
             # Show information about the fit
             for fidx, f in enumerate(self.filters):
-                model = proximal_nmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
+                model = deblender.nmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
 
                 diff = (model-self.data)[fidx].reshape(self.shape)
                 logger.info('Filter {0}'.format(f))
@@ -344,7 +345,8 @@ class DeblendedParent:
             psfOp = self.psfOp
         else:
             psfOp = None
-        return proximal_nmf.get_peak_model(seds, intensities, Tx, Ty, P=psfOp, shape=self.shape, k=pkIdx)[fidx]
+        return deblender.nmf.get_peak_model(seds, intensities, Tx, Ty,
+                                            P=psfOp, shape=self.shape, k=pkIdx)[fidx]
 
     def getAllTemplates(self, seds=None, intensities=None, Tx=None, Ty=None):
         """Get the convolved image for each peak in each band
@@ -439,9 +441,9 @@ class DeblendedParent:
             # Calculate the model for each source
             templates = np.zeros_like(self.intensities)
             for pk in range(peakCount):
-                templates[pk] = proximal_nmf.get_peak_model(self.seds, self.intensities,
-                                                    self.Tx, self.Ty, P=self.psfOp,
-                                                    shape=self.shape, k=pk)[fidx]
+                templates[pk] = deblender.nmf.get_peak_model(self.seds, self.intensities,
+                                                             self.Tx, self.Ty, P=self.psfOp,
+                                                             shape=self.shape, k=pk)[fidx]
             # Normalize the templates to divide up the observed flux
             totalFlux = np.sum(templates, axis=0)
             normalization = totalFlux*totalWeight
@@ -576,7 +578,6 @@ class ExposureDeblend:
     def loadFiles(self, imgFilename=None, mergedDetFilename=None, simFilename=None):
         """Load images in each filter, the merged catalog and (optionally) a sim catalog
         """
-        from . import proximal_nmf
         if imgFilename is not None:
             self.imgFilename = imgFilename
             self.calexps, self.vmin, self.vmax = loadCalExps(self.filters, imgFilename)
