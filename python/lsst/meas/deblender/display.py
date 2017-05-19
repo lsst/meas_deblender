@@ -325,7 +325,7 @@ def plotPeakTemplates(templates, columns=3, figsize=None, **plotKwargs):
     rows = 1+len(templates)//columns
     if np.mod(len(templates),columns)==0:
         rows -= 1
-    fig = plt.figure(figsize=(12, 12*ratio/1.618))
+    fig = plt.figure(figsize=(12, rows*12*ratio/1.618))
     # Plot the image using all of the templates
     for n, (title, template) in enumerate(templates.items()):
         ax = fig.add_subplot(rows, columns, n+1)
