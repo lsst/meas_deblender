@@ -396,6 +396,34 @@ class DeblendedParent:
         intensities = (self.intensities.T*seds).T
         self.intensities[intensities<cutoff] = 0
 
+    def getFluxPortionTemplates(self):
+        """Use the deblended models to apportion the flux data to all sources
+        """
+        filters = len(self.data)
+        peakCount = len(self.intensities)
+        allTemplates = np.zeros((peakCount, filters, self.shape[0], self.shape[1]))
+
+        for fidx in range(filters):
+            data = self.data[fidx]
+            weight = self.variance[fidx]
+            templates = np.zeros_like(self.intensities)
+            for pk in range(peakCount):
+                templates[pk] = self.getTemplate(fidx, pk)
+
+            # Normalize the templates to divide up the observed flux
+            totalFlux = np.sum(templates, axis=0)
+            normalization = totalFlux*weight
+            zeroFlux = normalization==0
+            normalization[zeroFlux] = 1
+            normalization = 1/normalization
+            #normalization[zeroFlux] = 0
+
+            # Use the template weights to re-distribute the flux
+            for pk in range(peakCount):
+                allTemplates[pk, fidx] = weight*data*templates[pk]*normalization
+
+        return allTemplates
+
     def getFluxPortion(self):
         """Use the deblended models to apportion the flux data to all sources
         """
