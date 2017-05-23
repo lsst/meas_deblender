@@ -279,7 +279,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
         if pkF.distanceSquared(pkF2) > R2**2:
             continue
         opsfimg = psf.computeImage(pkF2.getX(), pkF2.getY())
-        if not opsfimg.getBBox(afwImage.LOCAL).overlaps(stampbb):
+        if not opsfimg.getBBox().overlaps(stampbb):
             continue
         otherpeaks.append(opsfimg)
         log.trace('%i other peaks within range', len(otherpeaks))
