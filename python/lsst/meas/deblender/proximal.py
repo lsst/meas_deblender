@@ -275,7 +275,7 @@ class DeblendedParent:
         variance[mask] = 0
         data = self.data.copy()
         #data[mask] = 0
-        debDisplay.maskPlot(data[0], data[0]==0)
+        #debDisplay.maskPlot(data[0], data[0]==0)
 
         if peaks is None:
             peaks = self.peaks
@@ -591,7 +591,7 @@ class ExposureDeblend:
         # Normalize the PSF from each image to 1 (makes it more straight forward to set a cutoff and
         # initialize the psf operator)
         #self.psfs = [psf.computeImage().getArray()/np.max(psf.computeImage().getArray()) for psf in expPsfs]
-        self.psfs = np.array([psf.computeImage().getArray() for psf in expPsfs])
+        self.psfs = np.array([psf.computeKernelImage().getArray() for psf in expPsfs])
 
     def getParentFootprint(self, parentIdx=0, condition=None, display=True,
                            filterIndices=None, Q=8, useExactPeaks=True):
