@@ -78,3 +78,33 @@ def extractImage(img, bbox):
     refBbox = img.getBBox()
     xslice, yslice = getRelativeSlices(bbox, refBbox)
     return img.getImage().getArray()[yslice, xslice]
+
+def templateToFootprint(template, bbox, peak, thresh=1e-13):
+    """Convert a template image into a Footprint
+
+    There is currently no way in the stack to convert an image
+    array into a spanset. The temporary workaround
+    (recommended by jbosch) is to create a new
+    FootprintSet by using a threshold, which will
+    automatically create the new footprint.
+    """
+    import lsst.afw.image as afwImage
+    import lsst.afw.detection as afwDet
+
+    img = afwImage.ImageD(template)
+    img = afwImage.MaskedImageD(img)
+    fps = afwDet.FootprintSet(img, afwDet.Threshold(thresh))
+
+    # There should only be one footprint detected in the template
+    assert len(fps.getFootprints())==1
+    fp = fps.getFootprints()[0]
+
+    # Shift the spanset into the correct BBox
+    spans = fp.spans.shiftedBy(bbox.getMinX(), bbox.getMinY())
+    fp.setSpans(spans)
+
+    # Clear the peak table detected by FootprintSet and add
+    # the location of the peak
+    fp.getPeaks().clear()
+    fp.addPeak(peak[0], peak[1], template[int(peak[1])-bbox.getMinY(), int(peak[0])-bbox.getMinX()])
+    return fp
