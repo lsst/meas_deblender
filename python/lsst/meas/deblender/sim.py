@@ -940,7 +940,8 @@ def getODBTemplates(footprint, deblenderResult, apportioned=False, display=True,
             debDisplay.plotColorImage(images, **kwargs)
     return allTemplates
 
-def getSimTemplates(simTable, filters, bbox=None, footprint=None, display=True, **kwargs):
+def getSimTemplates(simTable, filters, bbox=None, footprint=None, display=True,
+                    avgNoise=None, **kwargs):
     """Extract template image from a simTable
 
     Parameters
@@ -972,10 +973,26 @@ def getSimTemplates(simTable, filters, bbox=None, footprint=None, display=True, 
         fpWidth = width
         fpHeight = width
     simTemplates = np.zeros((len(simTable), len(filters), ymax-ymin, xmax-xmin))
+
+    # Optionally add gaussian noise to the image
+    if avgNoise is not None:
+        if np.isscalar(avgNoise):
+            avgN = [avgNoise]*simTemplates.shape[1]
+        else:
+            avgN = avgNoise
+        noise = np.zeros(simTemplates.shape[1:])
+        for n, an in enumerate(avgN):
+            noise[n] = np.random.normal(scale=an, size=noise.shape[1:])
+    else:
+        noise = None
+
     for pk in range(len(simTable)):
         for fidx,f in enumerate(filters):
             template = simTable["intensity_"+f][pk].reshape(width, width)
             simTemplates[pk, fidx] = template[ymin:ymax, xmin:xmax]
+
+            if noise is not None:
+                simTemplates[pk, fidx] += noise[fidx]
 
         if display:
             debDisplay.plotColorImage(simTemplates[pk], **kwargs)
