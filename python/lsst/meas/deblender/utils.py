@@ -79,7 +79,7 @@ def extractImage(img, bbox):
     xslice, yslice = getRelativeSlices(bbox, refBbox)
     return img.getImage().getArray()[yslice, xslice]
 
-def templateToFootprint(template, bbox, peak, thresh=1e-13):
+def templateToFootprint(template, bbox, peak, thresh=1e-13, heavy=False):
     """Convert a template image into a Footprint
 
     There is currently no way in the stack to convert an image
@@ -107,4 +107,7 @@ def templateToFootprint(template, bbox, peak, thresh=1e-13):
     # the location of the peak
     fp.getPeaks().clear()
     fp.addPeak(peak[0], peak[1], template[int(peak[1])-bbox.getMinY(), int(peak[0])-bbox.getMinX()])
+    if heavy:
+        img.setXY0(fp.getBBox().getMin())
+        fp = afwDet.makeHeavyFootprint(fp, img)
     return fp
