@@ -55,7 +55,7 @@ def compareSeds(tables, filters, ax=None, show=True, color_cycle=None):
     """
     # If the user didn't specify an axis, create a new figure
     if ax is None:
-        fig = plt.figure(figsize=(10,8))
+        fig = plt.figure(figsize=(14,8))
         ax = fig.add_subplot(1,1,1)
     # Use a default color cycle so that peaks have consistent colors in all tables
     if color_cycle is None:
@@ -80,6 +80,10 @@ def compareSeds(tables, filters, ax=None, show=True, color_cycle=None):
             else:
                 label=None
             ax.plot(seds[:, pk], markers[midx], label=label, color=color_cycle[cidx])
+            ax.set_xticks(range(len(seds[:, pk])))
+            ax.set_xticklabels(filters)
+            ax.set_xlabel("Filter")
+            ax.set_ylabel("Normalized SED")
             cidx += 1
             if cidx==len(color_cycle):
                 cidx = 0
