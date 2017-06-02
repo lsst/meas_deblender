@@ -1,5 +1,6 @@
 # Utilities useful for developing the deblender.
 # This file is not expected to be merged to master, although subsets of it might be ported later
+from collections import OrderedDict
 
 import numpy as np
 import matplotlib
@@ -90,24 +91,123 @@ def templateToFootprint(template, bbox, peak, thresh=1e-13, heavy=False):
     """
     import lsst.afw.image as afwImage
     import lsst.afw.detection as afwDet
+    from lsst.afw.geom import SpanSet, Span
 
-    img = afwImage.ImageD(template)
-    img = afwImage.MaskedImageD(img)
-    fps = afwDet.FootprintSet(img, afwDet.Threshold(thresh))
+    # convert the numpy array to afw Image
+    img = afwImage.ImageF(template)
+    img = afwImage.MaskedImageF(img)
+    # Shift the image to the correct coordinates
+    img.setXY0(bbox.getMin())
+    # Create the Footprint
+    if thresh is None:
+        # Use the entire footprint BBox as the footprint
+        spans = SpanSet([Span(n, 0, bbox.getWidth()-1) for n in range(bbox.getHeight())])
+        spans = spans.shiftedBy(bbox.getMinX(), bbox.getMinY())
+        fp = afwDet.Footprint(spans)
+    else:
+        fps = afwDet.FootprintSet(img, afwDet.Threshold(thresh))
+        # There should only be one footprint detected in the template
+        if len(fps.getFootprints()) == 1:
+            fp = fps.getFootprints()[0]
+        elif len(fps.getFootprints()) > 1:
+            spans = [fp.spans for fp in fps.getFootprints()]
+            span = spans[0]
+            for s in spans[1:]:
+                span = span.union(s)
+            fp = afwDet.Footprint(span)
+        else: # no pixels above the threshold
+            fp = afwDet.Footprint()
 
-    # There should only be one footprint detected in the template
-    assert len(fps.getFootprints())==1
-    fp = fps.getFootprints()[0]
-
-    # Shift the spanset into the correct BBox
-    spans = fp.spans.shiftedBy(bbox.getMinX(), bbox.getMinY())
-    fp.setSpans(spans)
-
-    # Clear the peak table detected by FootprintSet and add
+    # Clear the peak catalog detected by FootprintSet and add
     # the location of the peak
     fp.getPeaks().clear()
     fp.addPeak(peak[0], peak[1], template[int(peak[1])-bbox.getMinY(), int(peak[0])-bbox.getMinX()])
     if heavy:
-        img.setXY0(fp.getBBox().getMin())
         fp = afwDet.makeHeavyFootprint(fp, img)
     return fp
+
+def makeExpMeasurements(fidx, calexps=None, templates=None, parent=None,
+                        schema=None, config=None, thresh=1e-13,
+                        deblenderResult=None, useEntireImage=False):
+    """Make SingleFrameMeasurementTask measurements for a single exposure
+
+    This requires either a list of `ExposureF`s, templates, and a parent
+    (`Footprint`) to build footprints for each peak, or a `DeblenderResult`.
+
+    Parameters
+    ----------
+    fidx: int
+        Index of the filter to use. If using `ExposureF`s, this is the
+        index of the calexp and template to use for the measurment.
+    calexps: list of calexp's (`lsst.afw.image.imageLib.ExposureF`), default is None
+        List of calibrated exposures to use for the measurment.
+    templates: `numpy.ndarray`, default is None
+        A 4 dimensional array (peak, band, y, x) that contains a
+        model template for each peak.
+    parent: `lsst.afw.detection.Footprint`, default is None
+        The parent footprint containing the peaks in templates
+    schema: `lsst.afw.table.Schema`, default is None
+        Schema to use for the measurements. If no ``schema`` is specified
+        then the minimal schema is used.
+    config: config class, default is None
+        Config class (containing the measurement plugins to use).
+    thresh: float or None, default=1e-13
+        Threshold for Footprint detection. Typically, with the templates created
+        by the pipeline, this just has to be any number greater than zero.
+        If ``thresh`` is ``None``, then entire bounding box for the
+        ``parent`` `Footprint` is used.
+    deblenderResult: `lsst.meas.deblender.baseline.DeblendedParent`, default is None
+        Result from the old deblender. This is only required when using
+        `Footprint`s from the old deblender.
+
+    Returns
+    -------
+    sources: `lsst.afw.table.SourceCatalog`
+    """
+    from lsst.meas.algorithms.detection import SourceDetectionTask
+    from lsst.meas.base import SingleFrameMeasurementTask
+    import lsst.afw.table as afwTable
+
+    # By default use a minimal Schema and base measurement plugins
+    # And create the measurement task
+    if schema is None:
+        schema = afwTable.SourceTable.makeMinimalSchema()
+    if config is None:
+        config = SingleFrameMeasurementTask.ConfigClass()
+        config.plugins.names.clear()
+        for plugin in ["base_SdssCentroid",
+                       "base_SdssShape",
+                       "base_CircularApertureFlux",
+                       "base_GaussianFlux"]:
+            config.plugins.names.add(plugin)
+        config.slots.psfFlux = None
+        config.slots.apFlux = "base_CircularApertureFlux_3_0"
+    measureTask = SingleFrameMeasurementTask(schema, config=config)
+
+    # Most of the time we use the templates to generate Footprints with all
+    # pixels above the threshold
+    if deblenderResult is None:
+        if any([f is None for f in [templates, calexps]]):
+            raise Exception("Required either 'deblenderResult' or 'templates', 'calexps'")
+        peaks = parent.getPeaks()
+    else:
+        peaks = deblenderResult.peaks
+
+    table = afwTable.SourceTable.make(schema)
+    sources = afwTable.SourceCatalog(table)
+    for pk, peak in enumerate(peaks):
+        if deblenderResult is None:
+            if not useEntireImage:
+                bbox = parent.getBBox()
+            else:
+                bbox = calexps[0].getBBox()
+            fp = templateToFootprint(templates[pk][fidx].astype(np.float32), bbox,
+                                              (peak.getIx(), peak.getIy()), heavy=True, thresh=thresh)
+        else:
+            fp = deblenderResult.peaks[pk].deblendedPeaks[dbr.peaks[pk].filters[fidx]].getFluxPortion()
+        child = sources.addNew()
+        child.setFootprint(fp)
+
+    # Make the measurements
+    measureTask.run(sources, calexps[fidx])
+    return sources

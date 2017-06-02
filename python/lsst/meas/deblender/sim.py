@@ -969,10 +969,16 @@ def getSimTemplates(simTable, filters, bbox=None, footprint=None, display=True,
         xmax = bbox.getMinX()+bbox.getWidth()
         ymin = bbox.getMinY()
         ymax = bbox.getMinY()+bbox.getHeight()
+        fpWidth = xmax-xmin
+        fpHeight = ymax-ymin
     else:
         fpWidth = width
         fpHeight = width
-    simTemplates = np.zeros((len(simTable), len(filters), ymax-ymin, xmax-xmin))
+        ymin = 0
+        xmin = 0
+        xmax = width
+        ymax = width
+    simTemplates = np.zeros((len(simTable), len(filters), fpHeight, fpWidth))
 
     # Optionally add gaussian noise to the image
     if avgNoise is not None:
@@ -1054,3 +1060,93 @@ def compareOverlap(simTemplates, debTemplates, show=True, fidx=0):
             fig.colorbar(p2, ax=ax2)
             plt.show()
     return simOverlapSum, debOverlapSum
+
+def makeAllMeasurements(templates, filters, calexps, footprint, thresh=.7, schema=None, config=None):
+    """Measurements on a collection of templates in different bands
+
+    Given a dictionary of ``templates``, run ``SingleFrameMeasurementTask``
+    on each template, in each filter in ``filters``, to create a catalog with measurements
+    for each band.
+
+    See `makeExpMeasurements` for a description of the other parameters.
+    """
+    sources = OrderedDict((k, OrderedDict()) for k in templates)
+    for key, template in templates.items():
+        for fidx, f in enumerate(filters):
+            if key == "sim":
+                useEntireImage = True
+            else:
+                useEntireImage = False
+            sources[key][f] = debUtils.makeExpMeasurements(fidx, calexps, template, footprint,
+                                                           thresh=thresh,
+                                                           useEntireImage=useEntireImage)
+    return sources
+
+def compareSourceColumns(allSources, measurementFields, pk, filters=None, nCols=2, useDifference=True):
+    """Compare a set of measruements for a single peak
+
+    Parameters
+    ----------
+    allSources: OrderedDict
+        Each deblender method has a ``SourceCatalog`` for each band,
+        so all sources is an ``OrderedDict`` where
+        ``allSources[deblenderMethod][filter]`` contains the
+        source catalog for a given deblenderMethod (string) and
+        filter (string name of filter).
+
+        This object is created by `makeAllMeasurments`.
+    measurementFields: list of strings
+        Keys in the source catalog ``Schema`` to compare and plot
+    pk: int
+        Index of the peak in the source catalogs
+    filters: list of strings, default is None
+        List of filter names
+    nCols: int, default = 2
+        Number of columns in the plot.
+    useDifference: bool, default = True
+        Whether or not to use the difference between the measured and sim data.
+        If ``useDifference=False``, the value of each template is plotted
+
+    Returns
+    -------
+    None, the function generates a plot for the parameters being compared
+    """
+    rows = 1+len(measurementFields)//nCols
+    if np.mod(len(measurementFields),nCols)==0:
+        rows -= 1
+    fig = plt.figure(figsize=(12,rows*4.5))
+    fig.suptitle("Peak {0}".format(pk))
+
+    for f, field in enumerate(measurementFields):
+        ax = fig.add_subplot(rows, nCols, f+1)
+        refs = np.array([allSources["sim"][k][pk].get(field) for k in allSources["sim"]])
+        for s, srcs in allSources.items():
+            values = np.array([v[pk].get(field) for k,v in srcs.items()])
+            idx = refs!=0
+            if useDifference:
+                y = (values[idx]-refs[idx])/refs[idx]
+                x = np.arange(len(values))[idx]
+                if filters is not None:
+                    labels = [filters[i] for i in np.where(idx)[0]]
+            else:
+                y = values
+                x = np.arange(len(values))
+                labels = filters
+            if s == "sim":
+                fmt = "*-"
+            elif s == "new mono" or s == "old":
+                fmt = 'o-'
+            else:
+                fmt = '.-'
+            ax.plot(x, y, fmt, label=s)
+            if filters is not None:
+                ax.set_xlabel("Filters")
+                ax.set_xticks(x)
+                ax.set_xticklabels(labels)
+            else:
+                ax.set_xlabel("Filter Number")
+            ax.set_ylabel(field)
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(.45, 0),
+                  fancybox=True, shadow=True, ncol=5)
+    plt.show()
