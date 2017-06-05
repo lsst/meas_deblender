@@ -126,6 +126,32 @@ def templateToFootprint(template, bbox, peak, thresh=1e-13, heavy=False):
         fp = afwDet.makeHeavyFootprint(fp, img)
     return fp
 
+def makeMeasurementConfig(nsigma=6.0, nIterForRadius=1, kfac=2.5):
+    """Construct a SingleFrameMeasurementConfig with the requested parameters"""
+    import lsst.meas.extensions.photometryKron
+    import lsst.meas.modelfit
+    from lsst.meas.base import SingleFrameMeasurementConfig
+
+    msConfig = SingleFrameMeasurementConfig()
+    msConfig.algorithms.names = ["base_SdssCentroid",
+                                 "base_SdssShape",
+                                 "ext_photometryKron_KronFlux",
+                                 "modelfit_DoubleShapeletPsfApprox",
+                                 "modelfit_CModel"]
+    msConfig.slots.centroid = "base_SdssCentroid"
+    msConfig.slots.shape = "base_SdssShape"
+    msConfig.slots.apFlux = "ext_photometryKron_KronFlux"
+    msConfig.slots.modelFlux = "modelfit_CModel"
+    msConfig.slots.psfFlux = None
+    msConfig.slots.instFlux = None
+    msConfig.slots.calibFlux = None
+    # msConfig.algorithms.names.remove("correctfluxes")
+    msConfig.plugins["ext_photometryKron_KronFlux"].nSigmaForRadius = nsigma
+    msConfig.plugins["ext_photometryKron_KronFlux"].nIterForRadius = nIterForRadius
+    msConfig.plugins["ext_photometryKron_KronFlux"].nRadiusForFlux = kfac
+    msConfig.plugins["ext_photometryKron_KronFlux"].enforceMinimumRadius = False
+    return msConfig
+
 def makeExpMeasurements(fidx, calexps=None, templates=None, parent=None,
                         schema=None, config=None, thresh=1e-13,
                         deblenderResult=None, useEntireImage=False):
@@ -173,15 +199,7 @@ def makeExpMeasurements(fidx, calexps=None, templates=None, parent=None,
     if schema is None:
         schema = afwTable.SourceTable.makeMinimalSchema()
     if config is None:
-        config = SingleFrameMeasurementTask.ConfigClass()
-        config.plugins.names.clear()
-        for plugin in ["base_SdssCentroid",
-                       "base_SdssShape",
-                       "base_CircularApertureFlux",
-                       "base_GaussianFlux"]:
-            config.plugins.names.add(plugin)
-        config.slots.psfFlux = None
-        config.slots.apFlux = "base_CircularApertureFlux_3_0"
+        config = makeMeasurementConfig()
     measureTask = SingleFrameMeasurementTask(schema, config=config)
 
     # Most of the time we use the templates to generate Footprints with all
@@ -199,10 +217,12 @@ def makeExpMeasurements(fidx, calexps=None, templates=None, parent=None,
         if deblenderResult is None:
             if not useEntireImage:
                 bbox = parent.getBBox()
+                fp = templateToFootprint(templates[pk][fidx].astype(np.float32), bbox,
+                                         (peak.getIx(), peak.getIy()), heavy=True, thresh=thresh)
             else:
                 bbox = calexps[0].getBBox()
-            fp = templateToFootprint(templates[pk][fidx].astype(np.float32), bbox,
-                                              (peak.getIx(), peak.getIy()), heavy=True, thresh=thresh)
+                fp = templateToFootprint(templates[pk][fidx].astype(np.float32), bbox,
+                                         (peak.getIx(), peak.getIy()), heavy=True, thresh=None)
         else:
             fp = deblenderResult.peaks[pk].deblendedPeaks[dbr.peaks[pk].filters[fidx]].getFluxPortion()
         child = sources.addNew()

@@ -1079,7 +1079,8 @@ def makeAllMeasurements(templates, filters, calexps, footprint, thresh=.7, schem
                 useEntireImage = False
             sources[key][f] = debUtils.makeExpMeasurements(fidx, calexps, template, footprint,
                                                            thresh=thresh,
-                                                           useEntireImage=useEntireImage)
+                                                           useEntireImage=useEntireImage,
+                                                           schema=schema, config=config)
     return sources
 
 def compareSourceColumns(allSources, measurementFields, pk, filters=None, nCols=2, useDifference=True):
