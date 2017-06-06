@@ -239,6 +239,11 @@ class DeblendedParent:
         xmin = self.bbox.getMinX()
         ymin = self.bbox.getMinY()
         peaks = peaks - np.array([xmin, ymin])
+
+        if np.mod(self.bbox.getWidth(), 2) == 0:
+            peaks[:,0] += 0.5
+        if np.mod(self.bbox.getHeight(), 2) == 0:
+            peaks[:,1] += 0.5
         return peaks
 
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
