@@ -285,7 +285,7 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
     sidx = set(idx[matched])
     srange = set(range(len(simTable)))
     unmatched = np.array(list(srange-sidx))
-    logger.info("Sources not detected: {0}\n".format(len(unmatched)))
+    logger.debug("Sources not detected: {0}\n".format(len(unmatched)))
 
     # Store data for unmatched sources for later analysis
     unmatchedTable = simTable[unmatched]
@@ -834,7 +834,7 @@ def checkForDegeneracy(expDb, minFlux=None, filterIdx=None):
         plt.colorbar()
         plt.show()
 
-def calculateOverlaps(templates, addSymmetric=False, sumOverlap=True):
+def calculateOverlaps(templates, addSymmetric=False, sumOverlap=True, thresh=None):
     """Calculate the overlap between each pair of templates.
 
     Parameters
@@ -856,7 +856,14 @@ def calculateOverlaps(templates, addSymmetric=False, sumOverlap=True):
     """
     peakCount = len(templates)
     # Only calculate the square of each template and its sum once for each peak
-    t2 = templates**2
+    if thresh is None:
+        t2 = templates**2
+    else:
+        t2 = templates.copy()
+        for fidx in range(t2.shape[1]):
+            cuts = np.abs(t2[:,fidx,:,:])<thresh[fidx]
+            t2[:,fidx,:,:][cuts] = 0
+        t2 = t2**2
     if len(templates.shape)==4:
         sumT2 = np.sum(t2, axis=(2,3))
         bands = len(templates[0])
@@ -879,7 +886,7 @@ def calculateOverlaps(templates, addSymmetric=False, sumOverlap=True):
                         overlap[(n,m)] = np.sum(overlap[(n,m)])
 
             else:
-                overlap[(n,m)] = 0
+                overlap[(n,m)] = np.array([0]*templates.shape[1])
     # Add the symmetric indices
     if addSymmetric:
         for k, v in list(overlap.items()):
@@ -1004,7 +1011,8 @@ def getSimTemplates(simTable, filters, bbox=None, footprint=None, display=True,
             debDisplay.plotColorImage(simTemplates[pk], **kwargs)
     return simTemplates
 
-def compareOverlap(simTemplates, debTemplates, show=True, fidx=0):
+def compareOverlap(simTemplates, debTemplates, show=True, fidx=0, pkIdx=None, title=None, ax=None,
+                   thresh=None):
     """Compare the overlapping intensities between two sources
 
     Parameters
@@ -1024,41 +1032,40 @@ def compareOverlap(simTemplates, debTemplates, show=True, fidx=0):
     debOverlapSum: `OrderedDict`
         Overlap for each pair of peaks in the ``debTemplate``s.
     """
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)
     # Get the total overlap for each pair
-    simOverlapSum = calculateOverlaps(simTemplates, sumOverlap=True)
-    debOverlapSum = calculateOverlaps(debTemplates, sumOverlap=True)
+    simOverlapSum = calculateOverlaps(simTemplates, sumOverlap=True, thresh=thresh)
+    debOverlapSum = calculateOverlaps(debTemplates, sumOverlap=True, thresh=thresh)
     # Plot the overlap for each pair of peaks
     for peakPair in simOverlapSum:
         simSum = simOverlapSum[peakPair]
         debSum = debOverlapSum[peakPair]
-        diff = debSum-simOverlapSum[peakPair]
-        plt.loglog(simSum, debSum, '.-', mew=2, label=peakPair)
-    plt.xlabel("Simulated Overlap")
-    plt.ylabel("Measured Overlap")
-    x = [np.min([s for _,s in simOverlapSum.items()]), np.max([s for _,s in simOverlapSum.items()])]
-    plt.plot(x,x, 'r')
-    plt.show()
+        # Optionally, only plot overlaps for the current peak if it has any overlap flux
+        if ((pkIdx is None or pkIdx in peakPair) and np.any(simSum>0) and np.any(debSum>0)):
+            diff = debSum-simSum
+            ax.loglog(simSum, debSum, '.-', mew=2, label=peakPair)
+    ax.set_xlabel("Simulated Overlap")
+    ax.set_ylabel("Measured Overlap")
+    nonzero = [s[s>0].flatten() for _,s in simOverlapSum.items() if np.any(s>0)]
+    if len(nonzero)>1:
+        nonzero = np.hstack(nonzero)
+    elif len(nonzero)==0:
+        return simOverlapSum, debOverlapSum
+    x = [np.min(nonzero), np.max(nonzero)]
+
+    if x[0] == x[1]:
+        x[0] = x[0]/10
+        x[1] = x[1]*10
+    ax.loglog(x,x, 'r')
+
+    if title is not None:
+        plt.title(title)
+    ax.legend(loc='center left', bbox_to_anchor=(1, .5),
+                       fancybox=True, shadow=True)
     if show:
-        simOverlap = calculateOverlaps(simTemplates, sumOverlap=False)
-        debOverlap = calculateOverlaps(debTemplates, sumOverlap=False)
-        radiusX = int(.5*(debOverlap[(0,1)][fidx].shape[1]-1))
-        radiusY = int(.5*(debOverlap[(0,1)][fidx].shape[0]-1))
-        for oidx in simOverlap:
-            logger.info("Overlap between {0} and {1}".format(oidx[0], oidx[1]))
-            simImg = simOverlap[oidx]
-            #print(np.unravel_index(np.argmax(simImg[0]), simImg[0].shape))
-            py, px = np.unravel_index(np.argmax(simImg[0]), simImg[0].shape)
-            simImg = simImg[fidx][py-radiusY:py+radiusY+1, px-radiusX:px+radiusX+1]
-            fig = plt.figure(figsize=(12,4))
-            ax1 = fig.add_subplot(1,2,1)
-            ax1.set_title("Total: {0:.1e}".format(simOverlapSum[oidx][fidx]))
-            p1 = ax1.imshow(simImg)
-            ax2 = fig.add_subplot(1,2,2)
-            ax2.set_title("Total: {0:.1e}".format(debOverlapSum[oidx][fidx]))
-            p2 = ax2.imshow(debOverlap[oidx][fidx])
-            fig.colorbar(p1, ax=ax1)
-            fig.colorbar(p2, ax=ax2)
-            plt.show()
+        plt.show()
     return simOverlapSum, debOverlapSum
 
 def makeAllMeasurements(templates, filters, calexps, footprint, thresh=.7, schema=None, config=None):
@@ -1150,4 +1157,51 @@ def compareSourceColumns(allSources, measurementFields, pk, filters=None, nCols=
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(.45, 0),
                   fancybox=True, shadow=True, ncol=5)
+    plt.show()
+
+def compareTemplateFlux(allTemplates, pk, thresh=None, filters=None, useDifference=True):
+    """Compare a set of measruements for a single peak
+    """
+    fig = plt.figure()
+    plt.title("Peak {0} Flux above avg noise".format(pk))
+    ax = fig.add_subplot(1,1,1)
+
+    if thresh is not None:
+        templates = OrderedDict()
+        for t in allTemplates:
+            templates[t] = allTemplates[t][pk,:,:,:]
+            for fidx in range(templates[t].shape[0]):
+                templates[t][fidx,:,:][templates[t][fidx,:,:]<thresh[fidx]] = 0
+    else:
+        templates = allTemplates[t][pk,:,:,:]
+
+    for s, template in templates.items():
+        flux = np.sum(template, axis=(1,2))
+        if useDifference:
+            simFlux = np.sum(templates["sim"][:,:,:], axis=(1,2))
+            idx = simFlux>0
+            y = (flux-simFlux)[idx]/simFlux[idx]
+            x = np.arange(len(flux))[idx]
+        else:
+            y = flux
+            x = np.arange(len(values))
+        if filters is not None:
+            labels = filters
+        if s == "sim":
+            fmt = "*-"
+        elif s == "new mono" or s == "old":
+            fmt = 'o-'
+        else:
+            fmt = '.-'
+        ax.plot(x, y, fmt, label=s)
+        if filters is not None:
+            ax.set_xlabel("Filters")
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels)
+        else:
+            ax.set_xlabel("Filter Number")
+        ax.set_ylabel("Flux")
+
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
+               fancybox=True, shadow=True, ncol=len(templates))
     plt.show()

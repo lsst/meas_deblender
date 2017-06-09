@@ -271,6 +271,9 @@ class DeblendedParent:
         # Set the variance for pixels outside the footprint to zero
         import lsst.afw.image as afwImage
         import lsst.afw.detection as afwDetect
+        import time
+
+
         fpMask = afwImage.MaskU(self.footprint.getBBox())
         self.footprint.spans.setMask(fpMask, 1)
         fpMask = ~fpMask.getArray().astype(bool)
@@ -279,7 +282,10 @@ class DeblendedParent:
         variance = np.copy(self.variance)
         variance[mask] = 0
         data = self.data.copy()
-        #data[mask] = 0
+        data[mask] = 0
+        # TODO: Remove the following temporary line
+        # It currently exists to show comparison plots with the mask applied
+        self.data = data
         #debDisplay.maskPlot(data[0], data[0]==0)
 
         if peaks is None:
@@ -297,9 +303,15 @@ class DeblendedParent:
             self.psfThresh = psfThresh
         if usePsf and 'psf' not in kwargs:
             kwargs['psf'] = self.psfs
-        logger.info("constraints: {0}".format(constraints))
+        tInit = time.time()
         result = deblender.nmf.deblend(img=data, peaks=peaks, constraints=constraints, weights=variance,
                                        max_iter=maxiter, psf_thresh=psfThresh, **kwargs)
+        tFinal = time.time()
+        tDiff = tFinal-tInit
+        if tDiff>1:
+            logger.info("Total Runtime: {0:.2f} s".format(tDiff))
+        else:
+            logger.info("Total Runtime: {0:.0f} ms".format(1000*tDiff))
 
         seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
         self.seds = seds
@@ -557,6 +569,60 @@ class DeblendedParent:
         plt.ylabel("$S^2-e_{dual}^2$")
         plt.show()
 
+    def displayImage(self, unmatchedTable, matchedTable, figsize=(8,8)):
+        """Display an image with peaks marked
+        """
+        xmin = self.bbox.getMinX()
+        ymin = self.bbox.getMinY()
+        xmax = self.bbox.getMaxX()
+        ymax = self.bbox.getMaxY()
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(1,1,1)
+        calexps = [calexp[self.bbox] for calexp in self.calexps]
+        ax = debDisplay.plotColorImage(calexps=calexps, ax=ax, show=False)
+        if len(unmatchedTable)>0:
+            px = [src["x"]-xmin for src in unmatchedTable]
+            py = [src["y"]-ymin for src in unmatchedTable]
+            plt.plot(px, py, "yx", mew=2, label="Peaks not detected")
+        px = [src["x"]-xmin for src in matchedTable]
+        py = [src["y"]-ymin for src in matchedTable]
+        ax.plot(px, py, "rx", mew=2, label="Detected peaks")
+        _peaks = self.peaksToBbox(self.peaks)
+        for pk,peak in enumerate(_peaks):
+            ax.text(peak[0], peak[1], pk, color="red")
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
+        # Sometimes, if sources are near the edge, the plot extends beyond the image size
+        plt.xlim([0,self.bbox.getWidth()-1])
+        plt.ylim([self.bbox.getHeight()-1, 0])
+        plt.show()
+
+    def displayPeaks(self, unmatchedTable, matchedTable, ax=None, show=True, figsize=(8,8)):
+        """Plot peaks on top of an image
+        """
+        xmin = self.bbox.getMinX()
+        ymin = self.bbox.getMinY()
+        xmax = self.bbox.getMaxX()
+        ymax = self.bbox.getMaxY()
+        if ax is None:
+            fig = plt.figure(figsize=figsize)
+            ax = fig.add_subplot(1,1,1)
+        if len(unmatchedTable)>0:
+            px = [src["x"]-xmin for src in unmatchedTable]
+            py = [src["y"]-ymin for src in unmatchedTable]
+            plt.plot(px, py, "yx", mew=2, label="Peaks not detected")
+        px = [src["x"]-xmin for src in matchedTable]
+        py = [src["y"]-ymin for src in matchedTable]
+        ax.plot(px, py, "rx", mew=2, label="Detected peaks")
+        _peaks = self.peaksToBbox(self.peaks)
+        for pk,peak in enumerate(_peaks):
+            ax.text(peak[0], peak[1], pk, color="red")
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
+        # Sometimes, if sources are near the edge, the plot extends beyond the image size
+        plt.xlim([0,self.bbox.getWidth()-1])
+        plt.ylim([self.bbox.getHeight()-1, 0])
+        if show:
+            plt.show()
+
 class ExposureDeblend:
     """Container for the objects and results of the NMF deblender
     """
@@ -634,12 +700,210 @@ class ExposureDeblend:
         deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
 
-    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, **kwargs):
+    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, deblendName=None,
+                compare=False, display=False, columns=None, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
-        self.deblendedParents = OrderedDict()
+        deblendedParents = OrderedDict()
+
+        if compare:
+            avgNoise = sim.getNoise(self.calexps)
+            noiseStr = ["{0:.2f}".format(n) for n in avgNoise]
+            logger.info("Average Noise:\n{0}".format(avgNoise))
+        #for parentIdx, src in enumerate(self.mergedDet[8]):
         for parentIdx, src in enumerate(self.mergedDet):
-            if len(src.getFootprint().getPeaks())>1:
-                result = self.deblendParent(parentIdx, condition, initPsf,
-                                            constraints=constraints, maxiter=maxiter, **kwargs)
-                self.deblendedParents[src.getId()] = result
+            if len(src.getFootprint().getPeaks())>10:
+                continue
+            #parentIdx = pidx+6
+            logger.info("Parent id: {0}".format(src.getId()))
+            #if len(src.getFootprint().getPeaks())>1:
+            #    result = deblendParent(parentIdx, condition, initPsf,
+            #                                constraints=constraints, maxiter=maxiter, **kwargs)
+            #    deblendedParents[src.getId()] = result
+            result = self.deblendParent(parentIdx, condition, initPsf,
+                                        constraints=constraints, maxiter=maxiter, **kwargs)
+            deblendedParents[src.getId()] = result
+
+            if compare:
+                # Build a table of peaks detected by the pipeline
+                peakTable = sim.buildFootprintPeakTable(result.footprint, self.filters, peaks=result.peaks)
+                # Estimate the noise in the image
+                simResults = sim.matchFootprintToRef(result.footprint, peakTable, self.simTable,
+                                                     self.filters, avgNoise=avgNoise, expDb=self,
+                                                     display=False)
+                simTable, idx, unmatchedTable = simResults
+
+                # Display the raw data with peaks marked
+                fig = plt.figure(figsize=(8,8))
+                ax = fig.add_subplot(1,1,1)
+                debDisplay.plotColorImage(images=result.data, figsize=(8,8), show=False, ax=ax)
+                result.displayPeaks(unmatchedTable, simTable, ax=ax, show=False)
+                plt.show()
+
+                # Display the model with peaks marked
+                fig = plt.figure(figsize=(8,8))
+                ax = fig.add_subplot(1,1,1)
+                debDisplay.plotColorImage(result.model, figsize=(8,8), show=False, ax=ax)
+                result.displayPeaks(unmatchedTable, simTable, ax=ax, show=False)
+                plt.show()
+
+                # Display the residuals
+                residuals = result.model-result.data
+                cols = 2
+                rows = 1+len(self.filters)//cols
+                if np.mod(len(self.filters), cols)==0:
+                    rows -= 1
+                fig = plt.figure(figsize=(12,6*rows))
+                fig.suptitle("Residuals")
+                for fidx, f in enumerate(self.filters):
+                    ax = fig.add_subplot(rows, cols, fidx+1)
+                    img = ax.imshow(residuals[fidx])
+                    fig.colorbar(img, ax=ax)
+                    ax.set_title(f)
+                plt.show()
+
+                # Use the deblender info to create models for the peaks
+                simTemplates = sim.getSimTemplates(simTable, self.filters, footprint=result.footprint,
+                                                   display=False)
+                simFullTemplates = sim.getSimTemplates(simTable, self.filters, display=False)
+                newTemplates = result.getAllTemplates()
+                newApportioned = result.getFluxPortionTemplates()
+                allTemplates = OrderedDict([
+                    ("sim", simTemplates),
+                    ("new", newTemplates),
+                    ("new apportioned", newApportioned),
+                ])
+                fullTemplates = OrderedDict([
+                    ("sim", simFullTemplates),
+                    ("new", newTemplates),
+                    ("new apportioned", newApportioned),
+                ])
+
+                # Extract template data from old deblender or isolated flux
+                if len(result.peaks)==1:
+                    from lsst.afw.image import ImageI
+
+                    fp = result.footprint
+                    bbox = self.calexps[0].getBBox()
+                    mask = ImageI(bbox.getHeight(), bbox.getWidth())
+                    fp.spans.setImage(mask, 1)
+                    mask = mask[fp.getBBox()].getArray()
+                    isolatedTemplates = np.zeros((1,len(self.filters),
+                                                  fp.getBBox().getHeight(), fp.getBBox().getWidth()))
+                    for fidx, f in enumerate(self.filters):
+                        img = self.calexps[fidx][fp.getBBox()].getMaskedImage().getImage().getArray()
+                        img[mask==0] = 0
+                        isolatedTemplates[0,fidx] = img
+                    allTemplates["isolated"] = isolatedTemplates
+                    fullTemplates["isolated"] = isolatedTemplates
+                else:
+                    dbr = sim.deblendFootprintOld(self.filters, self, result.footprint, peakTable)
+                    allTemplates["old"] = sim.getODBTemplates(result.footprint, dbr, display=False)
+                    fullTemplates["old"] = allTemplates["old"]
+
+                simSeds = np.array([np.array(simTable["flux_{0}".format(f)]).tolist() for f in self.filters])
+                norm = np.sum(simSeds, axis=0)
+                simSeds = simSeds/norm
+                if "old" in allTemplates:
+                    oldSeds = np.array([np.array(peakTable["flux_{0}".format(f)]).tolist() for f in self.filters])
+                    norm = np.sum(oldSeds, axis=0)
+                    oldSeds = oldSeds/norm
+                else:
+                    oldSeds = None
+                if "isolated" in allTemplates:
+                    isoSeds = np.sum(allTemplates["isolated"], axis=(2,3))
+                    norm = np.sum(isoSeds)
+                    isoSeds = (isoSeds/norm)[0]
+                else:
+                    isoSeds = None
+
+                # Make Measurements on each object
+                #calexps = [calexp.copy() for calexp in self.calexps]
+                allSources = sim.makeAllMeasurements(fullTemplates, self.filters, self.calexps,
+                                                     result.footprint, thresh=1e-13)
+                #continue
+
+                if columns is None:
+                    columns = [
+                        #"base_GaussianFlux_flux",
+                        #"ext_photometryKron_KronFlux_flux",
+                        #"modelfit_CModel_flux",
+                        #"modelfit_CModel_exp_flux",
+                        "base_SdssShape_xx",
+                        "base_SdssShape_yy",
+                        "base_SdssShape_xy",
+                    ]
+                #maxFlux = np.max(allTemplates["sim"], axis=(0,2,3))
+
+                # Compare the overlap (if there is more than one peak in the plot)
+                if "old" in allTemplates:
+                    fig = plt.figure(figsize=(12,14))
+                    ax1 = fig.add_subplot(2,2,1)
+                    ax2 = fig.add_subplot(2,2,2)
+                    ax3 = fig.add_subplot(2,2,3)
+                    ax1.set_title("Old")
+                    ax2.set_title("New")
+                    ax3.set_title("New Apportioned")
+                    sim.compareOverlap(allTemplates["sim"], allTemplates["old"], show=False, ax=ax1,
+                                       thresh=avgNoise)
+                    sim.compareOverlap(allTemplates["sim"], allTemplates["new"], show=False, ax=ax2,
+                                       thresh=avgNoise)
+                    sim.compareOverlap(allTemplates["sim"], allTemplates["new apportioned"], show=False,
+                                       ax=ax3, thresh=avgNoise)
+                    plt.show()
+
+                for pk in range(len(peakTable)):
+                    if np.sum(allTemplates["new"][pk])==0:
+                        logger.info("No flux in peak {0}".format(pk))
+                        continue
+                    logger.info("Peak {0}".format(pk))
+
+                    # Plot SEDS
+                    plt.plot(simSeds[:,pk], '.-', label="sim")
+                    plt.plot(result.seds[:,pk], '.--', label="new")
+                    if oldSeds is not None:
+                        plt.plot(oldSeds[:,pk], '.-.', label="old")
+                    if isoSeds is not None:
+                        plt.plot(isoSeds, '.-.', label="isolated")
+                    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -.1),
+                                  fancybox=True, shadow=True, ncol=5)
+                    plt.title("Peak {0} SEDs".format(pk))
+                    plt.show()
+
+                    # Plot Peak flux in each band
+                    #plt.semilogy(maxFlux, 'k.-', label="Max Flux")
+                    #plt.semilogy(np.max(allTemplates["sim"][pk], axis=(1,2)),
+                    #             'g.-', label="Peak {0}".format(pk))
+                    #plt.semilogy(avgNoise, 'r', label="Noise")
+                    #plt.semilogy(2*np.array(avgNoise), 'r--', label="2$\\times$Noise")
+
+                    plt.plot(np.max(allTemplates["sim"][pk], axis=(1,2)),
+                                 'g.-', label="Peak {0}".format(pk))
+                    plt.plot(avgNoise, 'r', label="Noise")
+                    plt.plot(2*np.array(avgNoise), 'r--', label="2$\\times$Noise")
+
+                    plt.legend(loc='center left', bbox_to_anchor=(1, .5),
+                                       fancybox=True, shadow=True)
+                    plt.title("Flux")
+                    x = list(range(len(self.filters)))
+                    plt.xticks([-.25]+x+[x[-1]+.25], [""]+[f for f in self.filters]+[""])
+                    plt.xlabel("Filters")
+                    plt.ylabel("Flux")
+                    plt.show()
+
+                    templates = OrderedDict([(t, template[pk]) for t, template in allTemplates.items()])
+                    # Show the colored image for each template
+                    debDisplay.plotPeakTemplates(templates, columns=2)
+                    # Comparison plots for each field to compare
+                    sim.compareSourceColumns(allSources, columns, pk, filters=self.filters)
+
+                    # Compare Flux above noise
+                    sim.compareTemplateFlux(allTemplates, pk, thresh=avgNoise, filters=self.filters)
+
+
+        if deblendName is None:
+            self.deblends = deblendedParents
+        else:
+            if self.deblends is None:
+                self.deblends = OrderedDict()
+            self.deblends[deblendName] = deblendedParents
