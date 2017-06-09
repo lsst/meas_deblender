@@ -155,13 +155,13 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
     return colors.makeRgbImage(*images)
 
 def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None,
-                   Q=8, ax=None, show=True):
+                   Q=8, ax=None, show=True, figsize=(5,5)):
     """Display a collection of images or calexp's as an RGB image
 
     See `imagesToRgb` for more info.
     """
     if ax is None:
-        fig = plt.figure(figsize=(5,5))
+        fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(1,1,1)
     # afw display struggles if one of the templates has no flux
     if images is not None:
@@ -329,7 +329,7 @@ def plotPeakTemplates(templates, columns=3, figsize=None, **plotKwargs):
     rows = 1+len(templates)//columns
     if np.mod(len(templates),columns)==0:
         rows -= 1
-    fig = plt.figure(figsize=(12, rows*12*ratio/1.618))
+    fig = plt.figure(figsize=(12, rows*10*ratio/1.618))
     # Plot the image using all of the templates
     for n, (title, template) in enumerate(templates.items()):
         ax = fig.add_subplot(rows, columns, n+1)

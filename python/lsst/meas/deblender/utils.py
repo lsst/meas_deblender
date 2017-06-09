@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
-def getFootprintArray(src):
+def getFootprintArray(src, bbox):
     """Get the border and filled in arrays of a footprint
 
     Extracting the mask is currently implemented in ``Footprints``, but since this functionality has
@@ -17,7 +17,8 @@ def getFootprintArray(src):
     else:
         footprint = src
     spans = footprint.getSpans()
-    bbox = footprint.getBBox()
+    if bbox is None:
+        bbox = footprint.getBBox()
     minX = bbox.getMinX()
     minY = bbox.getMinY()
     filled = np.ma.array(np.zeros((bbox.getHeight(), bbox.getWidth()), dtype=bool))
@@ -228,6 +229,28 @@ def makeExpMeasurements(fidx, calexps=None, templates=None, parent=None,
         child = sources.addNew()
         child.setFootprint(fp)
 
+
     # Make the measurements
+    """
+    plt.figure(figsize=(10,10))
+    plt.title("Before running")
+    plt.imshow(calexps[fidx].getMaskedImage().getImage().getArray())
+    print(id(calexps[fidx]))
+    plt.colorbar()
+    plt.show()
+
     measureTask.run(sources, calexps[fidx])
+
+    plt.figure(figsize=(10,10))
+    plt.title("After running")
+    plt.imshow(calexps[fidx].getMaskedImage().getImage().getArray())
+    print(id(calexps[fidx]))
+    plt.colorbar()
+    plt.show()
+    """
+
+
+    cexps = [c.clone() for c in calexps]
+    measureTask.run(sources, cexps[fidx])
+
     return sources
