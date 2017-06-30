@@ -55,7 +55,7 @@ def compareSeds(tables, filters, ax=None, show=True, color_cycle=None):
     """
     # If the user didn't specify an axis, create a new figure
     if ax is None:
-        fig = plt.figure(figsize=(10,8))
+        fig = plt.figure(figsize=(14,8))
         ax = fig.add_subplot(1,1,1)
     # Use a default color cycle so that peaks have consistent colors in all tables
     if color_cycle is None:
@@ -80,6 +80,10 @@ def compareSeds(tables, filters, ax=None, show=True, color_cycle=None):
             else:
                 label=None
             ax.plot(seds[:, pk], markers[midx], label=label, color=color_cycle[cidx])
+            ax.set_xticks(range(len(seds[:, pk])))
+            ax.set_xticklabels(filters)
+            ax.set_xlabel("Filter")
+            ax.set_ylabel("Normalized SED")
             cidx += 1
             if cidx==len(color_cycle):
                 cidx = 0
@@ -151,13 +155,13 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
     return colors.makeRgbImage(*images)
 
 def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None,
-                   Q=8, ax=None, show=True):
+                   Q=8, ax=None, show=True, figsize=(5,5)):
     """Display a collection of images or calexp's as an RGB image
 
     See `imagesToRgb` for more info.
     """
     if ax is None:
-        fig = plt.figure(figsize=(5,5))
+        fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(1,1,1)
     # afw display struggles if one of the templates has no flux
     if images is not None:
@@ -325,7 +329,7 @@ def plotPeakTemplates(templates, columns=3, figsize=None, **plotKwargs):
     rows = 1+len(templates)//columns
     if np.mod(len(templates),columns)==0:
         rows -= 1
-    fig = plt.figure(figsize=(12, rows*12*ratio/1.618))
+    fig = plt.figure(figsize=(12, rows*10*ratio/1.618))
     # Plot the image using all of the templates
     for n, (title, template) in enumerate(templates.items()):
         ax = fig.add_subplot(rows, columns, n+1)

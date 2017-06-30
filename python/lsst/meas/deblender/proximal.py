@@ -239,6 +239,11 @@ class DeblendedParent:
         xmin = self.bbox.getMinX()
         ymin = self.bbox.getMinY()
         peaks = peaks - np.array([xmin, ymin])
+
+        if np.mod(self.bbox.getWidth(), 2) == 0:
+            peaks[:,0] += 0.5
+        if np.mod(self.bbox.getHeight(), 2) == 0:
+            peaks[:,1] += 0.5
         return peaks
 
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
@@ -266,6 +271,9 @@ class DeblendedParent:
         # Set the variance for pixels outside the footprint to zero
         import lsst.afw.image as afwImage
         import lsst.afw.detection as afwDetect
+        import time
+
+
         fpMask = afwImage.MaskU(self.footprint.getBBox())
         self.footprint.spans.setMask(fpMask, 1)
         fpMask = ~fpMask.getArray().astype(bool)
@@ -274,7 +282,10 @@ class DeblendedParent:
         variance = np.copy(self.variance)
         variance[mask] = 0
         data = self.data.copy()
-        #data[mask] = 0
+        data[mask] = 0
+        # TODO: Remove the following temporary line
+        # It currently exists to show comparison plots with the mask applied
+        self.data = data
         #debDisplay.maskPlot(data[0], data[0]==0)
 
         if peaks is None:
@@ -292,9 +303,15 @@ class DeblendedParent:
             self.psfThresh = psfThresh
         if usePsf and 'psf' not in kwargs:
             kwargs['psf'] = self.psfs
-        logger.info("constraints: {0}".format(constraints))
+        tInit = time.time()
         result = deblender.nmf.deblend(img=data, peaks=peaks, constraints=constraints, weights=variance,
                                        max_iter=maxiter, psf_thresh=psfThresh, **kwargs)
+        tFinal = time.time()
+        tDiff = tFinal-tInit
+        if tDiff>1:
+            logger.info("Total Runtime: {0:.2f} s".format(tDiff))
+        else:
+            logger.info("Total Runtime: {0:.0f} ms".format(1000*tDiff))
 
         seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
         self.seds = seds
@@ -552,6 +569,60 @@ class DeblendedParent:
         plt.ylabel("$S^2-e_{dual}^2$")
         plt.show()
 
+    def displayImage(self, unmatchedTable, matchedTable, figsize=(8,8)):
+        """Display an image with peaks marked
+        """
+        xmin = self.bbox.getMinX()
+        ymin = self.bbox.getMinY()
+        xmax = self.bbox.getMaxX()
+        ymax = self.bbox.getMaxY()
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(1,1,1)
+        calexps = [calexp[self.bbox] for calexp in self.calexps]
+        ax = debDisplay.plotColorImage(calexps=calexps, ax=ax, show=False)
+        if len(unmatchedTable)>0:
+            px = [src["x"]-xmin for src in unmatchedTable]
+            py = [src["y"]-ymin for src in unmatchedTable]
+            plt.plot(px, py, "yx", mew=2, label="Peaks not detected")
+        px = [src["x"]-xmin for src in matchedTable]
+        py = [src["y"]-ymin for src in matchedTable]
+        ax.plot(px, py, "rx", mew=2, label="Detected peaks")
+        _peaks = self.peaksToBbox(self.peaks)
+        for pk,peak in enumerate(_peaks):
+            ax.text(peak[0], peak[1], pk, color="red")
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
+        # Sometimes, if sources are near the edge, the plot extends beyond the image size
+        plt.xlim([0,self.bbox.getWidth()-1])
+        plt.ylim([self.bbox.getHeight()-1, 0])
+        plt.show()
+
+    def displayPeaks(self, unmatchedTable, matchedTable, ax=None, show=True, figsize=(8,8)):
+        """Plot peaks on top of an image
+        """
+        xmin = self.bbox.getMinX()
+        ymin = self.bbox.getMinY()
+        xmax = self.bbox.getMaxX()
+        ymax = self.bbox.getMaxY()
+        if ax is None:
+            fig = plt.figure(figsize=figsize)
+            ax = fig.add_subplot(1,1,1)
+        if len(unmatchedTable)>0:
+            px = [src["x"]-xmin for src in unmatchedTable]
+            py = [src["y"]-ymin for src in unmatchedTable]
+            plt.plot(px, py, "yx", mew=2, label="Peaks not detected")
+        px = [src["x"]-xmin for src in matchedTable]
+        py = [src["y"]-ymin for src in matchedTable]
+        ax.plot(px, py, "rx", mew=2, label="Detected peaks")
+        _peaks = self.peaksToBbox(self.peaks)
+        for pk,peak in enumerate(_peaks):
+            ax.text(peak[0], peak[1], pk, color="red")
+        plt.legend(loc="center left", fancybox=True, shadow=True, ncol=1, bbox_to_anchor=(1, 0.5))
+        # Sometimes, if sources are near the edge, the plot extends beyond the image size
+        plt.xlim([0,self.bbox.getWidth()-1])
+        plt.ylim([self.bbox.getHeight()-1, 0])
+        if show:
+            plt.show()
+
 class ExposureDeblend:
     """Container for the objects and results of the NMF deblender
     """
@@ -593,6 +664,19 @@ class ExposureDeblend:
         #self.psfs = [psf.computeImage().getArray()/np.max(psf.computeImage().getArray()) for psf in expPsfs]
         self.psfs = np.array([psf.computeKernelImage().getArray() for psf in expPsfs])
 
+        # TODO Remove the rest of this function, which is temporarily used to generate plots for Peter
+        logger.warn("Using incorrect fored PSF information")
+        def circularGaussian(x, y, fwhm):
+            sigma = fwhm/(2*np.sqrt(2*np.log(2)))
+            return np.exp(-(x**2 + y**2)/(2*sigma**2))
+
+        size = self.psfs[0].shape[0]
+        x = np.arange(size)-int(size/2)
+        y = np.arange(size)-int(size/2)
+        x,y = np.meshgrid(x,y)
+        psf = circularGaussian(x,y, 2.5)
+        self.psfs = np.array([psf]*len(self.psfs))
+
     def getParentFootprint(self, parentIdx=0, condition=None, display=True,
                            filterIndices=None, Q=8, useExactPeaks=True):
         """Get the parent footprint, peaks, and (optionally) display them
@@ -629,12 +713,33 @@ class ExposureDeblend:
         deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
         return deblend
 
-    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, **kwargs):
+    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, deblendName=None,
+                compare=False, display=False, columns=None, max_children=None, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
-        self.deblendedParents = OrderedDict()
+        deblendedParents = OrderedDict()
+
         for parentIdx, src in enumerate(self.mergedDet):
-            if len(src.getFootprint().getPeaks())>1:
-                result = self.deblendParent(parentIdx, condition, initPsf,
-                                            constraints=constraints, maxiter=maxiter, **kwargs)
-                self.deblendedParents[src.getId()] = result
+            if max_children is not None and len(src.getFootprint().getPeaks())>max_children:
+                continue
+            #parentIdx = pidx+6
+            logger.info("Parent id: {0}".format(src.getId()))
+            #if len(src.getFootprint().getPeaks())>1:
+            #    result = deblendParent(parentIdx, condition, initPsf,
+            #                                constraints=constraints, maxiter=maxiter, **kwargs)
+            #    deblendedParents[src.getId()] = result
+            result = self.deblendParent(parentIdx, condition, initPsf,
+                                        constraints=constraints, maxiter=maxiter, **kwargs)
+            deblendedParents[src.getId()] = result
+
+            if compare:
+                logger.info("Parent id: {0}".format(src.getId()))
+                sim.compareDeblendToSim(result, src, self.simTable, columns=columns)
+
+
+        if deblendName is None:
+            self.deblends = deblendedParents
+        else:
+            if self.deblends is None:
+                self.deblends = OrderedDict()
+            self.deblends[deblendName] = deblendedParents
