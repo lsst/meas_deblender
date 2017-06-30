@@ -714,7 +714,7 @@ class ExposureDeblend:
         return deblend
 
     def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, deblendName=None,
-                compare=False, display=False, columns=None, max_children=10, **kwargs):
+                compare=False, display=False, columns=None, max_children=None, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
         deblendedParents = OrderedDict()
