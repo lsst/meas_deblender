@@ -1208,9 +1208,11 @@ def compareTemplateFlux(allTemplates, pk, thresh=None, filters=None, useDifferen
                fancybox=True, shadow=True, ncol=len(templates))
     plt.show()
 
-def compareDeblendToSim(deblend, parent, simTable, avgNoise=None):
+def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=None):
     calexps = deblend.expDeblend.calexps
-    #simTable = deblend.expDeblend.simTable
+    if simTable is None:
+        simTable = deblend.expDeblend.simTable
+    # Estimate the noise in the image
     if avgNoise is None:
         avgNoise = getNoise(calexps)
         noiseStr = ["{0:.2f}".format(n) for n in avgNoise]
@@ -1218,9 +1220,6 @@ def compareDeblendToSim(deblend, parent, simTable, avgNoise=None):
         
     # Build a table of peaks detected by the pipeline
     peakTable = buildFootprintPeakTable(deblend.footprint, deblend.filters, peaks=deblend.peaks)
-    # Estimate the noise in the image
-    logger.info(len(peakTable))
-    logger.info(len(simTable))
     simResults = matchFootprintToRef(deblend.footprint, peakTable, simTable,
                                      deblend.filters, avgNoise=avgNoise, expDb=deblend.expDeblend,
                                      display=False)
