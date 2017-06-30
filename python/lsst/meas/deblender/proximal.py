@@ -732,12 +732,9 @@ class ExposureDeblend:
                                         constraints=constraints, maxiter=maxiter, **kwargs)
             deblendedParents[src.getId()] = result
 
-        if compare:
-            for parentIdx, deblend in deblendedParents.items():
-                if parentIdx not in deblendedParents:
-                    continue
+            if compare:
                 logger.info("Parent id: {0}".format(src.getId()))
-                sim.compareDeblendToSim(deblend, self.mergedDet[parentIdx], self.simTable)
+                sim.compareDeblendToSim(result, src, self.simTable, columns=columns)
 
 
         if deblendName is None:
