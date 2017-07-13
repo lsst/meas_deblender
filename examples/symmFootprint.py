@@ -16,7 +16,7 @@ def main():
     foot = buildExample2()
 
     fbb = foot.getBBox()
-    mask1 = afwImg.MaskU(fbb.getWidth(), fbb.getHeight())
+    mask1 = afwImg.Mask(fbb.getWidth(), fbb.getHeight())
     mask1.setXY0(fbb.getMinX(), fbb.getMinY())
     afwDet.setMaskFromFootprint(mask1, foot, 1)
 
@@ -29,7 +29,7 @@ def main():
 
         sfoot = butils.symmetrizeFootprint(foot, 355, 227)
 
-        mask2 = afwImg.MaskU(fbb.getWidth(), fbb.getHeight())
+        mask2 = afwImg.Mask(fbb.getWidth(), fbb.getHeight())
         mask2.setXY0(fbb.getMinX(), fbb.getMinY())
         afwDet.setMaskFromFootprint(mask2, sfoot, 1)
 

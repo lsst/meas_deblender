@@ -167,7 +167,7 @@ def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.
         cpsf = CachingPsf(dp.psf)
 
         # create mask image for pixels within the footprint
-        fmask = afwImage.MaskU(dp.bb)
+        fmask = afwImage.Mask(dp.bb)
         fmask.setXY0(dp.bb.getMinX(), dp.bb.getMinY())
         dp.fp.spans.setMask(fmask, 1)
 
@@ -195,7 +195,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     ----------
     fp: `afw.detection.Footprint`
         Footprint containing the Peaks to model.
-    fmask: `afw.image.MaskU`
+    fmask: `afw.image.Mask`
         The Mask plane for pixels in the Footprint
     pk: `afw.detection.PeakRecord`
         The peak within the Footprint that we are going to fit with PSF model

@@ -63,7 +63,7 @@ class FitPsfTestCase(unittest.TestCase):
         fbb = fp.getBBox()
         print('fbb', fbb.getMinX(), fbb.getMaxX(), fbb.getMinY(), fbb.getMaxY())
 
-        fmask = afwImage.MaskU(fbb)
+        fmask = afwImage.Mask(fbb)
         fmask.setXY0(fbb.getMinX(), fbb.getMinY())
         fp.spans.setMask(fmask, 1)
 
