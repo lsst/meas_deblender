@@ -2,6 +2,7 @@
 from __future__ import print_function, division
 from collections import OrderedDict
 import logging
+from functools import partial
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -95,18 +96,23 @@ def getParentFootprint(mergedTable, mergedDet, calexps, condition, parentIdx, di
         idx = np.argsort(total_flux)
         peaks = peaks[idx][::-1]
 
+        # Check that the peak is actually within the footprint
+        fpMask = afwImage.MaskU(footprint.getBBox())
+        footprint.spans.setMask(fpMask, 1)
+        fpMask = fpMask.getArray().astype(bool)
+
         # Update the footprint with the new peaks
         fp = Footprint(footprint.getSpans())
-        for pk in range(len(peaks)):
-            px, py = peaks[pk]
+        for pk, (px, py) in enumerate(peaks):
             ix, iy = int(np.round(px)), int(np.round(py))
-            intensity = calexps[0].getMaskedImage().getImage().getArray()[iy, ix]
-            fp.addPeak(px, py, intensity)
+            if not np.all(fpMask[iy-ymin, ix-xmin] == 0):
+                intensity = calexps[0].getMaskedImage().getImage().getArray()[iy, ix]
+                fp.addPeak(px, py, intensity)
     else:
         # Extract the peak positions from the peak catalog
         fp = footprint
-        peaks = footprint.getPeaks()
-        peaks = np.array([[pk.getIx(), pk.getIy()] for pk in peaks])
+    peaks = fp.getPeaks()
+    peaks = np.array([[pk.getFx(), pk.getFy()] for pk in peaks])
 
     if display:
         debDisplay.plotImgWithMarkers(calexps, footprint, filterIndices=filterIndices, Q=Q, show=True)
@@ -248,7 +254,8 @@ class DeblendedParent:
 
     def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
                 display=False, filterIndices=None, contrast=100, adjustZero=False,
-                psfThresh=None, usePsf=None, peaks=None, recenterPeaks=True, **kwargs):
+                psfThresh=None, usePsf=None, peaks=None, recenterPeaks=True, strict_constraints=None,
+                l0_thresh=None, l1_thresh=None, **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
@@ -282,6 +289,7 @@ class DeblendedParent:
         variance = np.copy(self.variance)
         variance[mask] = 0
         data = self.data.copy()
+
         data[mask] = 0
         # TODO: Remove the following temporary line
         # It currently exists to show comparison plots with the mask applied
@@ -304,8 +312,35 @@ class DeblendedParent:
         if usePsf and 'psf' not in kwargs:
             kwargs['psf'] = self.psfs
         tInit = time.time()
+
+        # Use strict monotonicity
+        if strict_constraints is not None:
+            # S: non-negativity or L0/L1 sparsity plus ...
+            if l0_thresh is None and l1_thresh is None:
+                prox_S = proxmin.operators.prox_plus
+            else:
+                # L0 has preference
+                if l0_thresh is not None:
+                    if l1_thresh is not None:
+                        logger.warn("weightsarning: l1_thresh ignored in favor of l0_thresh")
+                    prox_S = partial(proxmin.operators.prox_hard, thresh=l0_thresh)
+                else:
+                    prox_S = partial(proxmin.operators.prox_soft_plus, thresh=l1_thresh)
+            if isinstance(strict_constraints, str):
+                seeks = [True]*len(peaks)
+            else:
+                seeks = [strict_constraints[pk] for pk in range(len(peaks))]
+            print(prox_S)
+            print(seeks)
+            prox_S = deblender.proximal.build_prox_monotonic(shape=self.shape, seeks=seeks,
+                                                              prox_chain=prox_S)
+        else:
+            prox_S = None
+
+        # Run the deblender
         result = deblender.nmf.deblend(img=data, peaks=peaks, constraints=constraints, weights=variance,
-                                       max_iter=maxiter, psf_thresh=psfThresh, **kwargs)
+                                       max_iter=maxiter, psf_thresh=psfThresh, l0_thresh=l0_thresh, 
+                                       prox_S=prox_S, **kwargs)
         tFinal = time.time()
         tDiff = tFinal-tInit
         if tDiff>1:
@@ -313,7 +348,7 @@ class DeblendedParent:
         else:
             logger.info("Total Runtime: {0:.0f} ms".format(1000*tDiff))
 
-        seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.errors = result
+        seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.traceback = result
         self.seds = seds
         self.intensities = intensities
 
