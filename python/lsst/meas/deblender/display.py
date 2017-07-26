@@ -219,7 +219,7 @@ def plotImgWithMarkers(calexps, footprint, filterIndices=None, show=True,
     ax.imshow(colors, **img_kwargs)
 
     # Display the footprint border
-    border, filled = debUtils.getFootprintArray(footprint)
+    border, filled = debUtils.getFootprintArray(footprint, bbox)
     if "interpolation" not in footprint_kwargs:
         footprint_kwargs["interpolation"] = "none"
     if "cmap" not in footprint_kwargs:
