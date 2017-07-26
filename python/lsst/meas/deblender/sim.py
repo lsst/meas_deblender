@@ -291,18 +291,19 @@ def matchToRef(peakTable, simTable, filters, maxSeparation=3, poolSize=-1, avgNo
 
     # Store data for unmatched sources for later analysis
     unmatchedTable = simTable[unmatched]
-    allRatios = OrderedDict([(f, []) for f in filters])
-    for sidx in unmatched:
-        ratios = []
-        for fidx,f in enumerate(filters):
-            ratio = np.max(simTable[sidx]["intensity_"+f])/avgNoise[fidx]
-            ratios.append(ratio)
-            allRatios[f].append(ratio)
-    for col, ratios in allRatios.items():
-        unmatchedTable["{0} peak/noise".format(col)] = ratios
+    if avgNoise is not None:
+        allRatios = OrderedDict([(f, []) for f in filters])
+        for sidx in unmatched:
+            ratios = []
+            for fidx,f in enumerate(filters):
+                ratio = np.max(simTable[sidx]["intensity_"+f])/avgNoise[fidx]
+                ratios.append(ratio)
+                allRatios[f].append(ratio)
+        for col, ratios in allRatios.items():
+            unmatchedTable["{0} peak/noise".format(col)] = ratios
 
     # Display the unmatched sources ratios
-    if len(unmatchedTable)>0:
+    if len(unmatchedTable)>0 and display:
         ratios = [f+" peak/noise" for f in filters]
         all_ratios = np.array(unmatchedTable[ratios]).view(np.float64).reshape(len(unmatchedTable),
                                                                                len(ratios))
@@ -1208,7 +1209,8 @@ def compareTemplateFlux(allTemplates, pk, thresh=None, filters=None, useDifferen
                fancybox=True, shadow=True, ncol=len(templates))
     plt.show()
 
-def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=None):
+def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=None,
+                        use_sfm=False):
     calexps = deblend.expDeblend.calexps
     if simTable is None:
         simTable = deblend.expDeblend.simTable
@@ -1310,8 +1312,9 @@ def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=N
         isoSeds = None
 
     # Make Measurements on each object
-    allSources = makeAllMeasurements(fullTemplates, deblend.filters, calexps,
-                                     deblend.footprint, thresh=1e-13)
+    if use_sfm:
+        allSources = makeAllMeasurements(fullTemplates, deblend.filters, calexps,
+                                         deblend.footprint, thresh=1e-13)
     #continue
 
     if columns is None:
@@ -1349,6 +1352,10 @@ def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=N
             continue
         logger.info("Peak {0}".format(pk))
 
+        # Show the colored image for each template
+        templates = OrderedDict([(t, template[pk]) for t, template in allTemplates.items()])
+        debDisplay.plotPeakTemplates(templates, columns=2)
+
         # Plot SEDS
         plt.plot(simSeds[:,pk], '.-', label="sim")
         plt.plot(deblend.seds[:,pk], '.--', label="new")
@@ -1382,11 +1389,9 @@ def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=N
         plt.ylabel("Flux")
         plt.show()
 
-        templates = OrderedDict([(t, template[pk]) for t, template in allTemplates.items()])
-        # Show the colored image for each template
-        debDisplay.plotPeakTemplates(templates, columns=2)
         # Comparison plots for each field to compare
-        compareSourceColumns(allSources, columns, pk, filters=deblend.filters)
+        if use_sfm:
+            compareSourceColumns(allSources, columns, pk, filters=deblend.filters)
 
         # Compare Flux above noise
         compareTemplateFlux(allTemplates, pk, thresh=avgNoise, filters=deblend.filters)
