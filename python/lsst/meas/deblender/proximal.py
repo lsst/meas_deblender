@@ -190,9 +190,6 @@ def compareMeasToSim(footprint, seds, intensities, Tx, Ty, peaks, realTable, fil
                 plt.show()
     return realTable[idx]
 
-def noStepUpdate(stepsize, step, **kwargs):
-    return stepsize
-
 class DeblendedParent:
     def __init__(self, expDeblend, footprint, peaks, usePsf=False):
         self.expDeblend = expDeblend
@@ -252,19 +249,14 @@ class DeblendedParent:
             peaks[:,1] += 0.5
         return peaks
 
-    def deblend(self, constraints="M", displayKwargs=None, maxiter=50, stepsize = 2,
-                display=False, filterIndices=None, contrast=100, adjustZero=False,
-                psfThresh=None, usePsf=None, peaks=None, recenterPeaks=True, strict_constraints=None,
-                l0_thresh=None, l1_thresh=None, **kwargs):
+    def deblend(self, display=False, filterIndices=None, contrast=100, adjustZero=False,
+                recenterPeaks=True, strict_constraints=None, usePsf=None, **kwargs):
         """Run the NMF deblender
 
         This currently just initializes the data (if necessary) and calls the nmf_deblender from
         deblender.nmf. It can also display the deblended footprints and statistics describing the
         fit if ``display=True``.
         """
-        if displayKwargs is None:
-            displayKwargs = {}
-
         if self.data is None:
             self.initNMF()
 
@@ -280,7 +272,6 @@ class DeblendedParent:
         import lsst.afw.detection as afwDetect
         import time
 
-
         fpMask = afwImage.MaskU(self.footprint.getBBox())
         self.footprint.spans.setMask(fpMask, 1)
         fpMask = ~fpMask.getArray().astype(bool)
@@ -288,59 +279,56 @@ class DeblendedParent:
         mask = ((badPixels & self.mask) | fpMask).astype(bool)
         variance = np.copy(self.variance)
         variance[mask] = 0
-        data = self.data.copy()
 
-        data[mask] = 0
-        # TODO: Remove the following temporary line
-        # It currently exists to show comparison plots with the mask applied
-        self.data = data
+        # TODO: Remove the following temporary lines
+        # They currently exist to show comparison plots with the mask applied
+        self.data[mask] = 0
+        data = self.data
         #debDisplay.maskPlot(data[0], data[0]==0)
 
-        if peaks is None:
-            peaks = self.peaks
+        if "peaks" not in kwargs:
+            kwargs["peaks"] = self.peaks
         else:
-            self.peaks = peaks
+            self.peaks = kwargs["peaks"]
         if recenterPeaks:
-            peaks = self.peaksToBbox(peaks)
+            kwargs["peaks"] = self.peaksToBbox(kwargs["peaks"])
 
         if usePsf is None:
             usePsf = self.usePsf
         else:
             self.usePsf = usePsf
-        if psfThresh is not None:
-            self.psfThresh = psfThresh
-        if usePsf and 'psf' not in kwargs:
-            kwargs['psf'] = self.psfs
-        tInit = time.time()
+        if usePsf:
+            if 'psf' not in kwargs:
+                kwargs['psf'] = self.psfs
 
         # Use strict monotonicity
         if strict_constraints is not None:
             # S: non-negativity or L0/L1 sparsity plus ...
-            if l0_thresh is None and l1_thresh is None:
+            if "l0_thresh" not in kwargs and "l1_thresh" not in kwargs:
                 prox_S = proxmin.operators.prox_plus
             else:
                 # L0 has preference
-                if l0_thresh is not None:
-                    if l1_thresh is not None:
-                        logger.warn("weightsarning: l1_thresh ignored in favor of l0_thresh")
-                    prox_S = partial(proxmin.operators.prox_hard, thresh=l0_thresh)
+                if "l0_thresh" in kwargs:
+                    if "l1_thresh" in kwargs:
+                        logger.warn("weights warning: l1_thresh ignored in favor of l0_thresh")
+                    prox_S = partial(proxmin.operators.prox_hard, thresh=kwargs["l0_thresh"])
                 else:
-                    prox_S = partial(proxmin.operators.prox_soft_plus, thresh=l1_thresh)
+                    prox_S = partial(proxmin.operators.prox_soft_plus, thresh=kwargs["l1_thresh"])
             if isinstance(strict_constraints, str):
-                seeks = [True]*len(peaks)
+                if strict_constraints!="m":
+                    raise ValueError("Monotonicity 'm' is the only allowed strict constraint")
+                seeks = [True]*len(kwargs["peaks"])
             else:
-                seeks = [strict_constraints[pk] for pk in range(len(peaks))]
-            print(prox_S)
-            print(seeks)
+                seeks = [strict_constraints[pk] for pk in range(len(kwargs["peaks"]))]
             prox_S = deblender.proximal.build_prox_monotonic(shape=self.shape, seeks=seeks,
                                                               prox_chain=prox_S)
-        else:
-            prox_S = None
+            if "prox_S" in kwargs:
+                logger.warn("prox_S ignored for strict monotonicity")
+            kwargs["prox_S"] = prox_S
 
         # Run the deblender
-        result = deblender.nmf.deblend(img=data, peaks=peaks, constraints=constraints, weights=variance,
-                                       max_iter=maxiter, psf_thresh=psfThresh, l0_thresh=l0_thresh, 
-                                       prox_S=prox_S, **kwargs)
+        tInit = time.time()
+        result = deblender.nmf.deblend(img=data, weights=variance, **kwargs)
         tFinal = time.time()
         tDiff = tFinal-tInit
         if tDiff>1:
@@ -732,8 +720,8 @@ class ExposureDeblend:
                                               simTable=simTable)
         return footprint, peaks
 
-    def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False, constraints="MS",
-                      maxiter=50, filterIndices=None, Q=8, **kwargs):
+    def deblendParent(self, parentIdx=0, condition=None, initPsf=False, display=False, constraints="SXY",
+                      filterIndices=None, Q=8, **kwargs):
         """Deblend a single parent footprint
 
         Deblend a parent selected by passing a ``parentIdx`` and ``condition``
@@ -745,10 +733,10 @@ class ExposureDeblend:
                                                    filterIndices, Q)
         deblend = DeblendedParent(self, footprint, peaks)
         deblend.initNMF(initPsf, filterIndices, Q)
-        deblend.deblend(constraints=constraints, maxiter=maxiter, display=display, **kwargs)
+        deblend.deblend(constraints=constraints, display=display, **kwargs)
         return deblend
 
-    def deblend(self, condition=None, initPsf=False, constraints="M", maxiter=50, deblendName=None,
+    def deblend(self, condition=None, initPsf=False, deblendName=None,
                 compare=False, display=False, columns=None, max_children=None, **kwargs):
         """Deblend all of the footprints with multiple peaks
         """
@@ -763,8 +751,7 @@ class ExposureDeblend:
             #    result = deblendParent(parentIdx, condition, initPsf,
             #                                constraints=constraints, maxiter=maxiter, **kwargs)
             #    deblendedParents[src.getId()] = result
-            result = self.deblendParent(parentIdx, condition, initPsf,
-                                        constraints=constraints, maxiter=maxiter, **kwargs)
+            result = self.deblendParent(parentIdx, condition, initPsf, **kwargs)
             deblendedParents[src.getId()] = result
 
             if compare:
