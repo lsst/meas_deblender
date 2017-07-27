@@ -1218,7 +1218,7 @@ def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=N
     if avgNoise is None:
         avgNoise = getNoise(calexps)
         noiseStr = ["{0:.2f}".format(n) for n in avgNoise]
-        logger.info("Average Noise:\n{0}".format(avgNoise))
+        logger.debug("Average Noise:\n{0}".format(avgNoise))
         
     # Build a table of peaks detected by the pipeline
     peakTable = buildFootprintPeakTable(deblend.footprint, deblend.filters, peaks=deblend.peaks)
