@@ -243,10 +243,6 @@ class DeblendedParent:
         ymin = self.bbox.getMinY()
         peaks = peaks - np.array([xmin, ymin])
 
-        if np.mod(self.bbox.getWidth(), 2) == 0:
-            peaks[:,0] += 0.5
-        if np.mod(self.bbox.getHeight(), 2) == 0:
-            peaks[:,1] += 0.5
         return peaks
 
     def deblend(self, display=False, filterIndices=None, contrast=100, adjustZero=False,
@@ -300,6 +296,17 @@ class DeblendedParent:
         if usePsf:
             if 'psf' not in kwargs:
                 kwargs['psf'] = self.psfs
+        if "slack" not in kwargs:
+            kwargs["slack"] = 0.5
+        # Make sure that the rows and columns of the data are odd numbered
+        old_shape = data.shape
+        data = deblender.nmf.reshape_img(data)
+        if data.shape != old_shape:
+            logger.warn("Reshaped image from {0} to {1}".format(old_shape, data.shape))
+            variance = deblender.nmf.reshape_img(variance, data.shape)
+            self.data = data
+            self.variance = variance
+            self.shape = [data.shape[1], data.shape[2]]
 
         # Use strict monotonicity
         if strict_constraints is not None:
@@ -743,6 +750,8 @@ class ExposureDeblend:
         deblendedParents = OrderedDict()
 
         for parentIdx, src in enumerate(self.mergedDet):
+            #if src.getId()!=5:
+            #    continue
             if max_children is not None and len(src.getFootprint().getPeaks())>max_children:
                 continue
             #parentIdx = pidx+6
