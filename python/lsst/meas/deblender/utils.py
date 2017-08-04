@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
-def getFootprintArray(src, bbox):
+def getFootprintArray(src, bbox=None):
     """Get the border and filled in arrays of a footprint
 
     Extracting the mask is currently implemented in ``Footprints``, but since this functionality has
