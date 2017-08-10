@@ -207,13 +207,6 @@ class DeblendedParent:
         self.data = None
         self.mask = None
         self.variance = None
-        self.initSeds = None
-        self.initIntensities = None
-        self.seds = None
-        self.intensities = None
-        self.symmetryOp = None
-        self.monotonicOp = None
-        self.psfOp = None
         self.cutoff = 0
         self.peakFlux = None
         self.correlations = None
@@ -229,7 +222,7 @@ class DeblendedParent:
 
         # Create the data matrices
         self.data, self.mask, self.variance = buildNmfData(self.calexps, self.footprint)
-        return self.data, self.mask, self.variance, self.initSeds, self.initIntensities
+        return self.data, self.mask, self.variance
 
     def peaksToBbox(self, peaks=None):
         """Convert peak positions to positions in the footprint bbox
@@ -275,6 +268,7 @@ class DeblendedParent:
         mask = ((badPixels & self.mask) | fpMask).astype(bool)
         variance = np.copy(self.variance)
         variance[mask] = 0
+        self.mask = mask
 
         # TODO: Remove the following temporary lines
         # They currently exist to show comparison plots with the mask applied
@@ -307,6 +301,7 @@ class DeblendedParent:
             self.data = data
             self.variance = variance
             self.shape = [data.shape[1], data.shape[2]]
+            self.mask = deblender.nmf.reshape_img(self.mask, data.shape)
 
         # Use strict monotonicity
         if strict_constraints is not None:
@@ -343,63 +338,25 @@ class DeblendedParent:
         else:
             logger.info("Total Runtime: {0:.0f} ms".format(1000*tDiff))
 
-        seds, intensities, self.model, self.psfOp, self.Tx, self.Ty, self.traceback = result
-        self.seds = seds
-        self.intensities = intensities
-
-        if display:
-            bands = intensities.shape[0]
-            peakCount = seds.shape[1]
-            pixels = intensities.shape[1]*intensities.shape[2]
-            # Show information about the fit
-            for fidx, f in enumerate(self.filters):
-                model = deblender.nmf.get_model(seds, intensities, self.Tx, self.Ty, self.psfOp, self.shape)
-
-                diff = (model-self.data)[fidx].reshape(self.shape)
-                logger.info('Filter {0}'.format(f))
-                logger.info('Pixel range: {0} to {1}'.format(np.min(self.data), np.max(self.data)))
-                logger.info('Max difference: {0}'.format(np.max(diff)))
-                logger.info('Residual difference {0:.1f}%'.format(
-                    100*np.abs(np.sum(diff)/np.sum(self.data[fidx]))))
-            if self.expDeblend.simTable is not None:
-                compareMeasToSim(self.footprint, seds, intensities, self.Tx, self.Ty, self.peaks,
-                                 self.expDeblend.simTable, self.filters, display=False, psfOp=self.psfOp,
-                                 fluxPortions=self.getFluxPortion())
-
-            # Show the new templates for each object
-            for pk in range(len(intensities)):
-                templates = np.array([self.getTemplate(n, pk) for n in range(len(self.calexps))])
-                debDisplay.plotColorImage(images=templates, filterIndices=filterIndices, Q=8)
-            debDisplay.plotSeds(seds)
-            plt.imshow(diff, interpolation='none', cmap='inferno')
-            plt.colorbar()
-            plt.show()
-
-        return seds, intensities
+        self.result = result
+        return result
 
     def getTemplate(self, fidx, pkIdx, seds=None, intensities=None, Tx=None, Ty=None):
         """Get the convolved image for a given peak in a given band
         """
         if seds is None:
-            seds = self.seds
+            seds = self.result.A
         if intensities is None:
-            intensities = self.intensities
-        if Tx is None:
-            Tx = self.Tx
-        if Ty is None:
-            Ty = self.Ty
-        if self.usePsf:
-            psfOp = self.psfOp
-        else:
-            psfOp = None
-        return deblender.nmf.get_peak_model(seds, intensities, Tx, Ty,
-                                            P=psfOp, shape=self.shape, k=pkIdx)[fidx]
+            intensities = self.result.S
+        Gamma = self.result.T.Gamma
+        
+        return deblender.nmf.get_peak_model(seds, intensities, Gamma, shape=self.shape, k=pkIdx)[fidx]
 
     def getAllTemplates(self, seds=None, intensities=None, Tx=None, Ty=None):
         """Get the convolved image for each peak in each band
         """
         if seds is None:
-            seds = self.seds
+            seds = self.result.A
         templates = np.zeros((seds.shape[1], seds.shape[0], self.shape[0], self.shape[1]))
         for pk in range(seds.shape[1]):
             for fidx in range(seds.shape[0]):
@@ -410,10 +367,10 @@ class DeblendedParent:
                         intensities=None, imgLimits=False, cmap='inferno', **displayKwargs):
         """Display an appropriately scaled template
         """
-        if intensities is None:
-            intensities = self.intensities
         if seds is None:
-            seds = self.seds
+            seds = self.result.A
+        if intensities is None:
+            intensities = self.result.S
         if imgType.lower() == 'template':
             img = self.getTemplate(fidx, pkIdx, seds, intensities)
         elif imgType.lower() == 'intensity':
@@ -436,26 +393,26 @@ class DeblendedParent:
 
     def displayAllImages(self, fidx=0, imgType='template', useMask=True, cutoff=None,
                             imgLimits=False, cmap='inferno', **displayKwargs):
-        for pk in range(len(self.intensities)):
+        for pk in range(len(self.result.S)):
             self.displayImage(pk, fidx, imgType, useMask=useMask, cutoff=cutoff,
                                  imgLimits=imgLimits, cmap=cmap, **displayKwargs)
 
     def trimFlux(self, cutoff=1e-2):
-        seds = np.max(self.seds, axis=0)
-        intensities = (self.intensities.T*seds).T
-        self.intensities[intensities<cutoff] = 0
+        seds = np.max(self.result.A, axis=0)
+        intensities = (self.result.S.T*seds).T
+        self.result.S[intensities<cutoff] = 0
 
     def getFluxPortionTemplates(self):
         """Use the deblended models to apportion the flux data to all sources
         """
         filters = len(self.data)
-        peakCount = len(self.intensities)
+        peakCount = len(self.result.S)
         allTemplates = np.zeros((peakCount, filters, self.shape[0], self.shape[1]))
 
         for fidx in range(filters):
             data = self.data[fidx]
             weight = self.variance[fidx]
-            templates = np.zeros_like(self.intensities)
+            templates = np.zeros_like(self.result.S)
             for pk in range(peakCount):
                 templates[pk] = self.getTemplate(fidx, pk)
 
@@ -477,8 +434,12 @@ class DeblendedParent:
         """Use the deblended models to apportion the flux data to all sources
         """
         filters = len(self.data)
-        peakCount = len(self.intensities)
+        peakCount = len(self.result.S)
         peakFlux = np.zeros((filters, peakCount))
+        seds = self.result.A
+        intensities = self.result.S
+        Gamma = self.Gamma
+        shape = self.shape
 
         for fidx in range(filters):
             data = self.data[fidx]
@@ -486,11 +447,9 @@ class DeblendedParent:
             totalWeight = np.sum(weight)
 
             # Calculate the model for each source
-            templates = np.zeros_like(self.intensities)
+            templates = np.zeros_like(self.result.S)
             for pk in range(peakCount):
-                templates[pk] = deblender.nmf.get_peak_model(self.seds, self.intensities,
-                                                             self.Tx, self.Ty, P=self.psfOp,
-                                                             shape=self.shape, k=pk)[fidx]
+                templates[pk] = deblender.nmf.get_peak_model(seds, intensities, Gamma, shape, k=pk)[fidx]
             # Normalize the templates to divide up the observed flux
             totalFlux = np.sum(templates, axis=0)
             normalization = totalFlux*totalWeight
@@ -514,7 +473,7 @@ class DeblendedParent:
         are merged with master. Until then, users can specify ``minFlux``, which will clip the
         "footprint" to regions with flux above ``minFlux``.
         """
-        intensities = np.copy(self.intensities)
+        intensities = np.copy(self.result.S)
         if minFlux is not None:
             intensities[intensities<minFlux] = 0
         totalIntensity = np.sum(intensities, axis=(1,2))
