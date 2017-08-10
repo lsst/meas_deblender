@@ -1230,6 +1230,7 @@ def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=N
     # Display the raw data with peaks marked
     fig = plt.figure(figsize=(8,8))
     ax = fig.add_subplot(1,1,1)
+    model = deblend.result.get_model(combine=True)
     debDisplay.plotColorImage(images=deblend.data, figsize=(8,8), show=False, ax=ax)
     deblend.displayPeaks(unmatchedTable, simTable, ax=ax, show=False)
     plt.show()
@@ -1237,12 +1238,12 @@ def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=N
     # Display the model with peaks marked
     fig = plt.figure(figsize=(8,8))
     ax = fig.add_subplot(1,1,1)
-    debDisplay.plotColorImage(deblend.model, figsize=(8,8), show=False, ax=ax)
+    debDisplay.plotColorImage(model, figsize=(8,8), show=False, ax=ax)
     deblend.displayPeaks(unmatchedTable, simTable, ax=ax, show=False)
     plt.show()
 
     # Display the residuals
-    residuals = deblend.model-deblend.data
+    residuals = model-deblend.data
     cols = 2
     rows = 1+len(deblend.filters)//cols
     if np.mod(len(deblend.filters), cols)==0:
@@ -1358,7 +1359,7 @@ def compareDeblendToSim(deblend, parent, simTable=None, avgNoise=None, columns=N
 
         # Plot SEDS
         plt.plot(simSeds[:,pk], '.-', label="sim")
-        plt.plot(deblend.seds[:,pk], '.--', label="new")
+        plt.plot(deblend.result.A[:,pk], '.--', label="new")
         if oldSeds is not None:
             plt.plot(oldSeds[:,pk], '.-.', label="old")
         if isoSeds is not None:
