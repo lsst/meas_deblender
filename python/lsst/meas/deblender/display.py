@@ -115,7 +115,7 @@ def plotIntensities(seds, intensities, shape, fidx=0,
         plt.imshow(template, interpolation='none', cmap='inferno', vmin=vmin, vmax=vmax)
         plt.show()
 
-def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None, **kwargs):
+def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None, vmin=None, vmax=None, **kwargs):
     """Convert a collection of images or calexp's to an RGB image
 
     This requires either an array of images or a list of calexps.
@@ -146,16 +146,19 @@ def imagesToRgb(images=None, calexps=None, filterIndices=None, xRange=None, yRan
     # Select the subset of 3 images to use for the RGB image
     images = images[filterIndices,ySlice, xSlice]
     images = images.astype(np.float32)
-    try:
-        colors = rgb.AsinhZScaleMapping(images, **kwargs)
-    except:
-        logger.warning("Could not use ZScale, using  AsinhMapping with scaling")
-        colors = rgb.AsinhMapping(np.min(images), np.max(images)-np.min(images))
+    if vmin is not None and vmax is not None:
+        colors = rgb.AsinhMapping(vmin, vmax-vmin, **kwargs)
+    else:
+        try:
+            colors = rgb.AsinhZScaleMapping(images, **kwargs)
+        except:
+            logger.warning("Could not use ZScale, using  AsinhMapping with scaling")
+            colors = rgb.AsinhMapping(np.min(images), np.max(images)-np.min(images))
 
     return colors.makeRgbImage(*images)
 
 def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, yRange=None,
-                   Q=8, ax=None, show=True, figsize=(5,5)):
+                   Q=8, ax=None, show=True, figsize=(5,5), vmin=None, vmax=None):
     """Display a collection of images or calexp's as an RGB image
 
     See `imagesToRgb` for more info.
@@ -171,7 +174,7 @@ def plotColorImage(images=None, calexps=None, filterIndices=None, xRange=None, y
                 adjustedImages[i][0][0] += 1e-9
     else:
         adjustedImages = images
-    colors = imagesToRgb(adjustedImages, calexps, filterIndices, xRange, yRange, Q=Q)
+    colors = imagesToRgb(adjustedImages, calexps, filterIndices, xRange, yRange, Q=Q, vmin=vmin, vmax=vmax)
     ax.imshow(colors)
     if show:
         plt.show()
