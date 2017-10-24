@@ -118,7 +118,7 @@ class DeblenderResult(object):
             self.peakCount = maxNumberOfPeaks
 
         if filters is None:
-            filters = range(filterCount)
+            filters = range(self.filterCount)
         self.filters = filters
 
         # Create a DeblendedParent for the Footprint in every filter
