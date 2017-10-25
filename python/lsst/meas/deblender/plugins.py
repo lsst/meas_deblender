@@ -150,7 +150,8 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
         pkResult = debResult.deblendedParents[f].peaks[pk]
         getattr(pkResult, flag)()
 
-def build_multiband_templates(debResult, log, useWeights=False, usePsf=False, useStrictMonotonicity=True, truncate=True, **multiband_kwargs):
+def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
+                              useStrictMonotonicity=True, truncate=True, **multiband_kwargs):
     """Run the Multiband Deblender to build templates
 
     Parameters
@@ -189,8 +190,9 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False, us
     peaks = [[pk.x-xmin, pk.y-ymin] for pk in debResult.peaks]
 
     # Create the data array from the masked images
-    data = np.array([mimg.Factory(mimg, debResult.footprint.getBBox(), PARENT).image.array
-                     for mimg in debResult.maskedImages])
+    maskedImages = [mimg.Factory(mimg, debResult.footprint.getBBox(), PARENT)
+                    for mimg in debResult.maskedImages]
+    data = np.array([mimg.image.array for mimg in maskedImages])
     data = deblender.nmf.reshape_img(data, truncate=truncate)
 
     default_kwargs = {
@@ -205,7 +207,9 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False, us
     # Update optional parameters
     if "weights" not in multiband_kwargs:
         if useWeights:
-            pass
+            weights = 1/np.array([mimg.variance.array for mimg in maskedImages])
+            weights = deblender.nmf.reshape_img(weights, new_shape=data.shape, truncate=truncate)
+            multiband_kwargs["weights"] = weights
     if "psf" not in multiband_kwargs and usePsf:
         psfs = []
         for psf in debResult.psfs:
