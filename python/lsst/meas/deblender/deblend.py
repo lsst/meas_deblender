@@ -687,11 +687,11 @@ class MultibandDeblendTask(pipeBase.Task):
         if np.isnan(self.config.l0Thresh):
             l0Thresh = None
         else:
-            l0Tresh = self.config.l0Thresh
+            l0Thresh = self.config.l0Thresh
         if np.isnan(self.config.l1Thresh):
             l1Thresh = None
         else:
-            l1Tresh = self.config.l1Thresh
+            l1Thresh = self.config.l1Thresh
 
         multiband_plugin = plugins.DeblenderPlugin(plugins.build_multiband_templates,
                                                    max_iter=self.config.maxIter,
