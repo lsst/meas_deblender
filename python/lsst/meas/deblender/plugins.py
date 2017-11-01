@@ -283,6 +283,13 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False, us
             timg = timg.Factory(timg, tfoot.getBBox(), PARENT)
             pkResult.setOrigTemplate(timg, tfoot)
             pkResult.setTemplate(timg, tfoot)
+            pkResult.setFluxPortion(afwImage.MaskedImageF(timg))
+            pkResult.multiColorPeak.x = cx
+            pkResult.multiColorPeak.y = cy
+            pkResult.peak.setFx(cx)
+            pkResult.peak.setFy(cy)
+            pkResult.peak.setIx(int(np.round(cx)))
+            pkResult.peak.setIy(int(np.round(cy)))
     return modified
 
 def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.5, tinyFootprintSize=2):
