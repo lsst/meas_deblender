@@ -881,7 +881,7 @@ class MultibandDeblendTask(pipeBase.Task):
         import deblender
 
         if bands is None:
-            bands = exposures.keys()
+            bands = list(exposures.keys())
         maskedImages = {band:exp.getMaskedImage() for band, exp in exposures.items()}
         self.log.info("Deblending {0} sources in {1} exposures".format(len(sources), len(bands)))
 
@@ -1087,9 +1087,9 @@ class MultibandDeblendTask(pipeBase.Task):
                                        pk, npre, foot, psfs, psf_fwhms, sigmas, result)
 
         if flux_catalogs is not None:
-            n1 = len(flux_catalogs.values()[0])
+            n1 = len(list(flux_catalogs.values())[0])
         else:
-            n1 = len(template_catalogs.values()[0])
+            n1 = len(list(template_catalogs.values())[0])
         self.log.info('Deblended: of %i sources, %i were deblended, creating %i children, total %i sources'
                       % (n0, nparents, n1-n0, n1))
         return flux_catalogs, template_catalogs
