@@ -263,8 +263,8 @@ class MultiColorPeak(object):
         self.pki = pki
         self.skip = False
         self.deblendedAsPsf = False
-        self.x = self.deblendedPeaks[self.filters[0]].peak.getIx()
-        self.y = self.deblendedPeaks[self.filters[0]].peak.getIy()
+        self.x = self.deblendedPeaks[self.filters[0]].peak.getFx()
+        self.y = self.deblendedPeaks[self.filters[0]].peak.getFy()
 
 class DeblendedPeak(object):
     """Result of deblending a single Peak within a parent Footprint.
