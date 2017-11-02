@@ -525,6 +525,7 @@ class MultibandDeblendConfig(pexConfig.Config):
 
     processSingles = pexConfig.Field(dtype=bool, default=False,
                                      doc="Whether or not to process isolated sources in the deblender")
+    useWeights = pexConfig.Field(dtype=bool, default=True, doc="Use inverse variance as deblender weights")
     # Old deblender parameters used in this implementation (some of which might be removed later)
 
     maxNumberOfPeaks = pexConfig.Field(dtype=int, default=0,
@@ -695,6 +696,7 @@ class MultibandDeblendTask(pipeBase.Task):
 
         multiband_plugin = plugins.DeblenderPlugin(plugins.build_multiband_templates,
                                                    max_iter=self.config.maxIter,
+                                                   useWeights=self.config.useWeights,
                                                    e_rel=self.config.relativeError,
                                                    e_abs=self.config.absoluteError,
                                                    fit_positions=self.config.fitPositions,
