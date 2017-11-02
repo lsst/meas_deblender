@@ -207,7 +207,26 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
     # Update optional parameters
     if "weights" not in multiband_kwargs:
         if useWeights:
+            # Use the inverser variance as the weights
             weights = 1/np.array([mimg.variance.array for mimg in maskedImages])
+
+            # Set bad pixeks weights to zero
+            maskPlane = maskedImages[0].getMask().getMaskPlaneDict()
+            badPixels = (1<<maskPlane["BAD"] |
+                         1<<maskPlane["CR"] |
+                         1<<maskPlane["NO_DATA"] |
+                         1<<maskPlane["SAT"] |
+                         1<<maskPlane["SUSPECT"])
+            fpMask = afwImage.Mask(bbox)
+            debResult.footprint.spans.setMask(fpMask, 1)
+            fpMask = ~fpMask.getArray().astype(bool)
+            mask = np.zeros(weights.shape, np.int64)
+            for fidx, mimg in enumerate(maskedImages):
+                mask[fidx] = mimg.getMask().array
+            mask = ((badPixels & mask) | fpMask).astype(bool)
+            weights[mask] = 0
+
+            # Make sure that the weights and data have the same size
             weights = deblender.nmf.reshape_img(weights, new_shape=data.shape, truncate=truncate)
             multiband_kwargs["weights"] = weights
     if "psf" not in multiband_kwargs and usePsf:
