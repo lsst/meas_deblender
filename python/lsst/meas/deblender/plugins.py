@@ -185,6 +185,7 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
 
     # Extract coordinates from each MultiColorPeak
     bbox = debResult.footprint.getBBox()
+    peakSchema = debResult.footprint.peaks.getSchema()
     xmin = bbox.getMinX()
     ymin = bbox.getMinY()
     peaks = [[pk.x-xmin, pk.y-ymin] for pk in debResult.peaks]
@@ -298,7 +299,7 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
             pkResult = debResult.deblendedParents[f].peaks[pk]
             _cx = result.S[pk].shape[1]>>1
             _cy = result.S[pk].shape[0]>>1
-            tfoot = afwDet.Footprint(ss)
+            tfoot = afwDet.Footprint(ss, peakSchema=peakSchema)
             # Add the peak with the intensity of the centered model,
             # which might be slightly larger than the shifted model
             tfoot.addPeak(cx, cy, result.A[fidx][pk]*result.S[pk][_cy][_cx])

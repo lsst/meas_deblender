@@ -1001,14 +1001,18 @@ class MultibandDeblendTask(pipeBase.Task):
                     tsrc.assign(src)
                     tsrc.set("id", parentId)
                     tsrc.set(self.runtimeKey, runtime)
-                    tsrc.setFootprint(afwDet.Footprint())
+                    _fp = afwDet.Footprint()
+                    _fp.setPeakSchema(src.getFootprint().getPeaks().getSchema())
+                    tsrc.setFootprint(_fp)
                     templateParents[band] = tsrc
                 if self.config.conserveFlux:
                     tsrc = flux_catalogs[band].addNew()
                     tsrc.assign(src)
                     tsrc.set(self.runtimeKey, runtime)
                     tsrc.set("id", parentId)
-                    tsrc.setFootprint(afwDet.Footprint())
+                    _fp = afwDet.Footprint()
+                    _fp.setPeakSchema(src.getFootprint().getPeaks().getSchema())
+                    tsrc.setFootprint(_fp)
                     fluxParents[band] = tsrc
 
             # Add each sources to the catalogs in each band
