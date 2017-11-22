@@ -294,6 +294,11 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
                              xy0=debResult.footprint.getBBox().getBegin())
         ss = afwGeom.SpanSet.fromMask(mask)
 
+        if len(ss) == 0:
+            log.warn("No flux in parent footprint")
+            debResult.failed = True
+            return False
+
         # Add the template footprint and image to the deblender result for each peak
         for fidx, f in enumerate(debResult.filters):
             pkResult = debResult.deblendedParents[f].peaks[pk]
