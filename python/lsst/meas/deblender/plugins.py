@@ -150,8 +150,8 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
         pkResult = debResult.deblendedParents[f].peaks[pk]
         getattr(pkResult, flag)()
 
-def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
-                              useStrictMonotonicity=True, truncate=True, **multiband_kwargs):
+def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
+                              useStrictMonotonicity=True, truncate=True, **multibandKwargs):
     """Run the Multiband Deblender to build templates
 
     Parameters
@@ -162,7 +162,6 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
         LSST logger for logging purposes.
     useWeights: bool, default=False
         Whether or not to use the variance map in each filter for the fit.
-        This is currently not implemented
     usePsf: bool, default=False
         Whether or not to convolve the image with the PSF in each band.
         This is not yet implemented in an optimized algorithm, so it is recommended
@@ -172,7 +171,7 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
     truncate: bool, default=True
         Whether to truncate the image (default) or add an extra row/column if the dimensions of the
         `Footprint` bounding box are not odd.
-    multiband_kwargs: dict
+    multibandKwargs: dict
         Additional parameters to pass to the deblend package.
 
     Returns
@@ -196,19 +195,19 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
     data = np.array([mimg.image.array for mimg in maskedImages])
     data = deblender.nmf.reshape_img(data, truncate=truncate)
 
-    default_kwargs = {
+    defaultKwargs = {
         "components": None,
         "constraints": "S",
     }
     
-    for k,v in default_kwargs.items():
-        if k not in multiband_kwargs.keys():
-            multiband_kwargs[k] = v
+    for k,v in defaultKwargs.items():
+        if k not in multibandKwargs.keys():
+            multibandKwargs[k] = v
 
     # Update optional parameters
-    if "weights" not in multiband_kwargs:
+    if "weights" not in multibandKwargs:
         if useWeights:
-            # Use the inverser variance as the weights
+            # Use the inverse variance as the weights
             weights = 1/np.array([mimg.variance.array for mimg in maskedImages])
 
             # Set bad pixeks weights to zero
@@ -229,32 +228,35 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
 
             # Make sure that the weights and data have the same size
             weights = deblender.nmf.reshape_img(weights, new_shape=data.shape, truncate=truncate)
-            multiband_kwargs["weights"] = weights
-    if "psf" not in multiband_kwargs and usePsf:
+            multibandKwargs["weights"] = weights
+    if "psfs" not in multibandKwargs and usePsf:
         psfs = []
         for psf in debResult.psfs:
             psfs.append(psf.computeKernelImage().array)
-        multiband_kwargs["psfs"] = psfs
+        multibandKwargs["psfs"] = psfs
     # This is part of the machinery of the `deblender` and `proxmin` packages
     # (see Moolekamp and Melchior 2017 and Melchior et al 2017)
-    if "prox_S" not in multiband_kwargs and useStrictMonotonicity:
+    if "prox_S" not in multibandKwargs and useStrictMonotonicity:
         kwargs = {}
-        if "l0_thresh" in multiband_kwargs:
-            kwargs["l0_thresh"] = multiband_kwargs["l0_thresh"]
-            del multiband_kwargs["l0_thresh"]
-        elif "l1_thresh" in multiband_kwargs:
-            kwargs["l1_thresh"] = multiband_kwargs["l1_thresh"]
-            del multiband_kwargs["l1_thresh"]
-        multiband_kwargs["prox_S"] = deblender.proximal.strict_monotonicity(data, peaks=peaks, **kwargs)
+        if "l0_thresh" in multibandKwargs:
+            kwargs["l0_thresh"] = multibandKwargs["l0_thresh"]
+            del multibandKwargs["l0_thresh"]
+        elif "l1_thresh" in multibandKwargs:
+            kwargs["l1_thresh"] = multibandKwargs["l1_thresh"]
+            del multibandKwargs["l1_thresh"]
+        multibandKwargs["prox_S"] = deblender.proximal.strict_monotonicity(data, peaks=peaks, **kwargs)
     # Update the morphology before the SED in each step, since the initial SED is better constrained
-    if "update_order" not in multiband_kwargs:
-        multiband_kwargs["update_order"] = [1,0]
+    if "update_order" not in multibandKwargs:
+        multibandKwargs["update_order"] = [1,0]
+
+    if "psfs" in multibandKwargs:
+        log.warn("PSF convolution has not been optimized and is currently very slow")
 
     # When a footprint includes only non-detections
     # (peaks in the noise too low to deblend as a source)
     # the deblender currently fails.
     try:
-        result = deblender.nmf.deblend(img=data, peaks=peaks, **multiband_kwargs)
+        result = deblender.nmf.deblend(img=data, peaks=peaks, **multibandKwargs)
     except np.linalg.LinAlgError as e:
         log.warn("Deblend failed catastrophically, most likely due to no signal in the footprint")
         debResult.failed = True
@@ -267,8 +269,8 @@ def build_multiband_templates(debResult, log, useWeights=False, usePsf=False,
         if debResult.peaks[pk].skip:
             continue
         modified = True
-        cx = result.T.peaks.peaks[pk].x+xmin
-        cy = result.T.peaks.peaks[pk].y+ymin
+        cx = peak.x+xmin
+        cy = peak.y+ymin
         imbb = debResult.deblendedParents[debResult.filters[0]].img.getBBox()
 
         # Footprint must be inside the image

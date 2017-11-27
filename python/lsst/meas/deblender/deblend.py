@@ -503,8 +503,10 @@ class MultibandDeblendConfig(pexConfig.Config):
                                          doc=("Whether or not to fit multiple components for each peak"))
     constraints = pexConfig.Field(dtype=str, default="S",
                                   doc=("List of constraints to use for each object"))
-    l0Thresh = pexConfig.Field(dtype=float, default=np.nan, doc=("L0 threshold"))
-    l1Thresh = pexConfig.Field(dtype=float, default=np.nan, doc=("L1 threshold"))
+    l0Thresh = pexConfig.Field(dtype=float, default=np.nan,
+                               doc=("L0 threshold. NaN results in no L0 penalty."))
+    l1Thresh = pexConfig.Field(dtype=float, default=np.nan,
+                               doc=("L1 threshold. NaN results in no L1 penalty."))
     useStrictMonotonicity = pexConfig.Field(dtype=bool, default=True,
                                             doc=("Whether to use strict monotonicity as a constraint"))
     useNearestMonotonic = pexConfig.Field(dtype=bool, default=True,
@@ -682,9 +684,9 @@ class MultibandDeblendTask(pipeBase.Task):
         else:
             components = None
         if self.config.updateMorphologyFirst:
-            update_order = [1,0]
+            updateOrder = [1,0]
         else:
-            update_order = [0,1]
+            updateOrder = [0,1]
         if np.isnan(self.config.l0Thresh):
             l0Thresh = None
         else:
@@ -694,7 +696,7 @@ class MultibandDeblendTask(pipeBase.Task):
         else:
             l1Thresh = self.config.l1Thresh
 
-        multiband_plugin = plugins.DeblenderPlugin(plugins.build_multiband_templates,
+        multiband_plugin = plugins.DeblenderPlugin(plugins.buildMultibandTemplates,
                                                    max_iter=self.config.maxIter,
                                                    useWeights=self.config.useWeights,
                                                    e_rel=self.config.relativeError,
@@ -715,7 +717,7 @@ class MultibandDeblendTask(pipeBase.Task):
                                                    smoothness=self.config.smoothness,
                                                    slack=self.config.stepSlack,
                                                    usePsf=self.config.usePsfConvolution,
-                                                   update_order=update_order)
+                                                   update_order=updateOrder)
         self.plugins = [multiband_plugin]
 
         # Plugins from the old deblender for post-template processing
@@ -913,6 +915,7 @@ class MultibandDeblendTask(pipeBase.Task):
         maskedImages = {band: exp.getMaskedImage() for band, exp in exposures.items()}
         for pk, src in enumerate(sources):
             foot = src.getFootprint()
+            print("id:", src["id"],"\n")
             peaks = foot.getPeaks()
 
             # Since we use the first peak for the parent object, we should propagate its flags
@@ -920,7 +923,7 @@ class MultibandDeblendTask(pipeBase.Task):
             src.assign(peaks[0], self.peakSchemaMapper)
 
             # Block of Skipping conditions
-            if len(peaks) <2 and not self.config.processSingles:
+            if len(peaks) < 2 and not self.config.processSingles:
                 for band in bands:
                     if self.config.saveTemplates:
                         tsrc = template_catalogs[band].addNew()
@@ -1015,7 +1018,7 @@ class MultibandDeblendTask(pipeBase.Task):
                     tsrc.setFootprint(_fp)
                     fluxParents[band] = tsrc
 
-            # Add each sources to the catalogs in each band
+            # Add each source to the catalogs in each band
             templateSpans = {band:afwGeom.SpanSet() for band in bands}
             fluxSpans = {band:afwGeom.SpanSet() for band in bands}
             nchild = 0
