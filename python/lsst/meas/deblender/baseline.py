@@ -56,10 +56,13 @@ class DeblenderResult(object):
         Parameters
         ----------
         footprint: `afw.detection.Footprint`
-            Parent footprint to deblend (it is assumed that they have been combined).
+            Parent footprint to deblend. While `maskedImages`, `psfs`,
+            and `psffwhms` are lists of objects, one for each band,
+            `footprint` is a single parent footprint (from a `mergedDet`)
+            this is used for all bands.
         maskedImages: list of `afw.image.MaskedImageF`s
             Masked image containing the ``footprint`` in each band.
-        psf: list of `afw.detection.Psf`s
+        psfs: list of `afw.detection.Psf`s
             Psf of the ``maskedImage`` for each band.
         psffwhm: list of `float`s
             FWHM of the ``maskedImage``'s ``psf`` in each band.
@@ -740,8 +743,9 @@ def newDeblend(debPlugins, footprint, maskedImages, psfs, psfFwhms, filters=None
 
     step = 0
     while step < len(debPlugins):
-        # If a failure occurs at any step, flag the blend and
-        # skip the remaining steps
+        # If a failure occurs at any step,
+        # the result is flagged as `failed`
+        # and the remaining steps are skipped
         if not debResult.failed:
             reset = debPlugins[step].run(debResult, log)
         else:
