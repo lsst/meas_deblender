@@ -1,6 +1,7 @@
 .sconf_temp
 .sconsign.dblite
 _build.*
+.cache
 *.o
 *.pyc
 *.so
@@ -38,3 +39,4 @@ im1[0-9]m.png
 foot2.png
 sfoot3.png
 img.png
+examples/.ipynb_checkpoints/
