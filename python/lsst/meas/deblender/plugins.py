@@ -151,7 +151,8 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
         getattr(pkResult, flag)()
 
 def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
-                              useStrictMonotonicity=True, truncate=True, **multibandKwargs):
+                            sources=None, constraints=None, config=None, maxIter=100, bg_scale=0.5,
+                            relErr=1e-2):
     """Run the Multiband Deblender to build templates
 
     Parameters
@@ -166,13 +167,23 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         Whether or not to convolve the image with the PSF in each band.
         This is not yet implemented in an optimized algorithm, so it is recommended
         to leave this term off for now
-    useStrictMonotonicity: bool, default=True
-        Whether or not to use the strict monotonicity proximal operator (see Melchior et al. 2017)
-    truncate: bool, default=True
-        Whether to truncate the image (default) or add an extra row/column if the dimensions of the
-        `Footprint` bounding box are not odd.
-    multibandKwargs: dict
-        Additional parameters to pass to the deblend package.
+    sources: list of `scarlet.source.Source` objects, default=None
+        List of sources to use in the blend. By default the
+        `scarlet.source.ExtendedSource` class is used, which initializes each
+        source as symmetric and monotonic about a peak in the footprint peak catalog.
+    constraints: `scarlet.constraint.Constraint`, default=None
+        Constraint to be applied to each source. If sources require different constraints,
+        a list of `sources` must be created instead, which ignores the `constraints` parameter.
+        When `constraints` is `None` the default constraints are used.
+    config: `scarlet.config.Config`, default=None
+        Configuration for the blend.
+        If `config` is `None` then the default `Config` is used.
+    maxIter: int, default=100
+        Maximum iterations for a single blend.
+    bg_scale: float
+        Amount to scale the background RMS to set the floor for deblender model sizes
+    relErr: float, default=1e-2
+        Relative error to reach for convergence
 
     Returns
     -------
@@ -180,97 +191,98 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         If any templates have been created then ``modified`` is ``True``,
         otherwise it is ``False`` (meaning all of the peaks were skipped).
     """
-    import deblender
+    import scarlet
 
     # Extract coordinates from each MultiColorPeak
     bbox = debResult.footprint.getBBox()
     peakSchema = debResult.footprint.peaks.getSchema()
     xmin = bbox.getMinX()
     ymin = bbox.getMinY()
-    peaks = [[pk.x-xmin, pk.y-ymin] for pk in debResult.peaks]
+    peaks = [[pk.y-ymin, pk.x-xmin] for pk in debResult.peaks]
 
     # Create the data array from the masked images
     maskedImages = [mimg.Factory(mimg, debResult.footprint.getBBox(), PARENT)
                     for mimg in debResult.maskedImages]
     data = np.array([mimg.image.array for mimg in maskedImages])
-    data = deblender.nmf.reshape_img(data, truncate=truncate)
 
-    defaultKwargs = {
-        "components": None,
-        "constraints": "S",
-    }
-    
-    for k,v in defaultKwargs.items():
-        if k not in multibandKwargs.keys():
-            multibandKwargs[k] = v
+    # Use the inverse variance as the weights
+    if useWeights:
+        weights = 1/np.array([mimg.variance.array for mimg in maskedImages])
+    else:
+        weights = weights = np.ones_like(data)
 
-    # Update optional parameters
-    if "weights" not in multibandKwargs:
-        if useWeights:
-            # Use the inverse variance as the weights
-            weights = 1/np.array([mimg.variance.array for mimg in maskedImages])
+    # Use the mask plane to mask bad pixels and
+    # the footprint to mask out pixels outside the footprint
+    maskPlane = maskedImages[0].getMask().getMaskPlaneDict()
+    badPixels = (1<<maskPlane["BAD"] |
+                 1<<maskPlane["CR"] |
+                 1<<maskPlane["NO_DATA"] |
+                 1<<maskPlane["SAT"] |
+                 1<<maskPlane["SUSPECT"])
+    fpMask = afwImage.Mask(bbox)
+    debResult.footprint.spans.setMask(fpMask, 1)
+    fpMask = ~fpMask.getArray().astype(bool)
+    mask = np.zeros(weights.shape, np.int64)
+    for fidx, mimg in enumerate(maskedImages):
+        mask[fidx] = mimg.getMask().array
+    mask = ((badPixels & mask) | fpMask).astype(bool)
+    weights[mask] = 0
 
-            # Set bad pixeks weights to zero
-            maskPlane = maskedImages[0].getMask().getMaskPlaneDict()
-            badPixels = (1<<maskPlane["BAD"] |
-                         1<<maskPlane["CR"] |
-                         1<<maskPlane["NO_DATA"] |
-                         1<<maskPlane["SAT"] |
-                         1<<maskPlane["SUSPECT"])
-            fpMask = afwImage.Mask(bbox)
-            debResult.footprint.spans.setMask(fpMask, 1)
-            fpMask = ~fpMask.getArray().astype(bool)
-            mask = np.zeros(weights.shape, np.int64)
-            for fidx, mimg in enumerate(maskedImages):
-                mask[fidx] = mimg.getMask().array
-            mask = ((badPixels & mask) | fpMask).astype(bool)
-            weights[mask] = 0
-
-            # Make sure that the weights and data have the same size
-            weights = deblender.nmf.reshape_img(weights, new_shape=data.shape, truncate=truncate)
-            multibandKwargs["weights"] = weights
-    if "psfs" not in multibandKwargs and usePsf:
+    # Extract the PSF from each band for PSF convolution
+    if usePsf:
+        log.warn("PSF convolution has not been optimized and is currently very slow")
         psfs = []
         for psf in debResult.psfs:
             psfs.append(psf.computeKernelImage().array)
-        multibandKwargs["psfs"] = psfs
-    # This is part of the machinery of the `deblender` and `proxmin` packages
-    # (see Moolekamp and Melchior 2017 and Melchior et al 2017)
-    if "prox_S" not in multibandKwargs and useStrictMonotonicity:
-        kwargs = {}
-        if "l0_thresh" in multibandKwargs:
-            kwargs["l0_thresh"] = multibandKwargs["l0_thresh"]
-            del multibandKwargs["l0_thresh"]
-        elif "l1_thresh" in multibandKwargs:
-            kwargs["l1_thresh"] = multibandKwargs["l1_thresh"]
-            del multibandKwargs["l1_thresh"]
-        multibandKwargs["prox_S"] = deblender.proximal.strict_monotonicity(data, peaks=peaks, **kwargs)
-    # Update the morphology before the SED in each step, since the initial SED is better constrained
-    if "update_order" not in multibandKwargs:
-        multibandKwargs["update_order"] = [1,0]
+        psf = np.array(psfs)
+    else:
+        psf = None
 
-    if "psfs" in multibandKwargs:
-        log.warn("PSF convolution has not been optimized and is currently very slow")
+    bg_rms = np.array([debResult.deblendedParents[f].avgNoise for f in debResult.filters])*bg_scale
+    if sources is None:
+        # If only a single constraint was given, use it for all of the sources
+        if (constraints is scarlet.constraints.Constraint or
+            constraints is scarlet.constraints.ConstraintList
+        ):
+            constraints = [constraints.copy() for peak in peaks]
+        elif constraints is None:
+            constraints = [None]*len(peaks)
+        sources = [
+            scarlet.source.ExtendedSource(center=peak,
+                                          img=data,
+                                          bg_rms=bg_rms,
+                                          constraints=constraints[pk],
+                                          psf=psf,
+                                          symmetric=True,
+                                          monotonic=True,
+                                          thresh=1.0,
+                                          config=config)
+            for pk,peak in enumerate(peaks)
+        ]
 
     # When a footprint includes only non-detections
     # (peaks in the noise too low to deblend as a source)
     # the deblender currently fails.
     try:
-        result = deblender.nmf.deblend(img=data, peaks=peaks, **multibandKwargs)
+        blend = scarlet.blend.Blend(sources=sources, img=data, weights=weights, bg_rms=bg_rms, config=config)
+        blend.fit(steps=maxIter, e_rel=relErr)
     except np.linalg.LinAlgError as e:
         log.warn("Deblend failed catastrophically, most likely due to no signal in the footprint")
         debResult.failed = True
         return False
-    debResult.multibandResult = result
+    debResult.blend = blend
 
     modified = False
     # Create the Templates for each peak in each filter
-    for pk, peak in enumerate(result.T.peaks.peaks):
+    for pk, src in enumerate(blend.sources):
+        _cx = src.Nx >> 1
+        _cy = src.Ny >> 1
+
         if debResult.peaks[pk].skip:
             continue
         modified = True
-        cx = peak.x+xmin
-        cy = peak.y+ymin
+        cx = src.center[1]+xmin
+        cy = src.center[0]+ymin
         imbb = debResult.deblendedParents[debResult.filters[0]].img.getBBox()
 
         # Footprint must be inside the image
@@ -279,20 +291,17 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
                           "peak center is not inside image", "setOutOfBounds")
             continue
         # Only save templates that have nonzero flux
-        if np.sum(result.S[pk])==0:
+        if np.sum(src.morph)==0:
             _setPeakError(debResult, log, pk, cx, cy, debResult.filters,
                           "had no flux", "setFailedSymmetricTemplate")
             continue
 
         # Temporary for initial testing: combine multiple components
-        model = np.zeros_like(result.img)
-        for c, component in peak.components.items():
-            model += deblender.nmf.get_peak_model(result.A, result.S, result.T.Gamma, result.shape,
-                                                  component.index)
+        model = blend.get_model(m=pk, flat=False)
         model = model.astype(np.float32)
 
         # The peak in each band will have the same SpanSet
-        mask = afwImage.Mask(np.array(model[0]>0, dtype=np.int32),
+        mask = afwImage.Mask(np.array(np.sum(model, axis=0)>0, dtype=np.int32),
                              xy0=debResult.footprint.getBBox().getBegin())
         ss = afwGeom.SpanSet.fromMask(mask)
 
@@ -304,12 +313,11 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         # Add the template footprint and image to the deblender result for each peak
         for fidx, f in enumerate(debResult.filters):
             pkResult = debResult.deblendedParents[f].peaks[pk]
-            _cx = result.S[pk].shape[1]>>1
-            _cy = result.S[pk].shape[0]>>1
             tfoot = afwDet.Footprint(ss, peakSchema=peakSchema)
             # Add the peak with the intensity of the centered model,
             # which might be slightly larger than the shifted model
-            tfoot.addPeak(cx, cy, result.A[fidx][pk]*result.S[pk][_cy][_cx])
+            peakFlux = np.sum(src.sed[:,fidx]*src.morph[:,np.ravel_multi_index((_cy,_cx),(src.Ny, src.Nx))])
+            tfoot.addPeak(cx, cy, peakFlux)
             timg = afwImage.ImageF(model[fidx], xy0=debResult.footprint.getBBox().getBegin())
             timg = timg.Factory(timg, tfoot.getBBox(), PARENT)
             pkResult.setOrigTemplate(timg, tfoot)

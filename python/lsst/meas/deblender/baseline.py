@@ -140,7 +140,7 @@ class DeblenderResult(object):
             self.peaks.append(multiPeak)
 
         # Result from multiband debender (if used)
-        self.multibandResult = None
+        self.blend = None
         self.failed = False
 
     def getParentProperty(self, propertyName):

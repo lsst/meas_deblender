@@ -23,6 +23,7 @@ import math
 import numpy as np
 import time
 
+import lsst.log
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.math as afwMath
@@ -31,6 +32,8 @@ import lsst.afw.geom.ellipses as afwEll
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
+
+logger = lsst.log.Log.getLogger("meas.deblender.deblend")
 
 __all__ = 'SourceDeblendConfig', 'SourceDeblendTask', 'MultibandDeblendConfig', 'MultibandDeblendTask'
 
@@ -467,67 +470,67 @@ class MultibandDeblendConfig(pexConfig.Config):
                               doc=("Maximum number of iterations to deblend a single parent"))
     relativeError = pexConfig.Field(dtype=float, default=1e-3,
                                     doc=("Relative error to use when determining stopping criteria"))
-    absoluteError = pexConfig.Field(dtype=float, default=0,
-                                    doc=("Absolute error to use when determining stopping criteria"))
 
-    # Position Fitting Criteria
-    fitPositions = pexConfig.Field(dtype=bool, default=True,
-                                   doc=("Whether or not to fit the positions for each source"
-                                        "while deblending"))
-    diffImgShift = pexConfig.Field(dtype=float, default=0.1,
-                                   doc=("Amount to shift the differential image during a position update."
-                                        "This field is ignored if fitPositions is False."))
-    minTranslation = pexConfig.Field(dtype=float, default=1e-8,
+    # Blend Configuration options
+    minTranslation = pexConfig.Field(dtype=float, default=1e-3,
                                      doc=("A peak must be updated by at least 'minTranslation' (pixels)"
                                           "or no update is performed."
                                           "This field is ignored if fitPositions is False."))
-    maxTranslation = pexConfig.Field(dtype=float, default=2,
-                                     doc=("A peak must not be updated by more than 'maxTranslation' pixels."
-                                          "This field is ignored if fitPositions is False."))
-    requireTranslation = pexConfig.Field(dtype=int, default=10,
-                                       doc=("If fitPositions is True, the first 'requireTranslations'"
-                                            "iterations will fit the peaks, then positions are"
-                                            "updated on every 'skipTranslation' iterations."))
-    skipTranslation = pexConfig.Field(dtype=int, default=10,
-                                      doc=("If fitPositions is True, the first 'requireTranslations'"
-                                           "iterations will fit the peaks, then positions are"
-                                           "updated on every 'skipTranslation' iterations."))
+    refinementSkip = pexConfig.Field(dtype=int, default=10,
+                                      doc=("If fitPositions is True, the positions and box sizes are"
+                                           "updated on every 'refinementSkip' iterations."))
     translationMethod = pexConfig.Field(dtype=str, default="default",
                                         doc=("Method to use for fitting translations."
                                              "Currently 'default' is the only available option,"
                                              "which performs a linear fit, but it is possible that we"
                                              "will use galsim or some other method as a future option"))
+    edgeFluxThresh = pexConfig.Field(dtype=float, default=1.0,
+                                     doc=("Boxes are resized when the flux at an edge is "
+                                          "> edgeFluxThresh * bg_rms"))
+    exactLipschitz = pexConfig.Field(dtype=bool, default=False,
+                                     doc=("Calculate exact Lipschitz constant in every step"
+                                          "(exact_lipschitz is True) or only calculate the"
+                                          "Lipschitz constant with significant changes in A,S"
+                                          "(exact_lipschitz is False)"))
+    stepSlack = pexConfig.Field(dtype=float, default=0.2,
+                                doc=("Slack to use when updating the step size in each iteration of"
+                                     "the bSDMM minimization"))
 
     # Constraints
-    multipleComponents = pexConfig.Field(dtype=bool, default=False,
-                                         doc=("Whether or not to fit multiple components for each peak"))
-    constraints = pexConfig.Field(dtype=str, default="S",
-                                  doc=("List of constraints to use for each object"))
+    constraints = pexConfig.Field(dtype=str, default="1+SM",
+                                  doc=("List of constraints to use for each object."
+                                       "Current options are all used by default:\n"
+                                       "S: symmetry\n"
+                                       "M: monotonicity\n"
+                                       "1: normalized SED to unity"
+                                       "+: non-negative morphology"))
+    symmetryThresh = pexConfig.Field(dtype=float, default=1.0,
+                                     doc=("Strictness of symmetry from"
+                                          "0 (no symmetry enforced) to"
+                                          "1 (perfect symmetry required)."
+                                          "If 'S' is not in `constraints`, this argument is ignored"))
     l0Thresh = pexConfig.Field(dtype=float, default=np.nan,
                                doc=("L0 threshold. NaN results in no L0 penalty."))
     l1Thresh = pexConfig.Field(dtype=float, default=np.nan,
                                doc=("L1 threshold. NaN results in no L1 penalty."))
-    useStrictMonotonicity = pexConfig.Field(dtype=bool, default=True,
-                                            doc=("Whether to use strict monotonicity as a constraint"))
-    useNearestMonotonic = pexConfig.Field(dtype=bool, default=True,
-                                          doc=("Whether to use the nearest neighboring pixel for the"
-                                               "monotonicity constraint or a weighted average of the"
-                                               "3 neighboring pixels closest to the peak for each pixel"))
-    smoothness = pexConfig.Field(dtype=float, default=1,
-                                 doc=("Threshold on the l1 norm for smoothness constraints"))
-    # Other Deblender
-    stepSlack = pexConfig.Field(dtype=float, default=0.9,
-                                doc=("Slack to use when updating the step size in each iteration of"
-                                     "the bSDMM minimization"))
-    usePsfConvolution = pexConfig.Field(dtype=bool, default=False, doc=("Peform PSF kernel matching?"))
-    updateMorphologyFirst = pexConfig.Field(dtype=bool, default=True,
-                                            doc=("Whether to update morphology or SED first"))
+    tvxThresh = pexConfig.Field(dtype=float, default=np.nan,
+                                doc=("TVx threshold. NaN results in no TVx penalty."))
+    tvyThresh = pexConfig.Field(dtype=float, default=np.nan,
+                                doc=("TVy threshold. NaN results in no TVy penalty."))
+
+    # Other scarlet paremeters
+    useWeights = pexConfig.Field(dtype=bool, default=False, doc="Use inverse variance as deblender weights")
+    bgScale = pexConfig.Field(dtype=float, default=0.5,
+                              doc=("Fraction of background RMS level to use as a"
+                                   "cutoff for defining the background of the image"
+                                   "This is used to initialize the model for each source"
+                                   "and to set the size of the bounding box for each source"
+                                   "every `refinementSkip` iteration."))
+    usePsfConvolution = pexConfig.Field(dtype=bool, default=False, doc=("Perform PSF kernel matching?"))
     saveTemplates = pexConfig.Field(dtype=bool, default=True,
                                     doc="Whether or not to save the SEDs and templates")
-
     processSingles = pexConfig.Field(dtype=bool, default=False,
                                      doc="Whether or not to process isolated sources in the deblender")
-    useWeights = pexConfig.Field(dtype=bool, default=True, doc="Use inverse variance as deblender weights")
     # Old deblender parameters used in this implementation (some of which might be removed later)
 
     maxNumberOfPeaks = pexConfig.Field(dtype=int, default=0,
@@ -629,7 +632,7 @@ class MultibandDeblendTask(pipeBase.Task):
     This task has no return value; it only modifies the SourceCatalog in-place.
     """
     ConfigClass = MultibandDeblendConfig
-    _DefaultName = "sourceDeblend"
+    _DefaultName = "multibandDeblend"
 
     def __init__(self, schema, peakSchema=None, **kwargs):
         """Create the task, adding necessary fields to the given schema.
@@ -649,7 +652,7 @@ class MultibandDeblendTask(pipeBase.Task):
             Passed to Task.__init__.
         """
         from lsst.meas.deblender import plugins
-        import deblender
+        import scarlet
 
         pipeBase.Task.__init__(self, **kwargs)
         if not self.config.conserveFlux and not self.config.saveTemplates:
@@ -674,50 +677,59 @@ class MultibandDeblendTask(pipeBase.Task):
         self._addSchemaKeys(schema)
 
         # Create the plugins for multiband deblending using the Config options
+
+        # Basic deblender configuration
+        config = scarlet.config.Config(
+            center_min_dist=self.config.minTranslation,
+            edge_flux_thresh=self.config.edgeFluxThresh,
+            exact_lipschitz=self.config.exactLipschitz,
+            refine_skip=self.config.refinementSkip,
+            slack=self.config.stepSlack,
+        )
         if self.config.translationMethod != "default":
             err = "Currently the only supported translationMethod is 'default', you entered '{0}'"
-            raise ValueError(err.format(self.config.translationMethod))
-        else:
-            Translation = deblender.operators.TxyTranslation
-        if self.config.multipleComponents:
-            components = ["bulge", "disk"]
-        else:
-            components = None
-        if self.config.updateMorphologyFirst:
-            updateOrder = [1,0]
-        else:
-            updateOrder = [0,1]
-        if np.isnan(self.config.l0Thresh):
-            l0Thresh = None
-        else:
-            l0Thresh = self.config.l0Thresh
-        if np.isnan(self.config.l1Thresh):
-            l1Thresh = None
-        else:
-            l1Thresh = self.config.l1Thresh
+            raise NotImplementedError(err.format(self.config.translationMethod))
 
-        multiband_plugin = plugins.DeblenderPlugin(plugins.buildMultibandTemplates,
-                                                   max_iter=self.config.maxIter,
-                                                   useWeights=self.config.useWeights,
-                                                   e_rel=self.config.relativeError,
-                                                   e_abs=self.config.absoluteError,
-                                                   fit_positions=self.config.fitPositions,
-                                                   txy_diff=self.config.diffImgShift,
-                                                   txy_thresh=self.config.minTranslation,
-                                                   max_shift=self.config.maxTranslation,
-                                                   txy_wait=self.config.requireTranslation,
-                                                   txy_skip=self.config.skipTranslation,
-                                                   Translation=Translation,
-                                                   components=components,
-                                                   constraints=self.config.constraints,
-                                                   l0_thresh=l0Thresh,
-                                                   l1_thresh=l1Thresh,
-                                                   useStrictMonotonicity=self.config.useStrictMonotonicity,
-                                                   monotonicUseNearest=self.config.useNearestMonotonic,
-                                                   smoothness=self.config.smoothness,
-                                                   slack=self.config.stepSlack,
-                                                   usePsf=self.config.usePsfConvolution,
-                                                   update_order=updateOrder)
+        # If the default constraints are not used, set the constraints for
+        # all of the sources
+        constraints = None
+        if (sorted(self.config.constraints) != ['+', '1', 'M', 'S']
+            or ~np.isnan(self.config.l0Thresh)
+            or ~np.isnan(self.config.l1Thresh)
+        ):
+            print("Different constraints")
+            constraintDict = {
+                "+": scarlet.constraints.PositivityConstraint,
+                "1": scarlet.constraints.SimpleConstraint,
+                "M": scarlet.constraints.DirectMonotonicityConstraint(use_nearest=False),
+                "S": scarlet.constraints.DirectSymmetryConstraint(sigma=self.config.symmetryThresh)
+            }
+            for c in self.config.constraints:
+                if constraints is None:
+                    constraints = constraintDict[c]
+                else:
+                    constraints = constraints & constraintDict[c]
+            if constraints is None:
+                constraints = scarlet.constraints.MinimalConstraint()
+            if ~np.isnan(self.config.l0Thresh):
+                constraints = constraints & scarlet.constraints.L0Constraint(self.config.l0Thresh)
+            if ~np.isnan(self.config.l1Thresh):
+                constraints = constraints & scarlet.constraints.L1Constraint(self.config.l1Thresh)
+            if ~np.isnan(self.config.tvxThresh):
+                constraints = constraints & scarlet.constraints.TVxConstraint(self.config.tvxThresh)
+            if ~np.isnan(self.config.tvyThresh):
+                constraints = constraints & scarlet.constraints.TVyConstraint(self.config.tvyThresh)
+
+        multiband_plugin = plugins.DeblenderPlugin(
+            plugins.buildMultibandTemplates,
+            useWeights=self.config.useWeights,
+            usePsf=self.config.usePsfConvolution,
+            constraints=constraints,
+            config=config,
+            maxIter=self.config.maxIter,
+            bg_scale=self.config.bgScale,
+            relErr=self.config.relativeError
+        )
         self.plugins = [multiband_plugin]
 
         # Plugins from the old deblender for post-template processing
@@ -915,7 +927,7 @@ class MultibandDeblendTask(pipeBase.Task):
         maskedImages = {band: exp.getMaskedImage() for band, exp in exposures.items()}
         for pk, src in enumerate(sources):
             foot = src.getFootprint()
-            print("id:", src["id"],"\n")
+            logger.info("id: {0}".format(src["id"]))
             peaks = foot.getPeaks()
 
             # Since we use the first peak for the parent object, we should propagate its flags
