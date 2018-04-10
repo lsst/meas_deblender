@@ -151,8 +151,8 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
         getattr(pkResult, flag)()
 
 def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
-                            sources=None, constraints=None, config=None, maxIter=100, bg_scale=0.5,
-                            relErr=1e-2):
+                            sources=None, constraints=None, config=None, maxIter=100, bgScale=0.5,
+                            relativeError=1e-2, badMask=None):
     """Run the Multiband Deblender to build templates
 
     Parameters
@@ -180,10 +180,14 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         If `config` is `None` then the default `Config` is used.
     maxIter: int, default=100
         Maximum iterations for a single blend.
-    bg_scale: float
+    bgScale: float
         Amount to scale the background RMS to set the floor for deblender model sizes
-    relErr: float, default=1e-2
+    relativeError: float, default=1e-2
         Relative error to reach for convergence
+    badMask: list of str, default=`None`
+        List of mask plane names to mark bad pixels.
+        If `badPixelKeys` is `None`, the default keywords used are
+        `["BAD", "CR", "NO_DATA", "SAT", "SUSPECT"]`.
 
     Returns
     -------
@@ -213,24 +217,19 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
 
     # Use the mask plane to mask bad pixels and
     # the footprint to mask out pixels outside the footprint
-    maskPlane = maskedImages[0].getMask().getMaskPlaneDict()
-    badPixels = (1<<maskPlane["BAD"] |
-                 1<<maskPlane["CR"] |
-                 1<<maskPlane["NO_DATA"] |
-                 1<<maskPlane["SAT"] |
-                 1<<maskPlane["SUSPECT"])
+    if badMask is None:
+        badMask = ["BAD", "CR", "NO_DATA", "SAT", "SUSPECT"]
     fpMask = afwImage.Mask(bbox)
     debResult.footprint.spans.setMask(fpMask, 1)
     fpMask = ~fpMask.getArray().astype(bool)
-    mask = np.zeros(weights.shape, np.int64)
+    mask = np.zeros(weights.shape, dtype=bool)
     for fidx, mimg in enumerate(maskedImages):
-        mask[fidx] = mimg.getMask().array
-    mask = ((badPixels & mask) | fpMask).astype(bool)
+        badPixels = mimg.mask.getPlaneBitMask(badMask)
+        mask[fidx] = (mimg.getMask().array & badPixels) | fpMask
     weights[mask] = 0
 
     # Extract the PSF from each band for PSF convolution
     if usePsf:
-        log.warn("PSF convolution has not been optimized and is currently very slow")
         psfs = []
         for psf in debResult.psfs:
             psfs.append(psf.computeKernelImage().array)
@@ -238,7 +237,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     else:
         psf = None
 
-    bg_rms = np.array([debResult.deblendedParents[f].avgNoise for f in debResult.filters])*bg_scale
+    bg_rms = np.array([debResult.deblendedParents[f].avgNoise for f in debResult.filters])*bgScale
     if sources is None:
         # If only a single constraint was given, use it for all of the sources
         if (constraints is scarlet.constraints.Constraint or
@@ -265,7 +264,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     # the deblender currently fails.
     try:
         blend = scarlet.blend.Blend(sources=sources, img=data, weights=weights, bg_rms=bg_rms, config=config)
-        blend.fit(steps=maxIter, e_rel=relErr)
+        blend.fit(steps=maxIter, e_rel=relativeError)
     except np.linalg.LinAlgError as e:
         log.warn("Deblend failed catastrophically, most likely due to no signal in the footprint")
         debResult.failed = True
@@ -316,7 +315,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
             tfoot = afwDet.Footprint(ss, peakSchema=peakSchema)
             # Add the peak with the intensity of the centered model,
             # which might be slightly larger than the shifted model
-            peakFlux = np.sum(src.sed[:,fidx]*src.morph[:,np.ravel_multi_index((_cy,_cx),(src.Ny, src.Nx))])
+            peakFlux = np.sum(src.sed[:,fidx]*src.morph[:,_cy, _cx])
             tfoot.addPeak(cx, cy, peakFlux)
             timg = afwImage.ImageF(model[fidx], xy0=debResult.footprint.getBBox().getBegin())
             timg = timg.Factory(timg, tfoot.getBBox(), PARENT)

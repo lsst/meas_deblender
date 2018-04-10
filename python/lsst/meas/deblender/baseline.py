@@ -115,6 +115,7 @@ class DeblenderResult(object):
         self.filterCount = len(maskedImages)
         self.maskedImages = maskedImages
         self.footprint = footprint
+        self.psfs = psfs
 
         self.peakCount = len(footprint.getPeaks())
         if maxNumberOfPeaks>0 and maxNumberOfPeaks<self.peakCount:

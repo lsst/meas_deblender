@@ -486,26 +486,28 @@ class MultibandDeblendConfig(pexConfig.Config):
                                              "will use galsim or some other method as a future option"))
     edgeFluxThresh = pexConfig.Field(dtype=float, default=1.0,
                                      doc=("Boxes are resized when the flux at an edge is "
-                                          "> edgeFluxThresh * bg_rms"))
+                                          "> edgeFluxThresh * background RMS"))
     exactLipschitz = pexConfig.Field(dtype=bool, default=False,
                                      doc=("Calculate exact Lipschitz constant in every step"
-                                          "(exact_lipschitz is True) or only calculate the"
+                                          "(True) or only calculate the approximate"
                                           "Lipschitz constant with significant changes in A,S"
-                                          "(exact_lipschitz is False)"))
+                                          "(False)"))
     stepSlack = pexConfig.Field(dtype=float, default=0.2,
-                                doc=("Slack to use when updating the step size in each iteration of"
-                                     "the bSDMM minimization"))
+                                doc=("A fractional measure of how much a value (like the exactLipschitz)"
+                                     "can change before it needs to be recalculated."
+                                     "This must be between 0 and 1."))
 
     # Constraints
-    constraints = pexConfig.Field(dtype=str, default="1+SM",
-                                  doc=("List of constraints to use for each object."
+    constraints = pexConfig.Field(dtype=str, default="1,+,S,M",
+                                  doc=("List of constraints to use for each object"
+                                       "(order does not matter)"
                                        "Current options are all used by default:\n"
                                        "S: symmetry\n"
                                        "M: monotonicity\n"
                                        "1: normalized SED to unity"
                                        "+: non-negative morphology"))
     symmetryThresh = pexConfig.Field(dtype=float, default=1.0,
-                                     doc=("Strictness of symmetry from"
+                                     doc=("Strictness of symmetry, from"
                                           "0 (no symmetry enforced) to"
                                           "1 (perfect symmetry required)."
                                           "If 'S' is not in `constraints`, this argument is ignored"))
@@ -514,9 +516,11 @@ class MultibandDeblendConfig(pexConfig.Config):
     l1Thresh = pexConfig.Field(dtype=float, default=np.nan,
                                doc=("L1 threshold. NaN results in no L1 penalty."))
     tvxThresh = pexConfig.Field(dtype=float, default=np.nan,
-                                doc=("TVx threshold. NaN results in no TVx penalty."))
+                                doc=("Threshold for TV (total variation) constraint in the x-direction."
+                                     "NaN results in no TVx penalty."))
     tvyThresh = pexConfig.Field(dtype=float, default=np.nan,
-                                doc=("TVy threshold. NaN results in no TVy penalty."))
+                                doc=("Threshold for TV (total variation) constraint in the y-direction."
+                                     "NaN results in no TVy penalty."))
 
     # Other scarlet paremeters
     useWeights = pexConfig.Field(dtype=bool, default=False, doc="Use inverse variance as deblender weights")
@@ -526,11 +530,16 @@ class MultibandDeblendConfig(pexConfig.Config):
                                    "This is used to initialize the model for each source"
                                    "and to set the size of the bounding box for each source"
                                    "every `refinementSkip` iteration."))
-    usePsfConvolution = pexConfig.Field(dtype=bool, default=False, doc=("Perform PSF kernel matching?"))
+    usePsfConvolution = pexConfig.Field(dtype=bool, default=True,
+                                        doc=("Whether or not to convolve the morphology with the"
+                                             "PSF in each band or use the same morphology"
+                                             "in all bands"))
     saveTemplates = pexConfig.Field(dtype=bool, default=True,
                                     doc="Whether or not to save the SEDs and templates")
     processSingles = pexConfig.Field(dtype=bool, default=False,
                                      doc="Whether or not to process isolated sources in the deblender")
+    badMask = pexConfig.Field(dtype=str, default="BAD,CR,NO_DATA,SAT,SUSPECT",
+                              doc="Whether or not to process isolated sources in the deblender")
     # Old deblender parameters used in this implementation (some of which might be removed later)
 
     maxNumberOfPeaks = pexConfig.Field(dtype=int, default=0,
@@ -693,18 +702,18 @@ class MultibandDeblendTask(pipeBase.Task):
         # If the default constraints are not used, set the constraints for
         # all of the sources
         constraints = None
-        if (sorted(self.config.constraints) != ['+', '1', 'M', 'S']
+        _constraints = self.config.constraints.split(",")
+        if (sorted(_constraints) != ['+', '1', 'M', 'S']
             or ~np.isnan(self.config.l0Thresh)
             or ~np.isnan(self.config.l1Thresh)
         ):
-            print("Different constraints")
             constraintDict = {
                 "+": scarlet.constraints.PositivityConstraint,
                 "1": scarlet.constraints.SimpleConstraint,
                 "M": scarlet.constraints.DirectMonotonicityConstraint(use_nearest=False),
                 "S": scarlet.constraints.DirectSymmetryConstraint(sigma=self.config.symmetryThresh)
             }
-            for c in self.config.constraints:
+            for c in _constraints:
                 if constraints is None:
                     constraints = constraintDict[c]
                 else:
@@ -727,8 +736,9 @@ class MultibandDeblendTask(pipeBase.Task):
             constraints=constraints,
             config=config,
             maxIter=self.config.maxIter,
-            bg_scale=self.config.bgScale,
-            relErr=self.config.relativeError
+            bgScale=self.config.bgScale,
+            relativeError=self.config.relativeError,
+            badMask=self.config.badMask.split(","),
         )
         self.plugins = [multiband_plugin]
 
