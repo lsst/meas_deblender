@@ -48,18 +48,21 @@ DEFAULT_PLUGINS = [
 class DeblenderResult(object):
     """Collection of objects in multiple bands for a single parent footprint
     """
-    
-    def __init__(self, footprints, maskedImages, psfs, psffwhms, log, filters=None,
+
+    def __init__(self, footprint, maskedImages, psfs, psffwhms, log, filters=None,
             maxNumberOfPeaks=0, avgNoise=None):
         """ Initialize a DeblededParent
-        
+
         Parameters
         ----------
-        footprint: list of `afw.detection.Footprint`s
-            Parent footprint to deblend in each band.
+        footprint: `afw.detection.Footprint`
+            Parent footprint to deblend. While `maskedImages`, `psfs`,
+            and `psffwhms` are lists of objects, one for each band,
+            `footprint` is a single parent footprint (from a `mergedDet`)
+            this is used for all bands.
         maskedImages: list of `afw.image.MaskedImageF`s
             Masked image containing the ``footprint`` in each band.
-        psf: list of `afw.detection.Psf`s
+        psfs: list of `afw.detection.Psf`s
             Psf of the ``maskedImage`` for each band.
         psffwhm: list of `float`s
             FWHM of the ``maskedImage``'s ``psf`` in each band.
@@ -80,10 +83,6 @@ class DeblenderResult(object):
         """
         # Check if this is collection of footprints in multiple bands or a single footprint
         try:
-            len(footprints)
-        except TypeError:
-            footprints = [footprints]
-        try:
             len(maskedImages)
         except TypeError:
             maskedImages = [maskedImages]
@@ -103,41 +102,47 @@ class DeblenderResult(object):
             else:
                 avgNoise = [avgNoise]
         # Now check that all of the parameters have the same number of entries
-        if any([len(footprints)!=len(p) for p in [maskedImages, psfs, psffwhms, avgNoise]]):
+        if any([len(maskedImages)!=len(p) for p in [psfs, psffwhms, avgNoise]]):
             raise ValueError("To use the multi-color deblender, "
-                             "'footprint', 'maskedImage', 'psf', 'psffwhm', 'avgNoise'"
+                             "'maskedImage', 'psf', 'psffwhm', 'avgNoise'"
                              "must have the same length, but instead have lengths: "
-                             "{0}".format([len(p) for p in [footprints,
-                                                            maskedImages,
+                             "{0}".format([len(p) for p in [maskedImages,
                                                             psfs,
                                                             psffwhms,
                                                             avgNoise]]))
 
         self.log = log
-        self.filterCount = len(footprints)
+        self.filterCount = len(maskedImages)
+        self.maskedImages = maskedImages
+        self.footprint = footprint
+        self.psfs = psfs
 
-        self.peakCount = len(footprints[0].getPeaks())
+        self.peakCount = len(footprint.getPeaks())
         if maxNumberOfPeaks>0 and maxNumberOfPeaks<self.peakCount:
             self.peakCount = maxNumberOfPeaks
 
         if filters is None:
-            filters = range(len(footprints))
+            filters = range(self.filterCount)
         self.filters = filters
 
         # Create a DeblendedParent for the Footprint in every filter
         self.deblendedParents = OrderedDict([])
         for n in range(self.filterCount):
             f = self.filters[n]
-            dp = DeblendedParent(f, footprints[n], maskedImages[n], psfs[n],
+            dp = DeblendedParent(f, footprint, maskedImages[n], psfs[n],
                                  psffwhms[n], avgNoise[n], maxNumberOfPeaks, self)
             self.deblendedParents[self.filters[n]] = dp
 
         # Group the peaks in each color
         self.peaks = []
         for idx in range(self.peakCount):
-            peakDict = {f: dp.peaks[idx] for f,dp in self.deblendedParents.items()}
+            peakDict = OrderedDict([(f, dp.peaks[idx]) for f,dp in self.deblendedParents.items()])
             multiPeak = MultiColorPeak(peakDict, idx, self)
             self.peaks.append(multiPeak)
+
+        # Result from multiband debender (if used)
+        self.blend = None
+        self.failed = False
 
     def getParentProperty(self, propertyName):
         """Get the footprint in each filter"""
@@ -152,14 +157,14 @@ class DeblenderResult(object):
 
 class DeblendedParent(object):
     """Deblender result of a single parent footprint, in a single band
-    
+
     Convenience class to store useful objects used by the deblender for a single band,
     such as the maskedImage, psf, etc as well as the results from the deblender.
     """
-    def __init__(self, filterName, footprint, maskedImage, psf, psffwhm, avgNoise, 
+    def __init__(self, filterName, footprint, maskedImage, psf, psffwhm, avgNoise,
                  maxNumberOfPeaks, debResult):
         """Create a DeblendedParent to store a deblender result
-        
+
         Parameters
         ----------
         filterName: `str`
@@ -198,14 +203,14 @@ class DeblendedParent(object):
         self.debResult = debResult
         self.peakCount = debResult.peakCount
         self.templateSum = None
-        
+
         # avgNoise is an estiamte of the average noise level for the image in this filter
         if avgNoise is None:
             stats = afwMath.makeStatistics(self.varimg, self.mask, afwMath.MEDIAN)
             avgNoise = np.sqrt(stats.getValue(afwMath.MEDIAN))
             debResult.log.trace('Estimated avgNoise for filter %s = %f', self.filter, avgNoise)
         self.avgNoise = avgNoise
-        
+
         # Store all of the peak information in a single object
         self.peaks = []
         peaks = self.fp.getPeaks()
@@ -215,7 +220,7 @@ class DeblendedParent(object):
 
     def updateFootprintBbox(self):
         """Update the bounding box of the parent footprint
-        
+
         If the parent Footprint is resized it will be necessary to update the bounding box of the footprint.
         """
         # Pull out the image bounds of the parent Footprint
@@ -229,13 +234,13 @@ class DeblendedParent(object):
 
 class MultiColorPeak(object):
     """Collection of single peak deblender results in multiple bands.
-    
+
     There is one of these objects for each Peak in the footprint.
     """
-    
+
     def __init__(self, peaks, pki, parent):
         """Create a collection for deblender results in each band.
-        
+
         Parameters
         ----------
         peaks: `dict` of `afw.detection.PeakRecord`
@@ -244,11 +249,11 @@ class MultiColorPeak(object):
             Index of the peak in `parent.peaks`
         parent: `DeblendedParent`
             DeblendedParent object that contains the peak as a child.
-        
+
         Returns
         -------
         None
-        
+
         """
         self.filters = list(peaks.keys())
         self.deblendedPeaks = peaks
@@ -262,6 +267,8 @@ class MultiColorPeak(object):
         self.pki = pki
         self.skip = False
         self.deblendedAsPsf = False
+        self.x = self.deblendedPeaks[self.filters[0]].peak.getFx()
+        self.y = self.deblendedPeaks[self.filters[0]].peak.getFy()
 
 class DeblendedPeak(object):
     """Result of deblending a single Peak within a parent Footprint.
@@ -271,7 +278,7 @@ class DeblendedPeak(object):
 
     def __init__(self, peak, pki, parent, multiColorPeak=None):
         """Initialize a new deblended peak in a single filter band
-        
+
         Parameters
         ----------
         peak: `afw.detection.PeakRecord`
@@ -282,7 +289,7 @@ class DeblendedPeak(object):
             Parent in the same filter that contains the peak
         multiColorPeak: `MultiColorPeak`
             Object containing the same peak in multiple bands
-        
+
         Returns
         -------
         None
@@ -455,7 +462,7 @@ def deblend(footprint, maskedImage, psf, psffwhm, filters=None,
             removeDegenerateTemplates=False, maxTempDotProd=0.5
             ):
     """Deblend a parent ``Footprint`` in a ``MaskedImageF``.
-    
+
     Deblending assumes that ``footprint`` has multiple peaks, as it will still create a
     `PerFootprint` object with a list of peaks even if there is only one peak in the list.
     It is recommended to first check that ``footprint`` has more than one peak, similar to the
@@ -509,12 +516,12 @@ def deblend(footprint, maskedImage, psf, psffwhm, filters=None,
           otherwise the one with the maximum template value is kept.
         * Relevant parameters: ``maxTempDotProduct``
     # Apportion flux to all of the peak templates
-        * Divide the ``maskedImage`` flux amongst all of the templates based on the fraction of 
+        * Divide the ``maskedImage`` flux amongst all of the templates based on the fraction of
           flux assigned to each ``tempalteFootprint``.
         * Leftover "stray flux" is assigned to peaks based on the other parameters.
         * Relevant parameters: ``clipStrayFluxFraction``, ``strayFluxAssignment``,
           ``strayFluxToPointSources``, ``assignStrayFlux``
-    
+
     Parameters
     ----------
     footprint: `afw.detection.Footprint`
@@ -620,7 +627,7 @@ def deblend(footprint, maskedImage, psf, psffwhm, filters=None,
         All dot products between templates greater than ``maxTempDotProduct`` will result in one
         of the templates removed. This parameter is only used when ``removeDegenerateTempaltes==True``.
         The default is 0.5.
-    
+
     Returns
     -------
     res: `PerFootprint`
@@ -633,7 +640,7 @@ def deblend(footprint, maskedImage, psf, psffwhm, filters=None,
 
     # Add activated deblender plugins
     if fitPsfs:
-        debPlugins.append(plugins.DeblenderPlugin(plugins.fitPsfs, 
+        debPlugins.append(plugins.DeblenderPlugin(plugins.fitPsfs,
                                                   psfChisqCut1=psfChisqCut1,
                                                   psfChisqCut2=psfChisqCut2,
                                                   psfChisqCut2b=psfChisqCut2b,
@@ -669,10 +676,10 @@ def deblend(footprint, maskedImage, psf, psffwhm, filters=None,
 
     return debResult
 
-def newDeblend(debPlugins, footprint, maskedImage, psf, psffwhm, filters=None,
+def newDeblend(debPlugins, footprint, maskedImages, psfs, psfFwhms, filters=None,
                log=None, verbose=False, avgNoise=None, maxNumberOfPeaks=0):
     """Deblend a parent ``Footprint`` in a ``MaskedImageF``.
-    
+
     Deblending assumes that ``footprint`` has multiple peaks, as it will still create a
     `PerFootprint` object with a list of peaks even if there is only one peak in the list.
     It is recommended to first check that ``footprint`` has more than one peak, similar to the
@@ -687,11 +694,11 @@ def newDeblend(debPlugins, footprint, maskedImage, psf, psffwhm, filters=None,
         Plugins to execute (in order of execution) for the deblender.
     footprint: `afw.detection.Footprint` or list of Footprints
         Parent footprint to deblend.
-    maskedImage: `afw.image.MaskedImageF` or list of MaskedImages
+    maskedImages: `afw.image.MaskedImageF` or list of MaskedImages
         Masked image containing the ``footprint``.
-    psf: `afw.detection.Psf` or list of Psfs
+    psfs: `afw.detection.Psf` or list of Psfs
         Psf of the ``maskedImage``.
-    psffwhm: `float` or list of floats
+    psfFwhms: `float` or list of floats
         FWHM of the ``maskedImage``'s ``psf``.
     filters: list of `string`s, optional
         Names of the filters when ``footprint`` is a list instead of a single ``footprint``.
@@ -721,7 +728,7 @@ def newDeblend(debPlugins, footprint, maskedImage, psf, psffwhm, filters=None,
     # Import C++ routines
     import lsst.meas.deblender as deb
     butils = deb.BaselineUtilsF
-    
+
     if log is None:
         import lsst.log as lsstLog
 
@@ -732,12 +739,19 @@ def newDeblend(debPlugins, footprint, maskedImage, psf, psffwhm, filters=None,
             log.setLevel(lsstLog.Log.TRACE)
 
     # get object that will hold our results
-    debResult = DeblenderResult(footprint, maskedImage, psf, psffwhm, log, filters=filters,
+    debResult = DeblenderResult(footprint, maskedImages, psfs, psfFwhms, log, filters=filters,
                                 maxNumberOfPeaks=maxNumberOfPeaks, avgNoise=avgNoise)
 
     step = 0
     while step < len(debPlugins):
-        reset = debPlugins[step].run(debResult, log)
+        # If a failure occurs at any step,
+        # the result is flagged as `failed`
+        # and the remaining steps are skipped
+        if not debResult.failed:
+            reset = debPlugins[step].run(debResult, log)
+        else:
+            log.warn("Skipping steps {0}".format(debPlugins[step:]))
+            return debResult
         if reset:
             step = debPlugins[step].onReset
         else:
