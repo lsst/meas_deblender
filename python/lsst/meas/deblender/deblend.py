@@ -168,6 +168,7 @@ class SourceDeblendTask(pipeBase.Task):
         @param[in]     **kwargs      Passed to Task.__init__.
         """
         pipeBase.Task.__init__(self, **kwargs)
+        self.schema = schema
         peakMinimalSchema = afwDet.PeakTable.makeMinimalSchema()
         if peakSchema is None:
             # In this case, the peakSchemaMapper will transfer nothing, but we'll still have one
@@ -239,6 +240,7 @@ class SourceDeblendTask(pipeBase.Task):
         @return None
         """
         psf = exposure.getPsf()
+        assert sources.getSchema() == self.schema
         self.deblend(exposure, sources, psf)
 
     def _getPsfFwhm(self, psf, bbox):
