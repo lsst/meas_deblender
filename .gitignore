@@ -2,6 +2,7 @@
 .sconsign.dblite
 _build.*
 .cache
+.pytest_cache
 *.o
 *.pyc
 *.so
