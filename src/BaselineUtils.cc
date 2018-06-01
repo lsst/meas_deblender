@@ -5,6 +5,7 @@
 #include "lsst/log/Log.h"
 #include "lsst/meas/deblender/BaselineUtils.h"
 #include "lsst/pex/exceptions.h"
+#include "lsst/afw/geom/Span.h"
 #include "lsst/afw/geom/Box.h"
 
 using std::lround;
@@ -12,7 +13,7 @@ using std::lround;
 namespace image = lsst::afw::image;
 namespace det = lsst::afw::detection;
 namespace deblend = lsst::meas::deblender;
-namespace geom = lsst::afw::geom;
+namespace afwGeom = lsst::afw::geom;
 
 template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
 const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::ASSIGN_STRAYFLUX;
@@ -33,8 +34,8 @@ const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAY
 template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
 const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::STRAYFLUX_TRIM;
 
-static bool span_compare(geom::Span const & sp1,
-                         geom::Span const & sp2) {
+static bool span_compare(afwGeom::Span const & sp1,
+                         afwGeom::Span const & sp2) {
     return (sp1 < sp2);
 }
 
@@ -362,7 +363,7 @@ makeMonotonic(
 static double _get_contrib_r_to_footprint(int x, int y,
                                           PTR(det::Footprint) tfoot) {
     double minr2 = 1e12;
-    for (geom::Span const & sp : *(tfoot->getSpans())) {
+    for (afwGeom::Span const & sp : *(tfoot->getSpans())) {
         int mindx;
         // span is to right of pixel?
         int dx = sp.getX0() - x;
@@ -407,14 +408,14 @@ _find_stray_flux(det::Footprint const& foot,
     // when doing stray flux: the footprints and pixels, which we'll
     // combine into the return 'strays' HeavyFootprint at the end.
     std::vector<PTR(det::Footprint) > strayfoot;
-    std::vector<std::vector<geom::Span>> straySpans(tfoots.size());
+    std::vector<std::vector<afwGeom::Span>> straySpans(tfoots.size());
     std::vector<std::vector<ImagePixelT> > straypix;
     std::vector<std::vector<MaskPixelT> > straymask;
     std::vector<std::vector<VariancePixelT> > strayvar;
 
     int ix0 = img.getX0();
     int iy0 = img.getY0();
-    geom::Box2I sumbb = tsum->getBBox();
+    afwGeom::Box2I sumbb = tsum->getBBox();
     int sumx0 = sumbb.getMinX();
     int sumy0 = sumbb.getMinY();
 
@@ -459,7 +460,7 @@ _find_stray_flux(det::Footprint const& foot,
 
     // Go through the (parent) Footprint looking for stray flux:
     // pixels that are not claimed by any template, and positive.
-    for (geom::Span const & s : *foot.getSpans()) {
+    for (afwGeom::Span const & s : *foot.getSpans()) {
         int y = s.getY();
         int x0 = s.getX0();
         int x1 = s.getX1();
@@ -555,7 +556,7 @@ _find_stray_flux(det::Footprint const& foot,
                     strayfoot[i] = std::make_shared<det::Footprint>();
                     strayfoot[i]->setPeakSchema(foot.getPeaks().getSchema());
                 }
-                straySpans[i].push_back(geom::Span(y, x, x));
+                straySpans[i].push_back(afwGeom::Span(y, x, x));
                 straypix[i].push_back(p);
                 straymask[i].push_back((*in_it).mask());
                 strayvar[i].push_back((*in_it).variance());
@@ -566,7 +567,7 @@ _find_stray_flux(det::Footprint const& foot,
     // Store the stray flux in HeavyFootprints
     for (size_t i=0; i<tfoots.size(); ++i) {
         if (strayfoot[i]) {
-            strayfoot[i]->setSpans(std::make_shared<geom::SpanSet>(straySpans[i]));
+            strayfoot[i]->setSpans(std::make_shared<afwGeom::SpanSet>(straySpans[i]));
         }
         if (!strayfoot[i]) {
             strays.push_back(HeavyFootprintPtrT());
@@ -607,14 +608,14 @@ void
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 _sum_templates(std::vector<ImagePtrT> timgs,
                ImagePtrT tsum) {
-    geom::Box2I sumbb = tsum->getBBox();
+    afwGeom::Box2I sumbb = tsum->getBBox();
     int sumx0 = sumbb.getMinX();
     int sumy0 = sumbb.getMinY();
 
     // Compute  tsum = the sum of templates
     for (size_t i=0; i<timgs.size(); ++i) {
         ImagePtrT timg = timgs[i];
-        geom::Box2I tbb = timg->getBBox();
+        afwGeom::Box2I tbb = timg->getBBox();
         int tx0 = tbb.getMinX();
         int ty0 = tbb.getMinY();
         // To handle "ramped" templates that can extend outside the
@@ -729,7 +730,7 @@ apportionFlux(MaskedImageT const& img,
 
     int ix0 = img.getX0();
     int iy0 = img.getY0();
-    geom::Box2I fbb = foot.getBBox();
+    afwGeom::Box2I fbb = foot.getBBox();
 
     if (!tsum) {
         tsum = ImagePtrT(new ImageT(fbb.getDimensions()));
@@ -741,7 +742,7 @@ apportionFlux(MaskedImageT const& img,
                           "Template sum image MUST contain parent footprint");
     }
 
-    geom::Box2I sumbb = tsum->getBBox();
+    afwGeom::Box2I sumbb = tsum->getBBox();
     int sumx0 = sumbb.getMinX();
     int sumy0 = sumbb.getMinY();
 
@@ -756,7 +757,7 @@ apportionFlux(MaskedImageT const& img,
         portions.push_back(port);
 
         // Split flux = image * template / tsum
-        geom::Box2I tbb = timg->getBBox();
+        afwGeom::Box2I tbb = timg->getBBox();
         int tx0 = tbb.getMinX();
         int ty0 = tbb.getMinY();
         // As above
@@ -815,7 +816,7 @@ apportionFlux(MaskedImageT const& img,
  */
 class RelativeSpanIterator {
 public:
-    using SpanSet = geom::SpanSet;
+    using SpanSet = afwGeom::SpanSet;
 
     RelativeSpanIterator() {}
 
@@ -921,15 +922,15 @@ private:
  // Check symmetrizeFootprint by computing truth naively.
      // compute correct answer dumbly
      det::Footprint truefoot;
-     geom::Box2I bbox = foot.getBBox();
+     afwGeom::Box2I bbox = foot.getBBox();
      for (int y=bbox.getMinY(); y<=bbox.getMaxY(); y++) {
      for (int x=bbox.getMinX(); x<=bbox.getMaxX(); x++) {
      int dy = y - cy;
      int dx = x - cx;
      int x2 = cx - dx;
      int y2 = cy - dy;
-     if (foot.contains(geom::Point2I(x,  y)) &&
-     foot.contains(geom::Point2I(x2, y2))) {
+     if (foot.contains(afwGeom::Point2I(x,  y)) &&
+     foot.contains(afwGeom::Point2I(x2, y2))) {
      truefoot.addSpan(y, x, x);
      }
      }
@@ -976,19 +977,19 @@ symmetrizeFootprint(
 
     auto sfoot = std::make_shared<det::Footprint>();
     sfoot->setPeakSchema(foot.getPeaks().getSchema());
-    geom::SpanSet const & spans = *foot.getSpans();
+    afwGeom::SpanSet const & spans = *foot.getSpans();
 
     LOG_LOGGER _log = LOG_GET("meas.deblender.symmetrizeFootprint");
 
     // Find the Span containing the peak.
-    geom::Span target(cy, cx, cx);
-    geom::SpanSet::const_iterator peakspan =
+    afwGeom::Span target(cy, cx, cx);
+    afwGeom::SpanSet::const_iterator peakspan =
         std::upper_bound(spans.begin(), spans.end(), target, span_compare);
     // upper_bound returns the last position where "target" could be inserted;
     // ie, the first Span larger than "target".  The Span containing "target"
     // should be peakspan-1 or (if the peak is on the first pixel in the span,
     // peakspan.
-    geom::Span sp;
+    afwGeom::Span sp;
     if (peakspan == spans.begin()) {
         sp = *peakspan;
         if (!sp.contains(cx, cy)) {
@@ -1004,7 +1005,7 @@ symmetrizeFootprint(
             ++peakspan;
             sp = *peakspan;
             if (!sp.contains(cx, cy)) {
-                geom::Box2I fbb = foot.getBBox();
+                afwGeom::Box2I fbb = foot.getBBox();
                 LOGL_WARN(_log, "Failed to find span containing (%i,%i): nearest is %i, [%i,%i].  "
                           "Footprint bbox is [%i,%i],[%i,%i]",
                           cx, cy, sp.getY(), sp.getX0(), sp.getX1(),
@@ -1048,7 +1049,7 @@ symmetrizeFootprint(
     RelativeSpanIterator back(peakspan, spans, cx, cy, false);
 
     int dy = 0;
-    std::vector<geom::Span> tmpSpans;
+    std::vector<afwGeom::Span> tmpSpans;
     while (fwd.notDone() && back.notDone()) {
         // forward and backward "y"; just symmetric around cy
         int fy = cy + dy;
@@ -1127,8 +1128,8 @@ symmetrizeFootprint(
         if (dxlo <= dxhi) {
             LOGL_DEBUG(_log, "Adding span fwd %i, [%i, %i],  back %i, [%i, %i]",
                        fy, cx+dxlo, cx+dxhi, by, cx-dxhi, cx-dxlo);
-            tmpSpans.push_back(geom::Span(fy, cx + dxlo, cx + dxhi));
-            tmpSpans.push_back(geom::Span(by, cx - dxhi, cx - dxlo));
+            tmpSpans.push_back(afwGeom::Span(fy, cx + dxlo, cx + dxhi));
+            tmpSpans.push_back(afwGeom::Span(by, cx - dxhi, cx - dxlo));
         }
 
         // Advance the one whose "hi" edge is smallest
@@ -1165,7 +1166,7 @@ symmetrizeFootprint(
         }
 
     }
-    sfoot->setSpans(std::make_shared<geom::SpanSet>(std::move(tmpSpans)));
+    sfoot->setSpans(std::make_shared<afwGeom::SpanSet>(std::move(tmpSpans)));
     return sfoot;
 }
 
@@ -1217,7 +1218,7 @@ buildSymmetricTemplate(
         throw LSST_EXCEPT(lsst::pex::exceptions::LengthError,
                           "Image too small for symmetrized footprint");
     }
-    geom::SpanSet const & spans = *sfoot->getSpans();
+    afwGeom::SpanSet const & spans = *sfoot->getSpans();
 
     // does this footprint touch an EDGE?
     bool touchesEdge = false;
@@ -1226,7 +1227,7 @@ buildSymmetricTemplate(
         MaskPtrT mask = img.getMask();
         bool edge = false;
         MaskPixelT edgebit = mask->getPlaneBitMask("EDGE");
-        for (geom::SpanSet::const_iterator fwd=spans.begin();
+        for (afwGeom::SpanSet::const_iterator fwd=spans.begin();
              fwd != spans.end(); ++fwd) {
             int x0 = fwd->getX0();
             int x1 = fwd->getX1();
@@ -1250,8 +1251,8 @@ buildSymmetricTemplate(
     // The result image:
     ImagePtrT targetimg(new ImageT(sfoot->getBBox()));
 
-    geom::SpanSet::const_iterator fwd  = spans.begin();
-    geom::SpanSet::const_iterator back = spans.end()-1;
+    afwGeom::SpanSet::const_iterator fwd  = spans.begin();
+    afwGeom::SpanSet::const_iterator back = spans.end()-1;
 
     ImagePtrT theimg = img.getImage();
 
@@ -1268,8 +1269,8 @@ buildSymmetricTemplate(
             // of the min pixel
 
             // We have already checked the bounding box, so this should always be satisfied
-            assert(theimg->getBBox(image::PARENT).contains(geom::Point2I(fx, fy)));
-            assert(theimg->getBBox(image::PARENT).contains(geom::Point2I(bx, by)));
+            assert(theimg->getBBox(image::PARENT).contains(afwGeom::Point2I(fx, fy)));
+            assert(theimg->getBBox(image::PARENT).contains(afwGeom::Point2I(bx, by)));
 
             // FIXME -- we could do this with image iterators instead.
             // But first profile to show that it's necessary and an
@@ -1290,30 +1291,30 @@ buildSymmetricTemplate(
         // Find spans whose mirrors fall outside the image bounds,
         // grow the footprint to include those spans, and plug in
         // their pixel values.
-        geom::Box2I bb = sfoot->getBBox();
+        afwGeom::Box2I bb = sfoot->getBBox();
 
         // Actually, it's not necessarily the IMAGE bounds that count
         //-- the footprint may not go right to the image edge.
-        //geom::Box2I imbb = img.getBBox();
-        geom::Box2I imbb = foot.getBBox();
+        //afwGeom::Box2I imbb = img.getBBox();
+        afwGeom::Box2I imbb = foot.getBBox();
 
         LOGL_DEBUG(_log, "Footprint touches EDGE: start bbox [%i,%i],[%i,%i]",
                    bb.getMinX(), bb.getMaxX(), bb.getMinY(), bb.getMaxY());
         // original footprint spans
-        const geom::SpanSet & ospans = *foot.getSpans();
+        const afwGeom::SpanSet & ospans = *foot.getSpans();
         for (fwd = ospans.begin(); fwd != ospans.end(); ++fwd) {
             int y = fwd->getY();
             int x = fwd->getX0();
             // mirrored coords
             int ym = cy + (cy - y);
             int xm = cx + (cx - x);
-            if (!imbb.contains(geom::Point2I(xm, ym))) {
-                bb.include(geom::Point2I(x, y));
+            if (!imbb.contains(afwGeom::Point2I(xm, ym))) {
+                bb.include(afwGeom::Point2I(x, y));
             }
             x = fwd->getX1();
             xm = cx + (cx - x);
-            if (!imbb.contains(geom::Point2I(xm, ym))) {
-                bb.include(geom::Point2I(x, y));
+            if (!imbb.contains(afwGeom::Point2I(xm, ym))) {
+                bb.include(afwGeom::Point2I(x, y));
             }
         }
         LOGL_DEBUG(_log, "Footprint touches EDGE: grown bbox [%i,%i],[%i,%i]",
@@ -1324,14 +1325,14 @@ buildSymmetricTemplate(
         sfoot->getSpans()->copyImage(*targetimg, *targetimg2);
 
         LOGL_DEBUG(_log, "Symmetric footprint spans:");
-        const geom::SpanSet & sspans = *sfoot->getSpans();
+        const afwGeom::SpanSet & sspans = *sfoot->getSpans();
         for (fwd = sspans.begin(); fwd != sspans.end(); ++fwd) {
             LOGL_DEBUG(_log, "  %s", fwd->toString().c_str());
         }
 
         // copy original 'img' pixels for the portion of spans whose
         // mirrors are out of bounds.
-        std::vector<geom::Span> newSpans(sfoot->getSpans()->begin(), sfoot->getSpans()->end());
+        std::vector<afwGeom::Span> newSpans(sfoot->getSpans()->begin(), sfoot->getSpans()->end());
         for (fwd = ospans.begin(); fwd != ospans.end(); ++fwd) {
             int y   = fwd->getY();
             int x0  = fwd->getX0();
@@ -1340,8 +1341,8 @@ buildSymmetricTemplate(
             int ym  = cy + (cy - y);
             int xm0 = cx + (cx - x0);
             int xm1 = cx + (cx - x1);
-            bool in0 = imbb.contains(geom::Point2I(xm0, ym));
-            bool in1 = imbb.contains(geom::Point2I(xm1, ym));
+            bool in0 = imbb.contains(afwGeom::Point2I(xm0, ym));
+            bool in1 = imbb.contains(afwGeom::Point2I(xm1, ym));
             if (in0 && in1) {
                 // both endpoints of the symmetric span are in bounds; nothing to do
                 continue;
@@ -1364,9 +1365,9 @@ buildSymmetricTemplate(
             for (int x=x0; x<=x1; ++x, ++outiter, ++initer) {
                 *outiter = initer.image();
             }
-            newSpans.push_back(geom::Span(y, x0, x1));
+            newSpans.push_back(afwGeom::Span(y, x0, x1));
         }
-        sfoot->setSpans(std::make_shared<geom::SpanSet>(std::move(newSpans)));
+        sfoot->setSpans(std::make_shared<afwGeom::SpanSet>(std::move(newSpans)));
         targetimg = targetimg2;
     }
 
@@ -1390,9 +1391,9 @@ hasSignificantFluxAtEdge(ImagePtrT img,
     // Find edge template pixels with significant flux -- perhaps
     // because their symmetric pixels were outside the footprint?
     // (clipped by an image edge, etc)
-    std::shared_ptr<geom::SpanSet> spans = sfoot->getSpans()->findEdgePixels();
+    std::shared_ptr<afwGeom::SpanSet> spans = sfoot->getSpans()->findEdgePixels();
 
-    for (geom::SpanSet::const_iterator sp = spans->begin(); sp != spans->end(); ++sp) {
+    for (afwGeom::SpanSet::const_iterator sp = spans->begin(); sp != spans->end(); ++sp) {
         int const y  = sp->getY();
         int const x0 = sp->getX0();
         int const x1 = sp->getX1();
@@ -1424,10 +1425,10 @@ getSignificantEdgePixels(ImagePtrT img,
     significant->setPeakSchema(sfoot->getPeaks().getSchema());
 
     int const x0 = img->getX0(), y0 = img->getY0();
-    std::shared_ptr<geom::SpanSet> edgeSpans = sfoot->getSpans()->findEdgePixels();
-    std::vector<geom::Span> tmpSpans;
-    for (geom::SpanSet::const_iterator ss = edgeSpans->begin(); ss != edgeSpans->end(); ++ss) {
-        geom::Span const& span = *ss;
+    std::shared_ptr<afwGeom::SpanSet> edgeSpans = sfoot->getSpans()->findEdgePixels();
+    std::vector<afwGeom::Span> tmpSpans;
+    for (afwGeom::SpanSet::const_iterator ss = edgeSpans->begin(); ss != edgeSpans->end(); ++ss) {
+        afwGeom::Span const& span = *ss;
         int const y = span.getY();
         int x = span.getX0();
         typename ImageT::const_x_iterator iter = img->x_at(x - x0, y - y0);
@@ -1439,14 +1440,14 @@ getSignificantEdgePixels(ImagePtrT img,
                 xSpan = x;
             } else if (onSpan) {
                 onSpan = false;
-                tmpSpans.push_back(geom::Span(y, xSpan, x - 1));
+                tmpSpans.push_back(afwGeom::Span(y, xSpan, x - 1));
             }
         }
         if (onSpan) {
-            tmpSpans.push_back(geom::Span(y, xSpan, span.getX1()));
+            tmpSpans.push_back(afwGeom::Span(y, xSpan, span.getX1()));
         }
     }
-    significant->setSpans(std::make_shared<geom::SpanSet>(std::move(tmpSpans)));
+    significant->setSpans(std::make_shared<afwGeom::SpanSet>(std::move(tmpSpans)));
     return significant;
 }
 
