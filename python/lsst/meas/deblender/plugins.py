@@ -666,9 +666,9 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     try:
         # NT1 is number of terms without dx,dy;
         # X1 is the result without decenter
-        X1, r1, rank1, s1 = np.linalg.lstsq(Aw[:, :NT1], bw)
+        X1, r1, rank1, s1 = np.linalg.lstsq(Aw[:, :NT1], bw, rcond=-1)
         # X2 is with decenter
-        X2, r2, rank2, s2 = np.linalg.lstsq(Aw, bw)
+        X2, r2, rank2, s2 = np.linalg.lstsq(Aw, bw, rcond=-1)
     except np.linalg.LinAlgError as e:
         log.warn("Failed to fit PSF to child: %s", e)
         pkres.setPsfFitFailed()
@@ -751,7 +751,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
 
             Aw = Ab*w[:, np.newaxis]
             # re-solve...
-            Xb, rb, rankb, sb = np.linalg.lstsq(Aw, bw)
+            Xb, rb, rankb, sb = np.linalg.lstsq(Aw, bw, rcond=-1)
             if len(rb) > 0:
                 chisqb = rb[0]
             else:
@@ -1273,7 +1273,7 @@ def _weightTemplates(dp):
         A[:, index] = childImage.getArray().ravel()
         index += 1
 
-    X1, r1, rank1, s1 = np.linalg.lstsq(A, b)
+    X1, r1, rank1, s1 = np.linalg.lstsq(A, b, rcond=-1)
     del A
     del b
 
