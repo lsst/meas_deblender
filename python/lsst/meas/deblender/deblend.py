@@ -335,7 +335,8 @@ class SourceDeblendTask(pipeBase.Task):
                     self.log.warn("Unable to deblend source %d: %s" % (src.getId(), e))
                     src.set(self.deblendFailedKey, True)
                     import traceback
-                    traceback.print_exc()
+                    errString = traceback.format_exc()
+                    self.log.trace(errString)
                     continue
                 else:
                     raise
@@ -1013,7 +1014,8 @@ class MultibandDeblendTask(pipeBase.Task):
                     src.set(self.deblendFailedKey, True)
                     src.set(self.runtimeKey, 0)
                     import traceback
-                    traceback.print_exc()
+                    errString = traceback.format_exc()
+                    self.log.trace(errString)
                     continue
                 else:
                     raise
