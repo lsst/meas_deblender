@@ -61,7 +61,7 @@ class DeblendTestCase(unittest.TestCase):
         mi.getVariance().set(1.0)
         image = mi.getImage()
         image.set(0)
-        image.set(xGood, yGood, flux)
+        image[xGood, yGood, afwImage.LOCAL] = flux
 
         exposure = afwImage.makeExposure(mi)
         psf = algorithms.DoubleGaussianPsf(21, 21, 3.)
