@@ -5,7 +5,7 @@ from builtins import zip
 import os
 import sys
 
-import pyfits
+from astropy.io import fits
 
 import lsst.pipette.options as pipOptions
 import lsst.pipette.readwrite as pipReadWrite
@@ -43,7 +43,7 @@ def run(visit, rerun, config):
 
     # HACK peaks
     fn = mapper.getPath('truesrc', dataId)
-    srcs = pyfits.open(fn)[1].data
+    srcs = fits.open(fn)[1].data
     x = srcs.field('x').astype(float)
     y = srcs.field('y').astype(float)
     print(x, y)
