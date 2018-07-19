@@ -1175,7 +1175,7 @@ class MultibandDeblendTask(pipeBase.Task):
         ----------
         source: `lsst.afw.table.source.source.SourceRecord`
             The source to flag as skipped
-        masks: list of `lsst.afw.image.mask.mask.MaskX`
+        masks: list of `lsst.afw.image.MaskX`
             The mask in each band to update with the non-detection
         """
         fp = source.getFootprint()
