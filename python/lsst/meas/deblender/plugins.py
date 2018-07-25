@@ -240,12 +240,8 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     bg_rms = np.array([debResult.deblendedParents[f].avgNoise for f in debResult.filters])*bgScale
     if sources is None:
         # If only a single constraint was given, use it for all of the sources
-        if (constraints is scarlet.constraints.Constraint or
-            constraints is scarlet.constraints.ConstraintList
-        ):
-            constraints = [constraints.copy() for peak in peaks]
-        elif constraints is None:
-            constraints = [None]*len(peaks)
+        if constraints is None or isinstance(constraints[0], scarlet.constraints.Constraint):
+            constraints = [constraints] * len(peaks)
         sources = [
             scarlet.source.ExtendedSource(center=peak,
                                           img=data,
@@ -263,8 +259,13 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     # (peaks in the noise too low to deblend as a source)
     # the deblender currently fails.
     try:
-        blend = scarlet.blend.Blend(sources=sources, img=data, weights=weights, bg_rms=bg_rms, config=config)
+        blend = scarlet.blend.Blend(components=sources)
+        blend.set_data(img=data, weights=weights, bg_rms=bg_rms, config=config)
         blend.fit(steps=maxIter, e_rel=relativeError)
+    except scarlet.source.SourceInitError as e:
+        log.warn(e.args[0])
+        debResult.failed = True
+        return False
     except np.linalg.LinAlgError as e:
         log.warn("Deblend failed catastrophically, most likely due to no signal in the footprint")
         debResult.failed = True
@@ -273,7 +274,8 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
 
     modified = False
     # Create the Templates for each peak in each filter
-    for pk, src in enumerate(blend.sources):
+    for pk, source in enumerate(blend.sources):
+        src = source.components[0]
         _cx = src.Nx >> 1
         _cy = src.Ny >> 1
 
@@ -296,7 +298,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
             continue
 
         # Temporary for initial testing: combine multiple components
-        model = blend.get_model(m=pk, flat=False)
+        model = blend.get_model(k=pk)
         model = model.astype(np.float32)
 
         # The peak in each band will have the same SpanSet
@@ -315,7 +317,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
             tfoot = afwDet.Footprint(ss, peakSchema=peakSchema)
             # Add the peak with the intensity of the centered model,
             # which might be slightly larger than the shifted model
-            peakFlux = np.sum(src.sed[:,fidx]*src.morph[:,_cy, _cx])
+            peakFlux = np.sum(src.sed[fidx]*src.morph[_cy, _cx])
             tfoot.addPeak(cx, cy, peakFlux)
             timg = afwImage.ImageF(model[fidx], xy0=debResult.footprint.getBBox().getBegin())
             timg = timg.Factory(timg, tfoot.getBBox(), PARENT)

@@ -710,26 +710,26 @@ class MultibandDeblendTask(pipeBase.Task):
             or ~np.isnan(self.config.l1Thresh)
         ):
             constraintDict = {
-                "+": scarlet.constraints.PositivityConstraint,
-                "1": scarlet.constraints.SimpleConstraint,
-                "M": scarlet.constraints.DirectMonotonicityConstraint(use_nearest=False),
-                "S": scarlet.constraints.DirectSymmetryConstraint(sigma=self.config.symmetryThresh)
+                "+": scarlet.constraint.PositivityConstraint,
+                "1": scarlet.constraint.SimpleConstraint,
+                "M": scarlet.constraint.DirectMonotonicityConstraint(use_nearest=False),
+                "S": scarlet.constraint.DirectSymmetryConstraint(sigma=self.config.symmetryThresh)
             }
             for c in _constraints:
                 if constraints is None:
-                    constraints = constraintDict[c]
+                    constraints = [constraintDict[c]]
                 else:
-                    constraints = constraints & constraintDict[c]
+                    constraints += [constraintDict[c]]
             if constraints is None:
-                constraints = scarlet.constraints.MinimalConstraint()
+                constraints = scarlet.constraint.MinimalConstraint()
             if ~np.isnan(self.config.l0Thresh):
-                constraints = constraints & scarlet.constraints.L0Constraint(self.config.l0Thresh)
+                constraints += [scarlet.constraint.L0Constraint(self.config.l0Thresh)]
             if ~np.isnan(self.config.l1Thresh):
-                constraints = constraints & scarlet.constraints.L1Constraint(self.config.l1Thresh)
+                constraints += [scarlet.constraint.L1Constraint(self.config.l1Thresh)]
             if ~np.isnan(self.config.tvxThresh):
-                constraints = constraints & scarlet.constraints.TVxConstraint(self.config.tvxThresh)
+                constraints += [scarlet.constraint.TVxConstraint(self.config.tvxThresh)]
             if ~np.isnan(self.config.tvyThresh):
-                constraints = constraints & scarlet.constraints.TVyConstraint(self.config.tvyThresh)
+                constraints += [scarlet.constraint.TVyConstraint(self.config.tvyThresh)]
 
         multiband_plugin = plugins.DeblenderPlugin(
             plugins.buildMultibandTemplates,
@@ -817,11 +817,10 @@ class MultibandDeblendTask(pipeBase.Task):
 
         Parameters
         ----------
-        exposures: dict
-            Keys of the dict are the names of the filters and values are
-            `lsst.afw.image.exposure.exposure.ExposureF`'s.
-            The exposures should be co-added images of the same
-            shape and region of the sky.
+        exposures: `MultibandExposure`
+            `MultibandExposure` object that corresponds to images of the
+            same region of the sky, projected onto the same pixel grid in
+            different bands.
         sources: dict
             Keys are the names of the filters and the values are
             `lsst.afw.table.source.source.SourceCatalog`'s, which
