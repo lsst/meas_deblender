@@ -101,11 +101,11 @@ class DeblenderResult(object):
             else:
                 avgNoise = [avgNoise]
         # Now check that all of the parameters have the same number of entries
-        if any([len(mMaskedImage.filters)!=len(p) for p in [psfs, psffwhms, avgNoise]]):
+        if any([len(self.filters) != len(p) for p in [psfs, psffwhms, avgNoise]]):
             raise ValueError("To use the multi-color deblender, "
                              "'maskedImage', 'psf', 'psffwhm', 'avgNoise'"
                              "must have the same length, but instead have lengths: "
-                             "{0}".format([len(p) for p in [maskedImages,
+                             "{0}".format([len(p) for p in [mMaskedImage,
                                                             psfs,
                                                             psffwhms,
                                                             avgNoise]]))
@@ -121,7 +121,7 @@ class DeblenderResult(object):
 
         # Create a DeblendedParent for the Footprint in every filter
         self.deblendedParents = OrderedDict([])
-        for n,f in enumerate(self.filters):
+        for n, f in enumerate(self.filters):
             f = self.filters[n]
             dp = DeblendedParent(f, footprint, mMaskedImage[f], psfs[n],
                                  psffwhms[n], avgNoise[n], maxNumberOfPeaks, self)

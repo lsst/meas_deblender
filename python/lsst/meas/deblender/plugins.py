@@ -203,7 +203,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     xmin = bbox.getMinX()
     ymin = bbox.getMinY()
     peaks = [[pk.y-ymin, pk.x-xmin] for pk in debResult.peaks]
-    xy0 = debResult.footprint.getBBox().getBegin()
+    xy0 = bbox.getMin()
 
     # Create the data array from the masked images
     mMaskedImage = debResult.mMaskedImage[:, debResult.footprint.getBBox()]
@@ -224,7 +224,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     fpMask = ~fpMask.getArray().astype(bool)
     badPixels = mMaskedImage.mask.getPlaneBitMask(badMask)
     mask = (mMaskedImage.mask.array & badPixels) | fpMask[None, :]
-    weights[mask>0] = 0
+    weights[mask > 0] = 0
 
     # Extract the PSF from each band for PSF convolution
     if usePsf:
@@ -301,7 +301,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         model = blend.get_model(k=pk).astype(np.float32)
 
         # The peak in each band will have the same SpanSet
-        mask = afwImage.Mask(np.array(np.sum(model, axis=0)>0, dtype=np.int32), xy0=xy0)
+        mask = afwImage.Mask(np.array(np.sum(model, axis=0) > 0, dtype=np.int32), xy0=xy0)
         ss = afwGeom.SpanSet.fromMask(mask)
 
         if len(ss) == 0:
