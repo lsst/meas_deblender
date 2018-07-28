@@ -657,7 +657,7 @@ class MultibandDeblendTask(pipeBase.Task):
             Any fields beyond the PeakTable minimal schema will be transferred
             to the main source Schema.  If None, no fields will be transferred
             from the Peaks.
-        bands: list of str
+        filters: list of str
             Names of the filters used for the eposures. This is needed to store the SED as a field
         **kwargs
             Passed to Task.__init__.
@@ -710,26 +710,26 @@ class MultibandDeblendTask(pipeBase.Task):
             or ~np.isnan(self.config.l1Thresh)
         ):
             constraintDict = {
-                "+": scarlet.constraints.PositivityConstraint,
-                "1": scarlet.constraints.SimpleConstraint,
-                "M": scarlet.constraints.DirectMonotonicityConstraint(use_nearest=False),
-                "S": scarlet.constraints.DirectSymmetryConstraint(sigma=self.config.symmetryThresh)
+                "+": scarlet.constraint.PositivityConstraint,
+                "1": scarlet.constraint.SimpleConstraint,
+                "M": scarlet.constraint.DirectMonotonicityConstraint(use_nearest=False),
+                "S": scarlet.constraint.DirectSymmetryConstraint(sigma=self.config.symmetryThresh)
             }
             for c in _constraints:
                 if constraints is None:
-                    constraints = constraintDict[c]
+                    constraints = [constraintDict[c]]
                 else:
-                    constraints = constraints & constraintDict[c]
+                    constraints += [constraintDict[c]]
             if constraints is None:
-                constraints = scarlet.constraints.MinimalConstraint()
+                constraints = scarlet.constraint.MinimalConstraint()
             if ~np.isnan(self.config.l0Thresh):
-                constraints = constraints & scarlet.constraints.L0Constraint(self.config.l0Thresh)
+                constraints += [scarlet.constraint.L0Constraint(self.config.l0Thresh)]
             if ~np.isnan(self.config.l1Thresh):
-                constraints = constraints & scarlet.constraints.L1Constraint(self.config.l1Thresh)
+                constraints += [scarlet.constraint.L1Constraint(self.config.l1Thresh)]
             if ~np.isnan(self.config.tvxThresh):
-                constraints = constraints & scarlet.constraints.TVxConstraint(self.config.tvxThresh)
+                constraints += [scarlet.constraint.TVxConstraint(self.config.tvxThresh)]
             if ~np.isnan(self.config.tvyThresh):
-                constraints = constraints & scarlet.constraints.TVyConstraint(self.config.tvyThresh)
+                constraints += [scarlet.constraint.TVyConstraint(self.config.tvyThresh)]
 
         multiband_plugin = plugins.DeblenderPlugin(
             plugins.buildMultibandTemplates,
@@ -812,17 +812,15 @@ class MultibandDeblendTask(pipeBase.Task):
                     self.tooManyPeaksKey, self.tooBigKey)))
 
     @pipeBase.timeMethod
-    def run(self, exposures, sources):
+    def run(self, mExposure, sources):
         """Get the psf from each exposure and then run deblend().
 
         Parameters
         ----------
-        exposures: dict
-            Keys of the dict are the names of the filters and values are
-            `lsst.afw.image.exposure.exposure.ExposureF`'s.
+        mExposure: `MultibandExposure`
             The exposures should be co-added images of the same
             shape and region of the sky.
-        sources: dict
+        sources: `SourceCatalog`
             Keys are the names of the filters and the values are
             `lsst.afw.table.source.source.SourceCatalog`'s, which
             should be a merged catalog of the sources in each band.
@@ -842,8 +840,8 @@ class MultibandDeblendTask(pipeBase.Task):
             created by the multiband templates.
             If `self.config.saveTemplates` is `False`, then this item will be None
         """
-        psfs = {B:exp.getPsf() for B, exp in exposures.items()}
-        return self.deblend(exposures, sources, psfs)
+        psfs = {f:mExposure[f].getPsf() for f in mExposure.filters}
+        return self.deblend(mExposure, sources, psfs)
 
     def _getPsfFwhm(self, psf, bbox):
         return psf.computeShape().getDeterminantRadius() * 2.35
@@ -869,26 +867,24 @@ class MultibandDeblendTask(pipeBase.Task):
         return src
 
     @pipeBase.timeMethod
-    def deblend(self, exposures, sources, psfs, bands=None):
+    def deblend(self, mExposure, sources, psfs):
         """Deblend a data cube of multiband images
 
         Parameters
         ----------
-        exposures: dict
-            Keys of the dict are the names of the filters and values are
-            `lsst.afw.image.exposure.exposure.ExposureF`'s.
+        mExposure: `MultibandExposure`
             The exposures should be co-added images of the same
             shape and region of the sky.
         sources: dict
-            Keys are the names of the filters and the values are
+            Keys are the names of the filters
+            (should be the same as `mExposure.filters`) and the values are
             `lsst.afw.table.source.source.SourceCatalog`'s, which
-            should be a merged catalog of the sources in each band ('deepCoadd_mergeDet').
+            should be a merged catalog of the sources in each band
+            ('deepCoadd_mergeDet').
         psfs: dict
-        bands: list, default=None
-            Names of the bands in the deblender.
-            If `bands` is `None`, the keys of `exposures` are used.
-            Either `bands` should be specified or `exposures` should be an
-            `OrderedDict` to set the preferential order of the filters.
+            Keys are the names of the filters
+            (should be the same as `mExposure.filters`)
+            and the values are the PSFs in each band.
 
         Returns
         -------
@@ -908,14 +904,21 @@ class MultibandDeblendTask(pipeBase.Task):
         from lsst.meas.deblender.baseline import newDeblend
         import deblender
 
-        if bands is None:
-            bands = list(exposures.keys())
-        maskedImages = {band:exp.getMaskedImage() for band, exp in exposures.items()}
-        self.log.info("Deblending {0} sources in {1} exposures".format(len(sources), len(bands)))
+        msg = "{0} keys must be the same as mExposure.filters ({1}), got {2}"
+        if sources.keys() != mExposure.filters:
+            raise ValueError(msg.format("Source", mExposure.filters, sources.keys()))
+        if psfs.keys() != mExposure.filters:
+            raise ValueError(msg.format("PSF", mExposure.filters, psfs.keys()))
+
+        filters = mExposure.filters
+        mMaskedImage = afwImage.MultibandMaskedImage(filters=mExposure.filters, image=mExposure.image,
+                                                     mask=mExposure.mask, variance=mExposure.variance)
+        self.log.info("Deblending {0} sources in {1} exposures".format(len(sources), len(mExposure)))
 
         # find the median stdev in each image
         sigmas = {}
-        for f, exposure in exposures.items():
+        for f in filters:
+            exposure = mExposure[f]
             mi = exposure.getMaskedImage()
             statsCtrl = afwMath.StatisticsControl()
             statsCtrl.setAndMask(mi.getMask().getPlaneBitMask(self.config.maskPlanes))
@@ -926,17 +929,16 @@ class MultibandDeblendTask(pipeBase.Task):
 
         # Create the output catalogs
         if self.config.conserveFlux:
-            flux_catalogs = {band:afwTable.SourceCatalog(sources.clone()) for band in bands}
+            flux_catalogs = {f:afwTable.SourceCatalog(sources.clone()) for f in filters}
         else:
             flux_catalogs = None
         if self.config.saveTemplates:
-            template_catalogs = {band:afwTable.SourceCatalog(sources.clone()) for band in bands}
+            template_catalogs = {f:afwTable.SourceCatalog(sources.clone()) for f in filters}
         else:
             template_catalogs = None
 
         n0 = len(sources)
         nparents = 0
-        maskedImages = {band: exp.getMaskedImage() for band, exp in exposures.items()}
         for pk, src in enumerate(sources):
             foot = src.getFootprint()
             logger.info("id: {0}".format(src["id"]))
@@ -948,21 +950,21 @@ class MultibandDeblendTask(pipeBase.Task):
 
             # Block of Skipping conditions
             if len(peaks) < 2 and not self.config.processSingles:
-                for band in bands:
+                for f in filters:
                     if self.config.saveTemplates:
-                        tsrc = template_catalogs[band].addNew()
+                        tsrc = template_catalogs[f].addNew()
                         tsrc.assign(src)
                         tsrc.set(self.runtimeKey, 0)
-                        templateParents[band] = tsrc
+                        templateParents[f] = tsrc
                     if self.config.conserveFlux:
-                        tsrc = flux_catalogs[band].addNew()
+                        tsrc = flux_catalogs[f].addNew()
                         tsrc.assign(src)
                         tsrc.set(self.runtimeKey, 0)
-                        fluxParents[band] = tsrc
+                        fluxParents[f] = tsrc
                 continue
             if self.isLargeFootprint(foot):
                 src.set(self.tooBigKey, True)
-                self.skipParent(src, [mi.getMask() for mi in maskedImages])
+                self.skipParent(src, [mi.getMask() for mi in mMaskedImage])
                 self.log.trace('Parent %i: skipping large footprint', int(src.getId()))
                 continue
             if self.isMasked(foot, exposure.getMaskedImage().getMask()):
@@ -977,27 +979,25 @@ class MultibandDeblendTask(pipeBase.Task):
 
             nparents += 1
             bbox = foot.getBBox()
-            psf_fwhms = {band:self._getPsfFwhm(psf, bbox) for band, psf in psfs.items()}
+            psf_fwhms = {f:self._getPsfFwhm(psf, bbox) for f, psf in psfs.items()}
             self.log.trace('Parent %i: deblending %i peaks', int(src.getId()), len(peaks))
-            self.preSingleDeblendHook(exposures, sources, pk, foot, psfs, psf_fwhms, sigmas)
+            self.preSingleDeblendHook(mExposure.singles, sources, pk, foot, psfs, psf_fwhms, sigmas)
             npre = len(sources)
             # Run the deblender
             try:
                 t0=time.time()
                 PARENT = afwImage.PARENT
                 # Build the parameter lists with the same ordering
-                images = [maskedImages[band].Factory(maskedImages[band], bbox, PARENT)
-                              for band in bands]
-                psf_list = [psfs[band] for band in bands]
-                fwhm_list = [psf_fwhms[band] for band in bands]
-                avgNoise = [sigmas[band] for band in bands]
+                images = mMaskedImage[:, bbox]
+                psf_list = [psfs[f] for f in filters]
+                fwhm_list = [psf_fwhms[f] for f in filters]
+                avgNoise = [sigmas[f] for f in filters]
 
                 result = newDeblend(debPlugins=self.plugins,
                                     footprint=foot,
-                                    maskedImages=images,
+                                    mMaskedImage=images,
                                     psfs=psf_list,
                                     psfFwhms=fwhm_list,
-                                    filters=bands,
                                     avgNoise=avgNoise,
                                     maxNumberOfPeaks=self.config.maxNumberOfPeaks
                 )
@@ -1022,32 +1022,32 @@ class MultibandDeblendTask(pipeBase.Task):
             templateParents = {}
             fluxParents = {}
             parentId = src.getId()
-            for band in bands:
+            for f in filters:
                 if self.config.saveTemplates:
-                    tsrc = template_catalogs[band].addNew()
+                    tsrc = template_catalogs[f].addNew()
                     tsrc.assign(src)
                     tsrc.set("id", parentId)
                     tsrc.set(self.runtimeKey, runtime)
                     _fp = afwDet.Footprint()
                     _fp.setPeakSchema(src.getFootprint().getPeaks().getSchema())
                     tsrc.setFootprint(_fp)
-                    templateParents[band] = tsrc
+                    templateParents[f] = tsrc
                 if self.config.conserveFlux:
-                    tsrc = flux_catalogs[band].addNew()
+                    tsrc = flux_catalogs[f].addNew()
                     tsrc.assign(src)
                     tsrc.set(self.runtimeKey, runtime)
                     tsrc.set("id", parentId)
                     _fp = afwDet.Footprint()
                     _fp.setPeakSchema(src.getFootprint().getPeaks().getSchema())
                     tsrc.setFootprint(_fp)
-                    fluxParents[band] = tsrc
+                    fluxParents[f] = tsrc
 
             # Add each source to the catalogs in each band
-            templateSpans = {band:afwGeom.SpanSet() for band in bands}
-            fluxSpans = {band:afwGeom.SpanSet() for band in bands}
+            templateSpans = {f:afwGeom.SpanSet() for f in filters}
+            fluxSpans = {f:afwGeom.SpanSet() for f in filters}
             nchild = 0
             for j, multiPeak in enumerate(result.peaks):
-                heavy = {band:peak.getFluxPortion() for band, peak in multiPeak.deblendedPeaks.items()}
+                heavy = {f:peak.getFluxPortion() for f, peak in multiPeak.deblendedPeaks.items()}
                 no_flux = all([v is None for v in heavy.values()])
                 skip_peak = all([peak.skip for peak in multiPeak.deblendedPeaks.values()])
                 if no_flux or skip_peak:
@@ -1066,18 +1066,18 @@ class MultibandDeblendTask(pipeBase.Task):
                     peakList.clear()
                     pfoot.addPeak(multiPeak.x, multiPeak.y, 0)
                     zeroMimg = afwImage.MaskedImageF(pfoot.getBBox())
-                    for band in bands:
-                        heavy[band] = afwDet.makeHeavyFootprint(pfoot, zeroMimg)
+                    for f in filters:
+                        heavy[f] = afwDet.makeHeavyFootprint(pfoot, zeroMimg)
                 else:
                     src.set(self.deblendSkippedKey, False)
 
                 # Add the peak to the source catalog in each band
-                for band in bands:
-                    if len(heavy[band].getPeaks()) != 1:
+                for f in filters:
+                    if len(heavy[f].getPeaks()) != 1:
                         raise ValueError("Heavy footprint has multiple peaks, expected 1")
-                    peak = multiPeak.deblendedPeaks[band]
+                    peak = multiPeak.deblendedPeaks[f]
                     if self.config.saveTemplates:
-                        cat = template_catalogs[band]
+                        cat = template_catalogs[f]
                         tfoot = peak.templateFootprint
                         timg  = afwImage.MaskedImageF(peak.templateImage)
                         tHeavy = afwDet.makeHeavyFootprint(tfoot, timg)
@@ -1087,20 +1087,20 @@ class MultibandDeblendTask(pipeBase.Task):
                             child.set(self.runtimeKey, runtime)
                         else:
                             _peak = tHeavy.getPeaks()[0]
-                            templateParents[band].getFootprint().addPeak(_peak.getFx(), _peak.getFy(),
+                            templateParents[f].getFootprint().addPeak(_peak.getFx(), _peak.getFy(),
                                                                          _peak.getPeakValue())
-                            templateSpans[band] = templateSpans[band].union(tHeavy.getSpans())
+                            templateSpans[f] = templateSpans[f].union(tHeavy.getSpans())
                     if self.config.conserveFlux:
-                        cat = flux_catalogs[band]
-                        child = self._addChild(parentId, peak, cat, heavy[band])
+                        cat = flux_catalogs[f]
+                        child = self._addChild(parentId, peak, cat, heavy[f])
                         if parentId==0:
                             child.setId(src.getId())
                             child.set(self.runtimeKey, runtime)
                         else:
-                            _peak = heavy[band].getPeaks()[0]
-                            fluxParents[band].getFootprint().addPeak(_peak.getFx(), _peak.getFy(),
+                            _peak = heavy[f].getPeaks()[0]
+                            fluxParents[f].getFootprint().addPeak(_peak.getFx(), _peak.getFy(),
                                                                      _peak.getPeakValue())
-                            fluxSpans[band] = fluxSpans[band].union(heavy[band].getSpans())
+                            fluxSpans[f] = fluxSpans[f].union(heavy[f].getSpans())
                     nchild += 1
 
             # Child footprints may extend beyond the full extent of their parent's which
@@ -1108,13 +1108,13 @@ class MultibandDeblendTask(pipeBase.Task):
             # to their original values.  The following updates the parent footprint
             # in-place to ensure it contains the full union of itself and all of its
             # children's footprints.
-            for band in bands:
+            for f in filters:
                 if self.config.saveTemplates:
-                    templateParents[band].set(self.nChildKey, nchild)
-                    templateParents[band].getFootprint().setSpans(templateSpans[band])
+                    templateParents[f].set(self.nChildKey, nchild)
+                    templateParents[f].getFootprint().setSpans(templateSpans[f])
                 if self.config.conserveFlux:
-                    fluxParents[band].set(self.nChildKey, nchild)
-                    fluxParents[band].getFootprint().setSpans(fluxSpans[band])
+                    fluxParents[f].set(self.nChildKey, nchild)
+                    fluxParents[f].getFootprint().setSpans(fluxSpans[f])
 
             self.postSingleDeblendHook(exposure, flux_catalogs, template_catalogs,
                                        pk, npre, foot, psfs, psf_fwhms, sigmas, result)

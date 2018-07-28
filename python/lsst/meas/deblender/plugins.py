@@ -203,17 +203,17 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     xmin = bbox.getMinX()
     ymin = bbox.getMinY()
     peaks = [[pk.y-ymin, pk.x-xmin] for pk in debResult.peaks]
+    xy0 = bbox.getMin()
 
     # Create the data array from the masked images
-    maskedImages = [mimg.Factory(mimg, debResult.footprint.getBBox(), PARENT)
-                    for mimg in debResult.maskedImages]
-    data = np.array([mimg.image.array for mimg in maskedImages])
+    mMaskedImage = debResult.mMaskedImage[:, debResult.footprint.getBBox()]
+    data = mMaskedImage.image.array
 
     # Use the inverse variance as the weights
     if useWeights:
-        weights = 1/np.array([mimg.variance.array for mimg in maskedImages])
+        weights = 1/mMaskedImage.variance.array
     else:
-        weights = weights = np.ones_like(data)
+        weights = np.ones_like(data)
 
     # Use the mask plane to mask bad pixels and
     # the footprint to mask out pixels outside the footprint
@@ -222,11 +222,9 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     fpMask = afwImage.Mask(bbox)
     debResult.footprint.spans.setMask(fpMask, 1)
     fpMask = ~fpMask.getArray().astype(bool)
-    mask = np.zeros(weights.shape, dtype=bool)
-    for fidx, mimg in enumerate(maskedImages):
-        badPixels = mimg.mask.getPlaneBitMask(badMask)
-        mask[fidx] = (mimg.getMask().array & badPixels) | fpMask
-    weights[mask] = 0
+    badPixels = mMaskedImage.mask.getPlaneBitMask(badMask)
+    mask = (mMaskedImage.mask.array & badPixels) | fpMask[None, :]
+    weights[mask > 0] = 0
 
     # Extract the PSF from each band for PSF convolution
     if usePsf:
@@ -240,12 +238,8 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     bg_rms = np.array([debResult.deblendedParents[f].avgNoise for f in debResult.filters])*bgScale
     if sources is None:
         # If only a single constraint was given, use it for all of the sources
-        if (constraints is scarlet.constraints.Constraint or
-            constraints is scarlet.constraints.ConstraintList
-        ):
-            constraints = [constraints.copy() for peak in peaks]
-        elif constraints is None:
-            constraints = [None]*len(peaks)
+        if constraints is None or isinstance(constraints[0], scarlet.constraints.Constraint):
+            constraints = [constraints] * len(peaks)
         sources = [
             scarlet.source.ExtendedSource(center=peak,
                                           img=data,
@@ -263,8 +257,13 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     # (peaks in the noise too low to deblend as a source)
     # the deblender currently fails.
     try:
-        blend = scarlet.blend.Blend(sources=sources, img=data, weights=weights, bg_rms=bg_rms, config=config)
-        blend.fit(steps=maxIter, e_rel=relativeError)
+        blend = scarlet.blend.Blend(components=sources)
+        blend.set_data(img=data, weights=weights, bg_rms=bg_rms, config=config)
+        blend.fit(maxIter, e_rel=relativeError)
+    except scarlet.source.SourceInitError as e:
+        log.warn(e.args[0])
+        debResult.failed = True
+        return False
     except np.linalg.LinAlgError as e:
         log.warn("Deblend failed catastrophically, most likely due to no signal in the footprint")
         debResult.failed = True
@@ -273,7 +272,8 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
 
     modified = False
     # Create the Templates for each peak in each filter
-    for pk, src in enumerate(blend.sources):
+    for pk, source in enumerate(blend.sources):
+        src = source.components[0]
         _cx = src.Nx >> 1
         _cy = src.Ny >> 1
 
@@ -282,6 +282,8 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         modified = True
         cx = src.center[1]+xmin
         cy = src.center[0]+ymin
+        icx = int(np.round(cx))
+        icy = int(np.round(cy))
         imbb = debResult.deblendedParents[debResult.filters[0]].img.getBBox()
 
         # Footprint must be inside the image
@@ -296,12 +298,10 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
             continue
 
         # Temporary for initial testing: combine multiple components
-        model = blend.get_model(m=pk, flat=False)
-        model = model.astype(np.float32)
+        model = blend.get_model(k=pk).astype(np.float32)
 
         # The peak in each band will have the same SpanSet
-        mask = afwImage.Mask(np.array(np.sum(model, axis=0)>0, dtype=np.int32),
-                             xy0=debResult.footprint.getBBox().getBegin())
+        mask = afwImage.Mask(np.array(np.sum(model, axis=0) > 0, dtype=np.int32), xy0=xy0)
         ss = afwGeom.SpanSet.fromMask(mask)
 
         if len(ss) == 0:
@@ -315,10 +315,10 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
             tfoot = afwDet.Footprint(ss, peakSchema=peakSchema)
             # Add the peak with the intensity of the centered model,
             # which might be slightly larger than the shifted model
-            peakFlux = np.sum(src.sed[:,fidx]*src.morph[:,_cy, _cx])
+            peakFlux = np.sum(src.sed[fidx]*src.morph[_cy, _cx])
             tfoot.addPeak(cx, cy, peakFlux)
-            timg = afwImage.ImageF(model[fidx], xy0=debResult.footprint.getBBox().getBegin())
-            timg = timg.Factory(timg, tfoot.getBBox(), PARENT)
+            timg = afwImage.ImageF(model[fidx], xy0=xy0)
+            timg = timg[tfoot.getBBox()]
             pkResult.setOrigTemplate(timg, tfoot)
             pkResult.setTemplate(timg, tfoot)
             pkResult.setFluxPortion(afwImage.MaskedImageF(timg))
@@ -326,8 +326,8 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
             pkResult.multiColorPeak.y = cy
             pkResult.peak.setFx(cx)
             pkResult.peak.setFy(cy)
-            pkResult.peak.setIx(int(np.round(cx)))
-            pkResult.peak.setIy(int(np.round(cy)))
+            pkResult.peak.setIx(icx)
+            pkResult.peak.setIy(icy)
     return modified
 
 def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.5, tinyFootprintSize=2):
