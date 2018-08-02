@@ -468,7 +468,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     ylo = int(np.floor(cy - R1))
     xhi = int(np.ceil(cx + R1))
     yhi = int(np.ceil(cy + R1))
-    stampbb = afwGeom.Box2I(afwGeom.Point2I(xlo, ylo), afwGeom.Point2I(xhi, yhi))
+    stampbb = afwGeom.Box2I(afwGeom.Point2I(xlo, ylo), afwGeom.Point2I(xhi, yhi), invert=False)
     stampbb.clip(fbb)
     xlo, xhi = stampbb.getMinX(), stampbb.getMaxX()
     ylo, yhi = stampbb.getMinY(), stampbb.getMaxY()
@@ -1061,7 +1061,8 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
     psfim.setXY0(lx - xc, ly - yc)
     pbb = psfim.getBBox()
     # clip PSF to S, if necessary
-    Sbox = afwGeom.Box2I(afwGeom.Point2I(-S, -S), afwGeom.Extent2I(2*S+1, 2*S+1))
+    Sbox = afwGeom.Box2I(afwGeom.Point2I(-S, -S), afwGeom.Extent2I(2*S+1, 2*S+1),
+                         invert=False)
     if not Sbox.contains(pbb):
         # clip PSF image
         psfim = psfim.Factory(psfim, Sbox, afwImage.PARENT, True)

@@ -75,7 +75,7 @@ class StrayFluxTestCase(lsst.utils.tests.TestCase):
         H, W = 100, 100
 
         fpbb = afwGeom.Box2I(afwGeom.Point2I(0, 0),
-                             afwGeom.Point2I(W-1, H-1))
+                             afwGeom.Point2I(W-1, H-1), invert=False)
 
         afwimg = afwImage.MaskedImageF(fpbb)
         imgbb = afwimg.getBBox()
@@ -265,7 +265,7 @@ class StrayFluxTestCase(lsst.utils.tests.TestCase):
         H, W = 1, 100
 
         fpbb = afwGeom.Box2I(afwGeom.Point2I(0, 0),
-                             afwGeom.Point2I(W-1, H-1))
+                             afwGeom.Point2I(W-1, H-1), invert=False)
         afwimg = afwImage.MaskedImageF(fpbb)
         img = afwimg.getImage().getArray()
 

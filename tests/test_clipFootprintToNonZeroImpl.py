@@ -42,7 +42,7 @@ class ClipFootprintTestCase(lsst.utils.tests.TestCase):
     '''
     def testClip(self):
         im = afwImage.ImageI(afwGeom.Box2I(afwGeom.Point2I(-2, -2),
-                                           afwGeom.Extent2I(20, 20)))
+                                           afwGeom.Extent2I(20, 20), invert=False))
 
         span1 = afwGeom.SpanSet.fromShape(5, afwGeom.Stencil.BOX, (6, 6))
         span1.setImage(im, 20)

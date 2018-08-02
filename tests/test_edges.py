@@ -82,7 +82,7 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
         # Create fake image...
         H, W = 100, 100
         fpbb = afwGeom.Box2I(afwGeom.Point2I(0, 0),
-                             afwGeom.Point2I(W-1, H-1))
+                             afwGeom.Point2I(W-1, H-1), invert=False)
         afwimg = afwImage.MaskedImageF(fpbb)
         imgbb = afwimg.getBBox()
         img = afwimg.getImage().getArray()
@@ -129,7 +129,7 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
         lo.shift(afwGeom.Extent2I(margin, margin))
         hi = imgbb.getMax()
         hi.shift(afwGeom.Extent2I(-margin, -margin))
-        goodbbox = afwGeom.Box2I(lo, hi)
+        goodbbox = afwGeom.Box2I(lo, hi, invert=False)
         print('Good bbox for setting EDGE pixels:', goodbbox)
         print('image bbox:', imgbb)
         edgebit = afwimg.getMask().getPlaneBitMask("EDGE")
