@@ -23,6 +23,8 @@
 import numpy as np
 from builtins import range
 
+import scarlet
+
 import lsst.pex.exceptions
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
@@ -195,8 +197,6 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         If any templates have been created then ``modified`` is ``True``,
         otherwise it is ``False`` (meaning all of the peaks were skipped).
     """
-    import scarlet
-
     # Extract coordinates from each MultiColorPeak
     bbox = debResult.footprint.getBBox()
     peakSchema = debResult.footprint.peaks.getSchema()
