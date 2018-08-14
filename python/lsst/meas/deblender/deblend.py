@@ -502,7 +502,7 @@ class MultibandDeblendConfig(pexConfig.Config):
                                      "This must be between 0 and 1."))
 
     # Constraints
-    constraints = pexConfig.Field(dtype=str, default="1,+,S,M",
+    constraints = pexConfig.Field(dtype=str, default="1,S,M",
                                   doc=("List of constraints to use for each object"
                                        "(order does not matter)"
                                        "Current options are all used by default:\n"
@@ -707,13 +707,12 @@ class MultibandDeblendTask(pipeBase.Task):
         # all of the sources
         constraints = None
         _constraints = self.config.constraints.split(",")
-        if (sorted(_constraints) != ['+', '1', 'M', 'S']
+        if (sorted(_constraints) != ['1', 'M', 'S']
             or ~np.isnan(self.config.l0Thresh)
             or ~np.isnan(self.config.l1Thresh)
         ):
             constraintDict = {
-                "+": scarlet.constraint.PositivityConstraint,
-                "1": scarlet.constraint.SimpleConstraint,
+                "1": scarlet.constraint.SimpleConstraint(),
                 "M": scarlet.constraint.DirectMonotonicityConstraint(use_nearest=False),
                 "S": scarlet.constraint.DirectSymmetryConstraint(sigma=self.config.symmetryThresh)
             }
@@ -927,7 +926,7 @@ class MultibandDeblendTask(pipeBase.Task):
             fluxCatalogs = {}
             for f in filters:
                 _catalog = afwTable.SourceCatalog(sources.table.clone())
-                _catalog.extend(sources)
+                _catalog.extend(sources, deep=True)
                 fluxCatalogs[f] = _catalog
         else:
             fluxCatalogs = None
@@ -935,7 +934,7 @@ class MultibandDeblendTask(pipeBase.Task):
             templateCatalogs = {}
             for f in filters:
                 _catalog = afwTable.SourceCatalog(sources.table.clone())
-                _catalog.extend(sources)
+                _catalog.extend(sources, deep=True)
                 templateCatalogs[f] = _catalog
         else:
             templateCatalogs = None

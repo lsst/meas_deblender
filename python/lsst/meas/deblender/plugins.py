@@ -238,7 +238,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
     bg_rms = np.array([debResult.deblendedParents[f].avgNoise for f in debResult.filters])*bgScale
     if sources is None:
         # If only a single constraint was given, use it for all of the sources
-        if constraints is None or isinstance(constraints[0], scarlet.constraints.Constraint):
+        if constraints is None or isinstance(constraints[0], scarlet.constraint.Constraint):
             constraints = [constraints] * len(peaks)
         sources = [
             scarlet.source.ExtendedSource(center=peak,
