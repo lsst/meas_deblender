@@ -21,7 +21,6 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy as np
-from builtins import range
 
 import scarlet
 

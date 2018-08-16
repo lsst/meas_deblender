@@ -1,6 +1,3 @@
-from builtins import zip
-from builtins import range
-from builtins import object
 import math
 import os
 import pylab as plt

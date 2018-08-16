@@ -1,5 +1,3 @@
-from builtins import zip
-from builtins import range
 #!/usr/bin/env python
 try:
     import matplotlib

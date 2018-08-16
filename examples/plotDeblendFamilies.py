@@ -1,4 +1,3 @@
-from builtins import range
 import matplotlib
 matplotlib.use('Agg')
 import pylab as plt

@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from builtins import zip
-from builtins import range
 import sys
 import os
 import re

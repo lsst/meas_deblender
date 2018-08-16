@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from builtins import zip
 import os
 import sys
 
