@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 try:
     import matplotlib
-    matplotlib.use('Agg')
+    matplotlib.use('Agg')  # noqa E402
     import pylab as plt
 except ImportError:
     plt = None
@@ -29,7 +29,6 @@ def main000():
     mim = afwImg.MaskedImageF(S, S)
     x0, y0 = S/2, S/2
     im = mim.getImage().getArray()
-    peakTable = afwDet.PeakTable.make(afwDet.PeakTable.makeMinimalSchema)
     peak = makePeak(x0, y0)
 
     im[:, :] = 5.
@@ -108,8 +107,9 @@ def cardinal():
             plt.imshow(mim.getImage().getArray(), **plota)
             plt.savefig('im%im.png' % i)
 
+
 if __name__ == '__main__':
     cardinal()
-    #main000()
-    #randoms(S=100, N=10)
+    # main000()
+    # randoms(S=100, N=10)
     randoms(S=100, N=1)

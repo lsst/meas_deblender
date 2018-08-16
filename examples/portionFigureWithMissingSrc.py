@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-import sys
-import os
-import re
-
 import numpy
 import matplotlib.figure as figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigCanvas
@@ -15,8 +11,6 @@ import lsst.afw.detection as afwDet
 from lsst.log import Log
 import lsst.meas.algorithms as measAlg
 import lsst.meas.deblender.baseline as measDeb
-
-from lsst.meas.deblender import BaselineUtilsF as butils
 
 
 def randomCoords(nSrc, grid=False, minSep=0.15, maxSep=0.25):
@@ -121,7 +115,7 @@ def makePortionFigure(deblend, origMimg, origMimgB, pedestal=0.0):
         portions.append(portionedImg)
 
     fig = figure.Figure(figsize=(8, 10))
-    canvas = FigCanvas(fig)
+    FigCanvas(fig)
 
     g = int(numpy.ceil(numpy.sqrt(len(deblend.peaks))))
     gx, gy = g, g+1
@@ -171,19 +165,14 @@ def main():
     xy = randomCoords(nSrc)
     fluxs = [flux]*(nSrc-1) + [0.7*flux]
     mimg = makeFakeImage(nx, ny, xy, fluxs, [3.0*fwhm0]*nSrc)
-    img = mimg.getImage().getArray()
-    bbox = mimg.getBBox(afwImage.PARENT)
     mimg.writeFits("foo.fits")
 
     nSrcB = nSrc - 4
     mimgB = makeFakeImage(nx, ny, xy[0:nSrcB], fluxs[0:nSrcB], [3.0*fwhm0]*nSrcB)
-    imgB = mimgB.getImage().getArray()
-    bboxB = mimgB.getBBox(afwImage.PARENT)
     mimgB.writeFits("fooB.fits")
 
     # Run the detection
     fp = detect(mimg)
-    fpB = detect(mimgB)
 
     # deblend mimgB (missing a peak) using the fp with the extra peak
     deb = measDeb.deblend(fp, mimgB, psf, fwhm0, verbose=True, rampFluxAtEdge=True, log=log)

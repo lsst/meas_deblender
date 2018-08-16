@@ -46,6 +46,7 @@ else:
 # Lower the level to Log.DEBUG to see debug messages
 Log.getLogger('meas.deblender.symmetrizeFootprint').setLevel(Log.INFO)
 
+
 def imExt(img):
     bbox = img.getBBox()
     return [bbox.getMinX(), bbox.getMaxX(),
@@ -163,7 +164,7 @@ class StrayFluxTestCase(lsst.utils.tests.TestCase):
 
             plt.clf()
             plt.suptitle('strayFlux.py: test1 results')
-            #R,C = 3,5
+            # R,C = 3,5
             R, C = 3, 4
             plt.subplot(R, C, (2*C) + 1)
             plt.title('Image')
@@ -370,8 +371,6 @@ class StrayFluxTestCase(lsst.utils.tests.TestCase):
         self.assertLess(np.max(np.abs(s1 - strays[0])/np.maximum(1e-3, s1)), 1e-6)
         self.assertLess(np.max(np.abs(s2 - strays[1])/np.maximum(1e-3, s2)), 1e-6)
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
@@ -379,6 +378,7 @@ class TestMemory(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

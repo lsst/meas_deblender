@@ -1,5 +1,3 @@
-
-
 #!/usr/bin/env python
 #
 # LSST Data Management System
@@ -49,7 +47,7 @@ class ClipFootprintTestCase(lsst.utils.tests.TestCase):
         im.getArray()[6+2, 6+2] = 0
 
         # Set some negative pixels to ensure they are not clipped
-        im.getArray()[12,:] *= -1
+        im.getArray()[12, :] *= -1
 
         span2 = afwGeom.SpanSet.fromShape(6, afwGeom.Stencil.BOX, (6, 6))
 

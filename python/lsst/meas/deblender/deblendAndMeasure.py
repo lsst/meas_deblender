@@ -22,11 +22,8 @@
 #
 
 import lsst.pex.config as pexConfig
-import lsst.pex.exceptions as pexExceptions
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
-import lsst.afw.geom as afwGeom
-import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.algorithms import SourceMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
@@ -70,9 +67,9 @@ class DeblendAndMeasureTask(pipeBase.CmdLineTask):
         print('Calexp:', calexp)
         print('srcs:', srcs)
 
-        ## FIXME -- this whole mapping business is very fragile -- it
-        ## seems to fail, eg, if you don't set "-c
-        ## doMeasurement=False" when creating the input 'srcs' list.
+        # FIXME -- this whole mapping business is very fragile -- it
+        # seems to fail, eg, if you don't set "-c
+        # doMeasurement=False" when creating the input 'srcs' list.
 
         mapper = afwTable.SchemaMapper(srcs.getSchema())
         # map all the existing fields
@@ -110,6 +107,7 @@ class DeblendAndMeasureTask(pipeBase.CmdLineTask):
                 srcs.writeFits(self.config.sourceOutputFile, flags=sourceWriteFlags)
             else:
                 dataRef.put(srcs, 'src', flags=sourceWriteFlags)
+
 
 if __name__ == '__main__':
     DeblendAndMeasureTask.parseAndRun()

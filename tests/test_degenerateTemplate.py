@@ -30,15 +30,19 @@ import lsst.afw.image as afwImage
 from lsst.meas.deblender.baseline import deblend
 import lsst.meas.algorithms as measAlg
 
+
 def imExt(img):
     bbox = img.getBBox()
     return [bbox.getMinX(), bbox.getMaxX(), bbox.getMinY(), bbox.getMaxY()]
 
+
 def doubleGaussianPsf(W, H, fwhm1, fwhm2, a2):
     return measAlg.DoubleGaussianPsf(W, H, fwhm1, fwhm2, a2)
 
+
 def gaussianPsf(W, H, fwhm):
     return measAlg.DoubleGaussianPsf(W, H, fwhm)
+
 
 class DegenerateTemplateTestCase(lsst.utils.tests.TestCase):
 
@@ -102,8 +106,6 @@ class DegenerateTemplateTestCase(lsst.utils.tests.TestCase):
         self.assertTrue(deb.deblendedParents[0].peaks[4].degenerate)
         self.assertTrue(deb.deblendedParents[0].peaks[5].degenerate)
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
@@ -111,6 +113,7 @@ class TestMemory(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

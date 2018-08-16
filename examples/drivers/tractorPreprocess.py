@@ -4,23 +4,22 @@ import os
 import sys
 
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # noqa E402
 
 from lsst.log import Log
 import lsst.pipette.options as pipOptions
 import lsst.pipette.readwrite as pipReadWrite
-import lsst.pipette.processCcd as pipProcCcd
 import lsst.pipette.isr as pipIsr
 import lsst.pipette.calibrate as pipCalib
 import lsst.pipette.phot as pipPhot
 
-from tractorMapper import *
+from tractorMapper import TractorMapper
 
 # Required for "dynamic" measurements
-import lsst.meas.algorithms
-#import lsst.meas.algorithms.psfSelectionRhl
-#import lsst.meas.algorithms.psfAlgorithmRhl
-#import lsst.meas.extensions.shapeHSM
+import lsst.meas.algorithms  # noqa F401
+# import lsst.meas.algorithms.psfSelectionRhl
+# import lsst.meas.algorithms.psfAlgorithmRhl
+# import lsst.meas.extensions.shapeHSM
 
 
 class NullISR(pipIsr.Isr):
@@ -36,7 +35,7 @@ class NullISR(pipIsr.Isr):
 class MyPhotometry(pipPhot.Photometry):
 
     def run(self, exposure, psf, apcorr=None, wcs=None):
-        #print 'my config:', self.config
+        # print('my config:', self.config)
         print("policy = config['detect'] = ", self.config['detect'])
         print('self._threshold:', self._threshold)
         print('policy["thresholdValue"] = ', (self.config['detect'])['thresholdValue'])
@@ -72,17 +71,18 @@ class MyCalibrate(pipCalib.Calibrate):
             sources = muMeasurement.sourceMeasurement(exposure, psf, footprints, policy)
             print('sources:', sources)
             for s in sources:
-                print('  ', s, s.getXAstrom(), s.getYAstrom(), s.getPsfFlux(), s.getIxx(), s.getIyy(), s.getIxy())
+                print('  ', s, s.getXAstrom(), s.getYAstrom(), s.getPsfFlux(),
+                      s.getIxx(), s.getIyy(), s.getIxy())
             # sourceMeasurement():
             import lsst.meas.algorithms as measAlg
             import lsst.afw.detection as afwDetection
             print('Simulating sourceMeasurement()...')
             exposure.setPsf(psf)
             measureSources = measAlg.makeMeasureSources(exposure, policy)
-            #print 'ms policy', str(measureSources.getPolicy())
-            #print 'ms astrom:', measureSources.getMeasureAstrom()
-            #print 'ms photom:', measureSources.getMeasurePhotom()
-            #print 'ms shape:', measureSources.getMeasureShape()
+            # print('ms policy', str(measureSources.getPolicy()))
+            # print('ms astrom:', measureSources.getMeasureAstrom())
+            # print('ms photom:', measureSources.getMeasurePhotom())
+            # print('ms shape:', measureSources.getMeasureShape())
             F = footprints[0][0]
             for i in range(len(F)):
                 # create a new source, and add it to the list, initialize ...
@@ -91,26 +91,27 @@ class MyCalibrate(pipCalib.Calibrate):
                 print('measuring footprint', f)
                 measureSources.apply(s, f)
                 print('got', s)
-                print('  ', s, s.getXAstrom(), s.getYAstrom(), s.getPsfFlux(), s.getIxx(), s.getIyy(), s.getIxy())
+                print('  ', s, s.getXAstrom(), s.getYAstrom(), s.getPsfFlux(),
+                      s.getIxx(), s.getIyy(), s.getIxy())
 
         print('initial photometry...')
         sources, footprints = self.phot(exposure, psf)
-        #print 'got sources', str(sources)
-        #print 'got footprints', str(footprints)
-        #print 'sources:', sources
+        # print('got sources', str(sources))
+        # print('got footprints', str(footprints))
+        # print('sources:', sources)
         print('got sources:', len(sources))
         for s in sources:
             print('  ', s, s.getXAstrom(), s.getYAstrom(), s.getPsfFlux(), s.getIxx(), s.getIyy(), s.getIxy())
         print('re-photometry...')
         sources = self.rephot(exposure, footprints, psf)
-        #print 'got sources', str(sources)
+        # print('got sources', str(sources))
         print('sources:', len(sources))
         for s in sources:
             print('  ', s, s.getXAstrom(), s.getYAstrom(), s.getPsfFlux(), s.getIxx(), s.getIyy(), s.getIxy())
         return psf, sources, footprints
 
-    #def repair(self, *args, **kwargs):
-    #    print 'repair: doing nothing'
+    # def repair(self, *args, **kwargs):
+    #     print('repair: doing nothing')
 
 
 def getMapper():
@@ -130,27 +131,26 @@ def run(visit, rerun, config):
     else:
         print('Output directory:', rrdir)
     io = pipReadWrite.ReadWrite(mapper, ['visit'], config=config)
-    #ccdProc = pipProcCcd.ProcessCcd(config=config, Isr=NullISR, Calibrate=MyCalibrate)
-    #raws = io.readRaw(dataId)
-    #detrends = io.detrends(dataId, config)
+    # ccdProc = pipProcCcd.ProcessCcd(config=config, Isr=NullISR, Calibrate=MyCalibrate)
+    # raws = io.readRaw(dataId)
+    # detrends = io.detrends(dataId, config)
     print('Reading exposure')
-    #exposure = io.read('visitim', dataId)
-    detrends = []
+    # exposure = io.read('visitim', dataId)
     exposure = io.inButler.get('visitim', dataId)
     print('exposure is', exposure)
     print('size', exposure.getWidth(), 'x', exposure.getHeight())
     # debug
-    mi = exposure.getMaskedImage()
-    #img = mi.getImage()
-    #var = mi.getVariance()
-    #print 'var at 90,100 is', var.get(90,100)
-    #print 'img at 90,100 is', img.get(90,100)
-    #print 'wcs is', exposure.getWcs()
+    # mi = exposure.getMaskedImage()
+    # img = mi.getImage()
+    # var = mi.getVariance()
+    # print('var at 90,100 is', var.get(90,100))
+    # print('img at 90,100 is', img.get(90,100))
+    # print('wcs is', exposure.getWcs())
     wcs = exposure.getWcs()
     assert wcs
-    #print 'ccdProc.run()...'
+    # print('ccdProc.run()...')
     # raws = [exposure]
-    #exposure, psf, apcorr, brightSources, sources, matches, matchMeta = ccdProc.run(raws, detrends)
+    # exposure, psf, apcorr, brightSources, sources, matches, matchMeta = ccdProc.run(raws, detrends)
     print('Calibrate()...')
     log = Log.getDefaultLogger()
     cal = MyCalibrate(config=config, log=log, Photometry=MyPhotometry)
@@ -176,33 +176,34 @@ def run(visit, rerun, config):
         print('   # peaks:', len(f.getPeaks()))
         for p in f.getPeaks():
             print('    Peak', p)
-    #print 'psf', psf
-    #print 'sources', sources
-    #print 'footprints', footprints
-    #psf, apcorr, brightSources, matches, matchMeta = self.calibrate(exposure, defects=defects)
-    #if self.config['do']['phot']:
-    #    sources, footprints = self.phot(exposure, psf, apcorr, wcs=exposure.getWcs())
-    #psf, wcs = self.fakePsf(exposure)
-    #sources, footprints = self.phot(exposure, psf)
-    #sources = self.rephot(exposure, footprints, psf, apcorr=apcorr)
-    #model = calibrate['model']
-    #fwhm = calibrate['fwhm'] / wcs.pixelScale()
-    #size = calibrate['size']
-    # psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
-    #print 'done!'
+    # print('psf', psf)
+    # print('sources', sources)
+    # print('footprints', footprints)
+    # psf, apcorr, brightSources, matches, matchMeta = self.calibrate(exposure, defects=defects)
+    # if self.config['do']['phot']:
+    #     sources, footprints = self.phot(exposure, psf, apcorr, wcs=exposure.getWcs())
+    # psf, wcs = self.fakePsf(exposure)
+    # sources, footprints = self.phot(exposure, psf)
+    # sources = self.rephot(exposure, footprints, psf, apcorr=apcorr)
+    # model = calibrate['model']
+    # fwhm = calibrate['fwhm'] / wcs.pixelScale()
+    # size = calibrate['size']
+    #  psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
+    # print('done!')
     print('writing output...')
     io.write(dataId, psf=psf, sources=sources)
     print('done!')
     print('Writing bounding-boxes...')
     io.outButler.put(bb, 'bb', dataId)
 
-    #print 'Writing footprints...'
-    #io.outButler.put(fps, 'footprints', dataId)
+    # print('Writing footprints...')
+    # io.outButler.put(fps, 'footprints', dataId)
 
-    # serialize a python version of footprints & peaks
-    pyfoots = footprintsToPython(fps)
-    print('Writing py footprints...')
-    io.outButler.put(pyfoots, 'pyfoots', dataId)
+    # serialize a python version of footprints & peaks;
+    # commented out because footprintsToPython does not exist
+    # pyfoots = footprintsToPython(fps)
+    # print('Writing py footprints...')
+    # io.outButler.put(pyfoots, 'pyfoots', dataId)
 
     return bb
 

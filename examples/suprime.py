@@ -1,5 +1,8 @@
+import os.path
+
+import lsst.daf.persistence as dafPersist
 import lsst.obs.suprimecam as obsSc
-from .utils import *
+from .utils import WrapperMapper
 
 
 def _getSuprimeMapper(rootdir=None, calibdir=None, outrootdir=None):
@@ -9,7 +12,7 @@ def _getSuprimeMapper(rootdir=None, calibdir=None, outrootdir=None):
         calibdir = os.path.join(rootdir, 'CALIB')
     mapperArgs = dict(root=rootdir, calibRoot=calibdir, outputRoot=outrootdir)
     mapper = obsSc.SuprimecamMapper(**mapperArgs)
-    #return mapper
+    # return mapper
     wrap = WrapperMapper(mapper)
     return wrap
 

@@ -21,7 +21,6 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import os
-import numpy as np
 import unittest
 
 import lsst.utils.tests
@@ -37,8 +36,6 @@ except NameError:
     display = False
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
-
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 
 class IncludeTestCase(lsst.utils.tests.TestCase):
@@ -107,8 +104,6 @@ class IncludeTestCase(lsst.utils.tests.TestCase):
                                      self.calexp.getMaskedImage().getImage().getArray(),
                                      rtol=1E-3, printFailures=False, plotOnFailure=plotOnFailure)
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
@@ -116,6 +111,7 @@ class TestMemory(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()
