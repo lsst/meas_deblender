@@ -1,4 +1,3 @@
-from __future__ import print_function
 from lsst.pex.config import Config, ConfigurableField
 from lsst.pipe.base import CmdLineTask
 from lsst.meas.deblender import SourceDeblendTask
