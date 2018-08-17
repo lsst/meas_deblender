@@ -64,8 +64,8 @@ class SourceDeblendConfig(pexConfig.Config):
     )
 
     assignStrayFlux = pexConfig.Field(dtype=bool, default=True,
-                                    doc='Assign stray flux (not claimed by any child in the deblender) '
-                                        'to deblend children.')
+                                      doc='Assign stray flux (not claimed by any child in the deblender) '
+                                          'to deblend children.')
 
     strayFluxRule = pexConfig.ChoiceField(
         doc='How to split flux among peaks',
@@ -81,43 +81,45 @@ class SourceDeblendConfig(pexConfig.Config):
     )
 
     clipStrayFluxFraction = pexConfig.Field(dtype=float, default=0.001,
-                                          doc=('When splitting stray flux, clip fractions below '
-                                               'this value to zero.'))
+                                            doc=('When splitting stray flux, clip fractions below '
+                                                 'this value to zero.'))
     psfChisq1 = pexConfig.Field(dtype=float, default=1.5, optional=False,
-                              doc=('Chi-squared per DOF cut for deciding a source is '
-                                   'a PSF during deblending (un-shifted PSF model)'))
+                                doc=('Chi-squared per DOF cut for deciding a source is '
+                                     'a PSF during deblending (un-shifted PSF model)'))
     psfChisq2 = pexConfig.Field(dtype=float, default=1.5, optional=False,
-                              doc=('Chi-squared per DOF cut for deciding a source is '
-                                   'PSF during deblending (shifted PSF model)'))
+                                doc=('Chi-squared per DOF cut for deciding a source is '
+                                     'PSF during deblending (shifted PSF model)'))
     psfChisq2b = pexConfig.Field(dtype=float, default=1.5, optional=False,
-                               doc=('Chi-squared per DOF cut for deciding a source is '
-                                    'a PSF during deblending (shifted PSF model #2)'))
+                                 doc=('Chi-squared per DOF cut for deciding a source is '
+                                      'a PSF during deblending (shifted PSF model #2)'))
     maxNumberOfPeaks = pexConfig.Field(dtype=int, default=0,
-                                     doc=("Only deblend the brightest maxNumberOfPeaks peaks in the parent"
-                                          " (<= 0: unlimited)"))
+                                       doc=("Only deblend the brightest maxNumberOfPeaks peaks in the parent"
+                                            " (<= 0: unlimited)"))
     maxFootprintArea = pexConfig.Field(dtype=int, default=1000000,
-                                     doc=("Maximum area for footprints before they are ignored as large; "
-                                          "non-positive means no threshold applied"))
+                                       doc=("Maximum area for footprints before they are ignored as large; "
+                                            "non-positive means no threshold applied"))
     maxFootprintSize = pexConfig.Field(dtype=int, default=0,
-                                     doc=("Maximum linear dimension for footprints before they are ignored "
-                                          "as large; non-positive means no threshold applied"))
+                                       doc=("Maximum linear dimension for footprints before they are ignored "
+                                            "as large; non-positive means no threshold applied"))
     minFootprintAxisRatio = pexConfig.Field(dtype=float, default=0.0,
-                                          doc=("Minimum axis ratio for footprints before they are ignored "
-                                               "as large; non-positive means no threshold applied"))
+                                            doc=("Minimum axis ratio for footprints before they are ignored "
+                                                 "as large; non-positive means no threshold applied"))
     notDeblendedMask = pexConfig.Field(dtype=str, default="NOT_DEBLENDED", optional=True,
-                                     doc="Mask name for footprints not deblended, or None")
+                                       doc="Mask name for footprints not deblended, or None")
 
     tinyFootprintSize = pexConfig.RangeField(dtype=int, default=2, min=2, inclusiveMin=True,
-                                           doc=('Footprints smaller in width or height than this value will '
-                                                'be ignored; minimum of 2 due to PSF gradient calculation.'))
+                                             doc=('Footprints smaller in width or height than this value '
+                                                  'will be ignored; minimum of 2 due to PSF gradient '
+                                                  'calculation.'))
 
     propagateAllPeaks = pexConfig.Field(dtype=bool, default=False,
-                                      doc=('Guarantee that all peaks produce a child source.'))
-    catchFailures = pexConfig.Field(dtype=bool, default=False,
-                                  doc=("If True, catch exceptions thrown by the deblender, log them, "
-                                       "and set a flag on the parent, instead of letting them propagate up"))
+                                        doc=('Guarantee that all peaks produce a child source.'))
+    catchFailures = pexConfig.Field(
+        dtype=bool, default=False,
+        doc=("If True, catch exceptions thrown by the deblender, log them, "
+             "and set a flag on the parent, instead of letting them propagate up"))
     maskPlanes = pexConfig.ListField(dtype=str, default=["SAT", "INTRP", "NO_DATA"],
-                                   doc="Mask planes to ignore when performing statistics")
+                                     doc="Mask planes to ignore when performing statistics")
     maskLimits = pexConfig.DictField(
         keytype=str,
         itemtype=float,
@@ -125,19 +127,20 @@ class SourceDeblendConfig(pexConfig.Config):
         doc=("Mask planes with the corresponding limit on the fraction of masked pixels. "
              "Sources violating this limit will not be deblended."),
     )
-    weightTemplates = pexConfig.Field(dtype=bool, default=False,
-                                    doc=("If true, a least-squares fit of the templates will be done to the "
-                                        "full image. The templates will be re-weighted based on this fit."))
+    weightTemplates = pexConfig.Field(
+        dtype=bool, default=False,
+        doc=("If true, a least-squares fit of the templates will be done to the "
+             "full image. The templates will be re-weighted based on this fit."))
     removeDegenerateTemplates = pexConfig.Field(dtype=bool, default=False,
-                                              doc=("Try to remove similar templates?"))
-    maxTempDotProd = pexConfig.Field(dtype=float, default=0.5,
-                                   doc=("If the dot product between two templates is larger than this value"
-                                        ", we consider them to be describing the same object (i.e. they are "
-                                        "degenerate).  If one of the objects has been labeled as a PSF it "
-                                        "will be removed, otherwise the template with the lowest value will "
-                                        "be removed."))
+                                                doc=("Try to remove similar templates?"))
+    maxTempDotProd = pexConfig.Field(
+        dtype=float, default=0.5,
+        doc=("If the dot product between two templates is larger than this value, we consider them to be "
+             "describing the same object (i.e. they are degenerate).  If one of the objects has been "
+             "labeled as a PSF it will be removed, otherwise the template with the lowest value will "
+             "be removed."))
     medianSmoothTemplate = pexConfig.Field(dtype=bool, default=True,
-                                         doc="Apply a smoothing filter to all of the template images")
+                                           doc="Apply a smoothing filter to all of the template images")
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -228,8 +231,8 @@ class SourceDeblendTask(pipeBase.Task):
             doc=('This source was assigned some stray flux'))
 
         self.log.trace('Added keys to schema: %s', ", ".join(str(x) for x in (
-                    self.nChildKey, self.psfKey, self.psfCenterKey, self.psfFluxKey,
-                    self.tooManyPeaksKey, self.tooBigKey)))
+                       self.nChildKey, self.psfKey, self.psfCenterKey, self.psfFluxKey,
+                       self.tooManyPeaksKey, self.tooBigKey)))
 
     @pipeBase.timeMethod
     def run(self, exposure, sources):
@@ -276,7 +279,7 @@ class SourceDeblendTask(pipeBase.Task):
         n0 = len(srcs)
         nparents = 0
         for i, src in enumerate(srcs):
-            #t0 = time.clock()
+            # t0 = time.clock()
 
             fp = src.getFootprint()
             pks = fp.getPeaks()
@@ -354,7 +357,7 @@ class SourceDeblendTask(pipeBase.Task):
                     # We need to preserve the peak: make sure we have enough info to create a minimal
                     # child src
                     self.log.trace("Peak at (%i,%i) failed.  Using minimal default info for child.",
-                                      pks[j].getIx(), pks[j].getIy())
+                                   pks[j].getIx(), pks[j].getIy())
                     if heavy is None:
                         # copy the full footprint and strip out extra peaks
                         foot = afwDet.Footprint(src.getFootprint())
@@ -400,7 +403,7 @@ class SourceDeblendTask(pipeBase.Task):
             src.set(self.nChildKey, nchild)
 
             self.postSingleDeblendHook(exposure, srcs, i, npre, kids, fp, psf, psf_fwhm, sigma1, res)
-            #print 'Deblending parent id', src.getId(), 'took', time.clock() - t0
+            # print('Deblending parent id', src.getId(), 'took', time.clock() - t0)
 
         n1 = len(srcs)
         self.log.info('Deblended: of %i sources, %i were deblended, creating %i children, total %i sources'
@@ -439,7 +442,7 @@ class SourceDeblendTask(pipeBase.Task):
         size = float(footprint.getArea())
         for maskName, limit in self.config.maskLimits.items():
             maskVal = mask.getPlaneBitMask(maskName)
-            unmaskedSpan = footprint.spans.intersectNot(mask, maskVal) # spanset of unmasked pixels
+            unmaskedSpan = footprint.spans.intersectNot(mask, maskVal)  # spanset of unmasked pixels
             if (size - unmaskedSpan.getArea())/size > limit:
                 return True
         return False
@@ -454,10 +457,11 @@ class SourceDeblendTask(pipeBase.Task):
         """
         fp = source.getFootprint()
         source.set(self.deblendSkippedKey, True)
-        source.set(self.nChildKey, len(fp.getPeaks())) # It would have this many if we deblended them all
+        source.set(self.nChildKey, len(fp.getPeaks()))  # It would have this many if we deblended them all
         if self.config.notDeblendedMask:
             mask.addMaskPlane(self.config.notDeblendedMask)
             fp.spans.setMask(mask, mask.getPlaneBitMask(self.config.notDeblendedMask))
+
 
 class MultibandDeblendConfig(pexConfig.Config):
     """MultibandDeblendConfig
@@ -481,8 +485,8 @@ class MultibandDeblendConfig(pexConfig.Config):
                                           "or no update is performed."
                                           "This field is ignored if fitPositions is False."))
     refinementSkip = pexConfig.Field(dtype=int, default=10,
-                                      doc=("If fitPositions is True, the positions and box sizes are"
-                                           "updated on every 'refinementSkip' iterations."))
+                                     doc=("If fitPositions is True, the positions and box sizes are"
+                                          "updated on every 'refinementSkip' iterations."))
     translationMethod = pexConfig.Field(dtype=str, default="default",
                                         doc=("Method to use for fitting translations."
                                              "Currently 'default' is the only available option,"
@@ -528,49 +532,60 @@ class MultibandDeblendConfig(pexConfig.Config):
 
     # Other scarlet paremeters
     useWeights = pexConfig.Field(dtype=bool, default=False, doc="Use inverse variance as deblender weights")
-    bgScale = pexConfig.Field(dtype=float, default=0.5,
-                              doc=("Fraction of background RMS level to use as a"
-                                   "cutoff for defining the background of the image"
-                                   "This is used to initialize the model for each source"
-                                   "and to set the size of the bounding box for each source"
-                                   "every `refinementSkip` iteration."))
-    usePsfConvolution = pexConfig.Field(dtype=bool, default=True,
-                                        doc=("Whether or not to convolve the morphology with the"
-                                             "PSF in each band or use the same morphology"
-                                             "in all bands"))
-    saveTemplates = pexConfig.Field(dtype=bool, default=True,
-                                    doc="Whether or not to save the SEDs and templates")
-    processSingles = pexConfig.Field(dtype=bool, default=False,
-                                     doc="Whether or not to process isolated sources in the deblender")
-    badMask = pexConfig.Field(dtype=str, default="BAD,CR,NO_DATA,SAT,SUSPECT",
-                              doc="Whether or not to process isolated sources in the deblender")
+    bgScale = pexConfig.Field(
+        dtype=float, default=0.5,
+        doc=("Fraction of background RMS level to use as a"
+             "cutoff for defining the background of the image"
+             "This is used to initialize the model for each source"
+             "and to set the size of the bounding box for each source"
+             "every `refinementSkip` iteration."))
+    usePsfConvolution = pexConfig.Field(
+        dtype=bool, default=True,
+        doc=("Whether or not to convolve the morphology with the"
+             "PSF in each band or use the same morphology in all bands"))
+    saveTemplates = pexConfig.Field(
+        dtype=bool, default=True,
+        doc="Whether or not to save the SEDs and templates")
+    processSingles = pexConfig.Field(
+        dtype=bool, default=False,
+        doc="Whether or not to process isolated sources in the deblender")
+    badMask = pexConfig.Field(
+        dtype=str, default="BAD,CR,NO_DATA,SAT,SUSPECT",
+        doc="Whether or not to process isolated sources in the deblender")
     # Old deblender parameters used in this implementation (some of which might be removed later)
 
-    maxNumberOfPeaks = pexConfig.Field(dtype=int, default=0,
-                                     doc=("Only deblend the brightest maxNumberOfPeaks peaks in the parent"
-                                          " (<= 0: unlimited)"))
-    maxFootprintArea = pexConfig.Field(dtype=int, default=1000000,
-                                     doc=("Maximum area for footprints before they are ignored as large; "
-                                          "non-positive means no threshold applied"))
-    maxFootprintSize = pexConfig.Field(dtype=int, default=0,
-                                     doc=("Maximum linear dimension for footprints before they are ignored "
-                                          "as large; non-positive means no threshold applied"))
-    minFootprintAxisRatio = pexConfig.Field(dtype=float, default=0.0,
-                                          doc=("Minimum axis ratio for footprints before they are ignored "
-                                               "as large; non-positive means no threshold applied"))
-    notDeblendedMask = pexConfig.Field(dtype=str, default="NOT_DEBLENDED", optional=True,
-                                     doc="Mask name for footprints not deblended, or None")
+    maxNumberOfPeaks = pexConfig.Field(
+        dtype=int, default=0,
+        doc=("Only deblend the brightest maxNumberOfPeaks peaks in the parent"
+             " (<= 0: unlimited)"))
+    maxFootprintArea = pexConfig.Field(
+        dtype=int, default=1000000,
+        doc=("Maximum area for footprints before they are ignored as large; "
+             "non-positive means no threshold applied"))
+    maxFootprintSize = pexConfig.Field(
+        dtype=int, default=0,
+        doc=("Maximum linear dimension for footprints before they are ignored "
+             "as large; non-positive means no threshold applied"))
+    minFootprintAxisRatio = pexConfig.Field(
+        dtype=float, default=0.0,
+        doc=("Minimum axis ratio for footprints before they are ignored "
+             "as large; non-positive means no threshold applied"))
+    notDeblendedMask = pexConfig.Field(
+        dtype=str, default="NOT_DEBLENDED", optional=True,
+        doc="Mask name for footprints not deblended, or None")
 
-    tinyFootprintSize = pexConfig.RangeField(dtype=int, default=2, min=2, inclusiveMin=True,
-                                           doc=('Footprints smaller in width or height than this value will '
-                                                'be ignored; minimum of 2 due to PSF gradient calculation.'))
-    catchFailures = pexConfig.Field(dtype=bool, default=False,
-                                  doc=("If True, catch exceptions thrown by the deblender, log them, "
-                                       "and set a flag on the parent, instead of letting them propagate up"))
+    tinyFootprintSize = pexConfig.RangeField(
+        dtype=int, default=2, min=2, inclusiveMin=True,
+        doc=('Footprints smaller in width or height than this value will '
+             'be ignored; minimum of 2 due to PSF gradient calculation.'))
+    catchFailures = pexConfig.Field(
+        dtype=bool, default=False,
+        doc=("If True, catch exceptions thrown by the deblender, log them, "
+             "and set a flag on the parent, instead of letting them propagate up"))
     propagateAllPeaks = pexConfig.Field(dtype=bool, default=False,
-                                      doc=('Guarantee that all peaks produce a child source.'))
+                                        doc=('Guarantee that all peaks produce a child source.'))
     maskPlanes = pexConfig.ListField(dtype=str, default=["SAT", "INTRP", "NO_DATA"],
-                                   doc="Mask planes to ignore when performing statistics")
+                                     doc="Mask planes to ignore when performing statistics")
     maskLimits = pexConfig.DictField(
         keytype=str,
         itemtype=float,
@@ -590,17 +605,18 @@ class MultibandDeblendConfig(pexConfig.Config):
     )
 
     medianSmoothTemplate = pexConfig.Field(dtype=bool, default=False,
-                                         doc="Apply a smoothing filter to all of the template images")
+                                           doc="Apply a smoothing filter to all of the template images")
     medianFilterHalfsize = pexConfig.Field(dtype=float, default=2,
-                                         doc=('Half size of the median smoothing filter'))
+                                           doc=('Half size of the median smoothing filter'))
     clipFootprintToNonzero = pexConfig.Field(dtype=bool, default=False,
                                              doc=("Clip non-zero spans in the footprints"))
 
     conserveFlux = pexConfig.Field(dtype=bool, default=True,
                                    doc=("Reapportion flux to the footprints so that flux is conserved"))
-    weightTemplates = pexConfig.Field(dtype=bool, default=False,
-                                    doc=("If true, a least-squares fit of the templates will be done to the "
-                                         "full image. The templates will be re-weighted based on this fit."))
+    weightTemplates = pexConfig.Field(
+        dtype=bool, default=False,
+        doc=("If true, a least-squares fit of the templates will be done to the "
+             "full image. The templates will be re-weighted based on this fit."))
     strayFluxToPointSources = pexConfig.ChoiceField(
         doc='When the deblender should attribute stray flux to point sources',
         dtype=str, default='necessary',
@@ -613,8 +629,8 @@ class MultibandDeblendConfig(pexConfig.Config):
     )
 
     assignStrayFlux = pexConfig.Field(dtype=bool, default=True,
-                                    doc='Assign stray flux (not claimed by any child in the deblender) '
-                                        'to deblend children.')
+                                      doc='Assign stray flux (not claimed by any child in the deblender) '
+                                          'to deblend children.')
 
     strayFluxRule = pexConfig.ChoiceField(
         doc='How to split flux among peaks',
@@ -630,12 +646,13 @@ class MultibandDeblendConfig(pexConfig.Config):
     )
 
     clipStrayFluxFraction = pexConfig.Field(dtype=float, default=0.001,
-                                          doc=('When splitting stray flux, clip fractions below '
-                                               'this value to zero.'))
+                                            doc=('When splitting stray flux, clip fractions below '
+                                                 'this value to zero.'))
     getTemplateSum = pexConfig.Field(dtype=bool, default=False,
                                      doc=("As part of the flux calculation, the sum of the templates is"
                                           "calculated. If 'getTemplateSum==True' then the sum of the"
                                           "templates is stored in the result (a 'PerFootprint')."))
+
 
 class MultibandDeblendTask(pipeBase.Task):
     """MultibandDeblendTask
@@ -707,10 +724,9 @@ class MultibandDeblendTask(pipeBase.Task):
         # all of the sources
         constraints = None
         _constraints = self.config.constraints.split(",")
-        if (sorted(_constraints) != ['+', '1', 'M', 'S']
-            or ~np.isnan(self.config.l0Thresh)
-            or ~np.isnan(self.config.l1Thresh)
-        ):
+        if (sorted(_constraints) != ['+', '1', 'M', 'S'] or
+                ~np.isnan(self.config.l0Thresh) or
+                ~np.isnan(self.config.l1Thresh)):
             constraintDict = {
                 "+": scarlet.constraint.PositivityConstraint,
                 "1": scarlet.constraint.SimpleConstraint,
@@ -748,24 +764,24 @@ class MultibandDeblendTask(pipeBase.Task):
 
         # Plugins from the old deblender for post-template processing
         # (see lsst.meas_deblender.baseline.deblend)
-        patchEdges = self.config.edgeHandling == 'noclip'
         if self.config.edgeHandling == 'ramp':
             self.plugins.append(plugins.DeblenderPlugin(plugins.rampFluxAtEdge, patchEdges=False))
         if self.config.medianSmoothTemplate:
-            self.plugins.append(plugins.DeblenderPlugin(plugins.medianSmoothTemplates,
-                                                      medianFilterHalfsize=self.config.medianFilterHalfsize))
+            self.plugins.append(plugins.DeblenderPlugin(
+                plugins.medianSmoothTemplates,
+                medianFilterHalfsize=self.config.medianFilterHalfsize))
         if self.config.clipFootprintToNonzero:
             self.plugins.append(plugins.DeblenderPlugin(plugins.clipFootprintsToNonzero))
         if self.config.conserveFlux:
             if self.config.weightTemplates:
                 self.plugins.append(plugins.DeblenderPlugin(plugins.weightTemplates))
-            self.plugins.append(plugins.DeblenderPlugin(plugins.apportionFlux,
-                                                clipStrayFluxFraction=self.config.clipStrayFluxFraction,
-                                                assignStrayFlux=self.config.assignStrayFlux,
-                                                strayFluxAssignment=self.config.strayFluxRule,
-                                                strayFluxToPointSources=self.config.strayFluxToPointSources,
-                                                getTemplateSum=self.config.getTemplateSum))
-
+            self.plugins.append(plugins.DeblenderPlugin(
+                plugins.apportionFlux,
+                clipStrayFluxFraction=self.config.clipStrayFluxFraction,
+                assignStrayFlux=self.config.assignStrayFlux,
+                strayFluxAssignment=self.config.strayFluxRule,
+                strayFluxToPointSources=self.config.strayFluxToPointSources,
+                getTemplateSum=self.config.getTemplateSum))
 
     def _addSchemaKeys(self, schema):
         """Add deblender specific keys to the schema
@@ -784,7 +800,7 @@ class MultibandDeblendTask(pipeBase.Task):
         self.maskedKey = schema.addField('deblend_masked', type='Flag',
                                          doc='Parent footprint was predominantly masked')
         self.deblendFailedKey = schema.addField('deblend_failed', type='Flag',
-                                                 doc="Deblending failed on source")
+                                                doc="Deblending failed on source")
 
         self.deblendSkippedKey = schema.addField('deblend_skipped', type='Flag',
                                                  doc="Deblender skipped this source")
@@ -810,8 +826,8 @@ class MultibandDeblendTask(pipeBase.Task):
             doc=('This source was assigned some stray flux'))
 
         self.log.trace('Added keys to schema: %s', ", ".join(str(x) for x in (
-                    self.nChildKey, self.psfKey, self.psfCenterKey, self.psfFluxKey,
-                    self.tooManyPeaksKey, self.tooBigKey)))
+                       self.nChildKey, self.psfKey, self.psfCenterKey, self.psfFluxKey,
+                       self.tooManyPeaksKey, self.tooBigKey)))
 
     @pipeBase.timeMethod
     def run(self, mExposure, mergedSources):
@@ -841,7 +857,7 @@ class MultibandDeblendTask(pipeBase.Task):
             created by the multiband templates.
             If `self.config.saveTemplates` is `False`, then this item will be None
         """
-        psfs = {f:mExposure[f].getPsf() for f in mExposure.filters}
+        psfs = {f: mExposure[f].getPsf() for f in mExposure.filters}
         return self.deblend(mExposure, mergedSources, psfs)
 
     def _getPsfFwhm(self, psf, bbox):
@@ -855,7 +871,7 @@ class MultibandDeblendTask(pipeBase.Task):
         and setting all appropriate flags based on the
         deblender result.
         """
-        assert len(heavy.getPeaks())==1
+        assert len(heavy.getPeaks()) == 1
         src = sources.addNew()
         src.assign(heavy.getPeaks()[0], self.peakSchemaMapper)
         src.setParent(parentId)
@@ -976,14 +992,13 @@ class MultibandDeblendTask(pipeBase.Task):
 
             nparents += 1
             bbox = foot.getBBox()
-            psf_fwhms = {f:self._getPsfFwhm(psf, bbox) for f, psf in psfs.items()}
+            psf_fwhms = {f: self._getPsfFwhm(psf, bbox) for f, psf in psfs.items()}
             self.log.trace('Parent %i: deblending %i peaks', int(src.getId()), len(peaks))
             self.preSingleDeblendHook(mExposure.singles, sources, pk, foot, psfs, psf_fwhms, sigmas)
             npre = len(sources)
             # Run the deblender
             try:
-                t0=time.time()
-                PARENT = afwImage.PARENT
+                t0 = time.time()
                 # Build the parameter lists with the same ordering
                 images = mMaskedImage[:, bbox]
                 psf_list = [psfs[f] for f in filters]
@@ -996,9 +1011,8 @@ class MultibandDeblendTask(pipeBase.Task):
                                     psfs=psf_list,
                                     psfFwhms=fwhm_list,
                                     avgNoise=avgNoise,
-                                    maxNumberOfPeaks=self.config.maxNumberOfPeaks
-                )
-                tf=time.time()
+                                    maxNumberOfPeaks=self.config.maxNumberOfPeaks)
+                tf = time.time()
                 runtime = (tf-t0)*1000
                 if result.failed:
                     src.set(self.deblendFailedKey, False)
@@ -1028,11 +1042,11 @@ class MultibandDeblendTask(pipeBase.Task):
                     fluxParents[f].set(self.runtimeKey, runtime)
 
             # Add each source to the catalogs in each band
-            templateSpans = {f:afwGeom.SpanSet() for f in filters}
-            fluxSpans = {f:afwGeom.SpanSet() for f in filters}
+            templateSpans = {f: afwGeom.SpanSet() for f in filters}
+            fluxSpans = {f: afwGeom.SpanSet() for f in filters}
             nchild = 0
             for j, multiPeak in enumerate(result.peaks):
-                heavy = {f:peak.getFluxPortion() for f, peak in multiPeak.deblendedPeaks.items()}
+                heavy = {f: peak.getFluxPortion() for f, peak in multiPeak.deblendedPeaks.items()}
                 no_flux = all([v is None for v in heavy.values()])
                 skip_peak = all([peak.skip for peak in multiPeak.deblendedPeaks.values()])
                 if no_flux or skip_peak:
@@ -1065,23 +1079,21 @@ class MultibandDeblendTask(pipeBase.Task):
                     if self.config.saveTemplates:
                         cat = templateCatalogs[f]
                         tfoot = peak.templateFootprint
-                        timg  = afwImage.MaskedImageF(peak.templateImage)
+                        timg = afwImage.MaskedImageF(peak.templateImage)
                         tHeavy = afwDet.makeHeavyFootprint(tfoot, timg)
                         child = self._addChild(parentId, peak, cat, tHeavy)
-                        if parentId==0:
+                        if parentId == 0:
                             child.setId(src.getId())
                             child.set(self.runtimeKey, runtime)
                         else:
-                            _peak = tHeavy.getPeaks()[0]
                             templateSpans[f] = templateSpans[f].union(tHeavy.getSpans())
                     if self.config.conserveFlux:
                         cat = fluxCatalogs[f]
                         child = self._addChild(parentId, peak, cat, heavy[f])
-                        if parentId==0:
+                        if parentId == 0:
                             child.setId(src.getId())
                             child.set(self.runtimeKey, runtime)
                         else:
-                            _peak = heavy[f].getPeaks()[0]
                             fluxSpans[f] = fluxSpans[f].union(heavy[f].getSpans())
                     nchild += 1
 
@@ -1143,7 +1155,7 @@ class MultibandDeblendTask(pipeBase.Task):
         size = float(footprint.getArea())
         for maskName, limit in self.config.maskLimits.items():
             maskVal = mask.getPlaneBitMask(maskName)
-            unmaskedSpan = footprint.spans.intersectNot(mask, maskVal) # spanset of unmasked pixels
+            unmaskedSpan = footprint.spans.intersectNot(mask, maskVal)  # spanset of unmasked pixels
             if (size - unmaskedSpan.getArea())/size > limit:
                 return True
         return False
@@ -1162,7 +1174,7 @@ class MultibandDeblendTask(pipeBase.Task):
         """
         fp = source.getFootprint()
         source.set(self.deblendSkippedKey, True)
-        source.set(self.nChildKey, len(fp.getPeaks())) # It would have this many if we deblended them all
+        source.set(self.nChildKey, len(fp.getPeaks()))  # It would have this many if we deblended them all
         if self.config.notDeblendedMask:
             for mask in masks:
                 mask.addMaskPlane(self.config.notDeblendedMask)

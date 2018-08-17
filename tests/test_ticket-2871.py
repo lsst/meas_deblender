@@ -29,15 +29,13 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as algorithms
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 class DeblendTestCase(unittest.TestCase):
     """A test case for deblending"""
 
     def checkDeblender(self):
         try:
-            import lsst.meas.deblender
+            import lsst.meas.deblender  # noqa F401
         except ImportError as e:
             self.skipTest("Cannot import lsst.meas.deblender: %s" % e)
 
@@ -53,7 +51,8 @@ class DeblendTestCase(unittest.TestCase):
 
         self.checkDeblender()
         xGood, yGood = 57, 86
-        xBad, yBad = 0, 0  # Required to be in image so we can evaluate the PSF; will put neighbour just outside
+        # Required to be in image so we can evaluate the PSF; will put neighbour just outside
+        xBad, yBad = 0, 0
         flux = 100.0
         dims = afwGeom.Extent2I(128, 128)
 
@@ -98,8 +97,6 @@ class DeblendTestCase(unittest.TestCase):
         self.assertFalse(good.get('deblend_failed'))
         self.assertTrue(bad.get('deblend_failed'))
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
@@ -107,6 +104,7 @@ class TestMemory(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

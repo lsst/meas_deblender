@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
-from builtins import zip
 import os
 import sys
 
@@ -17,16 +15,14 @@ from tractorPreprocess import getMapper, footprintsFromPython
 import matplotlib
 matplotlib.use('Agg')
 
-from testDeblend import testDeblend
-
 
 def run(visit, rerun, config):
     mapper = getMapper()
     dataId = {'visit': visit, 'rerun': rerun}
-    #rrdir = mapper.getPath('outdir', dataId)
-    #if not os.path.exists(rrdir):
-    #    print 'Creating directory for ouputs:', rrdir
-    #    os.makedirs(rrdir)
+    # rrdir = mapper.getPath('outdir', dataId)
+    # if not os.path.exists(rrdir):
+    #     print 'Creating directory for ouputs:', rrdir
+    #     os.makedirs(rrdir)
     io = pipReadWrite.ReadWrite(mapper, ['visit'], config=config)
     butler = io.inButler
 
@@ -69,7 +65,7 @@ def run(visit, rerun, config):
     psf = butler.get('psf', dataId)
     print('PSF:', psf)
 
-    testDeblend(foots, pks, mi, psf)
+    # testDeblend(foots, pks, mi, psf)
 
 
 if __name__ == "__main__":
@@ -77,7 +73,7 @@ if __name__ == "__main__":
     parser.add_option("-r", "--rerun", default=0, dest="rerun", type=int, help='rerun number')
     parser.add_option("-v", "--visit", dest="visit", type=int,
                       default=0, help="visit to run (default=%default)")
-    #parser.add_option("-p", "--plots", dest="plots", default=False, action='store_true', help='Make plots?')
+    # parser.add_option("-p", "--plots", dest="plots", default=False, action='store_true', help='Make plots?')
 
     default = os.path.join(os.getenv("PIPETTE_DIR"), "policy", "ProcessCcdDictionary.paf")
     overrides = os.path.join(os.getenv("MEAS_DEBLENDER_DIR"), 'examples', 'tractor.paf')
@@ -88,5 +84,5 @@ if __name__ == "__main__":
     print('running visit', opt.visit, 'rerun', opt.rerun)
     run(opt.visit, opt.rerun, config)
 
-    #if opt.plots:
-    #    plots(opt.visit, opt.rerun, config, bb)
+    # if opt.plots:
+    #     plots(opt.visit, opt.rerun, config, bb)

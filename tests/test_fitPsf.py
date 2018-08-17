@@ -20,8 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-from __future__ import print_function
-from builtins import zip
 import unittest
 import numpy as np
 
@@ -84,7 +82,6 @@ class FitPsfTestCase(unittest.TestCase):
             p.setIy(int(y))
             return p
         pk1 = makePeak(20., 30.)
-        pk2 = makePeak(23., 33.)
         pk3 = makePeak(92., 50.)
 
         ibb = img.getBBox()
@@ -130,7 +127,7 @@ class FitPsfTestCase(unittest.TestCase):
 
         psf_chisq_cut1 = psf_chisq_cut2 = psf_chisq_cut2b = 1.5
 
-        #pkres = PerPeak()
+        # pkres = PerPeak()
         pkres = DeblendedPeak(pk1, 0, None)
 
         loglvl = Log.INFO
@@ -171,14 +168,13 @@ class FitPsfTestCase(unittest.TestCase):
             print('  ', k, getattr(pkres, k))
 
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
 
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

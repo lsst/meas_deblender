@@ -1,4 +1,3 @@
-from __future__ import print_function
 from lsst.pex.config import Config, ConfigurableField
 from lsst.pipe.base import CmdLineTask
 from lsst.meas.deblender import SourceDeblendTask
@@ -26,7 +25,7 @@ class MyTask(CmdLineTask):
 
     def __init__(self, *args, **kwargs):
         super(MyTask, self).__init__(*args, **kwargs)
-        #self.makeSubtask("deblend", schema=self.schema)
+        # self.makeSubtask("deblend", schema=self.schema)
 
     def run(self, dataRef):
         calexp = dataRef.get("calexp")
@@ -63,6 +62,7 @@ class MyTask(CmdLineTask):
         fn = 'psf.fits'
         psf.writeFits(fn)
         print('Wrote PSF to', fn)
+
 
 if __name__ == "__main__":
     MyTask.parseAndRun()

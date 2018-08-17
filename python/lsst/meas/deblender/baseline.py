@@ -1,8 +1,3 @@
-from builtins import zip
-from builtins import str
-from builtins import range
-from builtins import object
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008-2016 AURA/LSST.
@@ -45,12 +40,13 @@ DEFAULT_PLUGINS = [
     plugins.DeblenderPlugin(plugins.apportionFlux),
 ]
 
-class DeblenderResult(object):
+
+class DeblenderResult:
     """Collection of objects in multiple bands for a single parent footprint
     """
 
     def __init__(self, footprint, mMaskedImage, psfs, psffwhms, log,
-            maxNumberOfPeaks=0, avgNoise=None):
+                 maxNumberOfPeaks=0, avgNoise=None):
         """ Initialize a DeblededParent
 
         Parameters
@@ -116,7 +112,7 @@ class DeblenderResult(object):
         self.psfs = psfs
 
         self.peakCount = len(footprint.getPeaks())
-        if maxNumberOfPeaks>0 and maxNumberOfPeaks<self.peakCount:
+        if maxNumberOfPeaks > 0 and maxNumberOfPeaks < self.peakCount:
             self.peakCount = maxNumberOfPeaks
 
         # Create a DeblendedParent for the Footprint in every filter
@@ -130,7 +126,7 @@ class DeblenderResult(object):
         # Group the peaks in each color
         self.peaks = []
         for idx in range(self.peakCount):
-            peakDict = OrderedDict([(f, dp.peaks[idx]) for f,dp in self.deblendedParents.items()])
+            peakDict = OrderedDict([(f, dp.peaks[idx]) for f, dp in self.deblendedParents.items()])
             multiPeak = MultiColorPeak(peakDict, idx, self)
             self.peaks.append(multiPeak)
 
@@ -140,7 +136,7 @@ class DeblenderResult(object):
 
     def getParentProperty(self, propertyName):
         """Get the footprint in each filter"""
-        return [getattr(fp, propertyName) for dp in self.deblendedParents]
+        return [getattr(dp, propertyName) for dp in self.deblendedParents]
 
     def setTemplateSums(self, templateSums, fidx=None):
         if fidx is not None:
@@ -149,7 +145,8 @@ class DeblenderResult(object):
             for f, templateSum in templateSums.items():
                 self.deblendedParents[f].templateSum = templateSum
 
-class DeblendedParent(object):
+
+class DeblendedParent:
     """Deblender result of a single parent footprint, in a single band
 
     Convenience class to store useful objects used by the deblender for a single band,
@@ -226,7 +223,8 @@ class DeblendedParent(object):
         self.x0, self.y0 = self.bb.getMinX(), self.bb.getMinY()
         self.x1, self.y1 = self.bb.getMaxX(), self.bb.getMaxY()
 
-class MultiColorPeak(object):
+
+class MultiColorPeak:
     """Collection of single peak deblender results in multiple bands.
 
     There is one of these objects for each Peak in the footprint.
@@ -264,7 +262,8 @@ class MultiColorPeak(object):
         self.x = self.deblendedPeaks[self.filters[0]].peak.getFx()
         self.y = self.deblendedPeaks[self.filters[0]].peak.getFy()
 
-class DeblendedPeak(object):
+
+class DeblendedPeak:
     """Result of deblending a single Peak within a parent Footprint.
 
     There is one of these objects for each Peak in the Footprint.
@@ -444,6 +443,7 @@ class DeblendedPeak(object):
     def setTemplate(self, image, footprint):
         self.templateImage = image
         self.templateFootprint = footprint
+
 
 def deblend(footprint, maskedImage, psf, psffwhm,
             psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.5, fitPsfs=True,
@@ -670,6 +670,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
 
     return debResult
 
+
 def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
                log=None, verbose=False, avgNoise=None, maxNumberOfPeaks=0):
     """Deblend a parent ``Footprint`` in a ``MaskedImageF``.
@@ -716,8 +717,6 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
         information that describes the footprint in all filters.
     """
     # Import C++ routines
-    import lsst.meas.deblender as deb
-    butils = deb.BaselineUtilsF
 
     if log is None:
         import lsst.log as lsstLog
@@ -745,12 +744,12 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
         if reset:
             step = debPlugins[step].onReset
         else:
-            step+=1
+            step += 1
 
     return debResult
 
 
-class CachingPsf(object):
+class CachingPsf:
     """Cache the PSF models
 
     In the PSF fitting code, we request PSF models for all peaks near

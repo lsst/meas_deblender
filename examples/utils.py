@@ -1,14 +1,9 @@
-from __future__ import print_function
-from builtins import zip
-from builtins import range
-from builtins import object
 import math
 import os
 import pylab as plt
 import numpy as np
 from matplotlib.patches import Ellipse
 
-import lsst.daf.persistence as dafPersist
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
@@ -58,8 +53,8 @@ class DebugSourceMeasTask(measAlg.SourceMeasurementTask):
         hi = mn + 20*std
         self.plotargs = dict(interpolation='nearest', origin='lower',
                              vmin=lo, vmax=hi)
-        #self.plotregion = (100, 500, 100, 500)
-        #self.nplots = 0
+        # self.plotregion = (100, 500, 100, 500)
+        # self.nplots = 0
         self._plotimage(im)
         self.savefig('pre')
 
@@ -127,7 +122,7 @@ class DebugSourceMeasTask(measAlg.SourceMeasurementTask):
                 return
             if (not np.isfinite(x)) or (not np.isfinite(y)):
                 return
-        #if not (src.getId() in self.parents or src.getParent()):
+        # if not (src.getId() in self.parents or src.getParent()):
         print('saving', iplot)
 
         if src.getParent():
@@ -135,18 +130,18 @@ class DebugSourceMeasTask(measAlg.SourceMeasurementTask):
         else:
             bb = src.getFootprint().getBBox()
         bb.grow(50)
-        #x0 = max(0, bb.getMinX())
-        #x1 = min(exposure.getWidth(), bb.getMaxX())
-        #y0 = max(0, bb.getMinY())
-        #y1 = min(exposure.getHeight(), bb.getMaxY())
+        # x0 = max(0, bb.getMinX())
+        # x1 = min(exposure.getWidth(), bb.getMaxX())
+        # y0 = max(0, bb.getMinY())
+        # y1 = min(exposure.getHeight(), bb.getMaxY())
         bb.clip(exposure.getBBox())
-        #self.plotregion = (x0,x1,y0,y1)
+        # self.plotregion = (x0,x1,y0,y1)
         self.plotregion = getExtent(bb)
 
         mi = exposure.getMaskedImage()
         im = mi.getImage()
         self._plotimage(im)
-        #self.savefig('meas%04i' % self.nplots)
+        # self.savefig('meas%04i' % self.nplots)
         self.savefig('meas%04i' % iplot)
         mask = mi.getMask()
         thisbitmask = mask.getPlaneBitMask('THISDET')
@@ -162,17 +157,17 @@ class DebugSourceMeasTask(measAlg.SourceMeasurementTask):
         self._plotimage(mim)
         self.plotargs = oldargs
         self.savefig('meas%04i-mask' % iplot)
-        #self.savefig('meas%02i-mask' % self.nplots)
-        #self.nplots += 1
+        # self.savefig('meas%02i-mask' % self.nplots)
+        # self.nplots += 1
         ###
         self.plotregion = None
 
 
 # To use multiprocessing, we need the plot elements to be picklable.  Swig objects are not
 # picklable, so in preprocessing we pull out the items we need for plotting, putting them in
-# a _mockSource object.
+# a _MockSource object.
 
-class _mockSource(object):
+class _MockSource:
 
     def __init__(self, src, mi, psfkey, fluxkey, xkey, ykey, flagKeys, ellipses=True,
                  maskbit=None):
@@ -191,7 +186,7 @@ class _mockSource(object):
         self.ispsf = src.get(psfkey)
         self.psfflux = src.get(fluxkey)
         self.flags = [nm for key, nm in flagKeys if src.get(key)]
-        #self.cxy = (src.get(xkey), src.get(ykey))
+        # self.cxy = (src.get(xkey), src.get(ykey))
         self.cx = src.get(xkey)
         self.cy = src.get(ykey)
         pks = src.getFootprint().getPeaks()
@@ -223,7 +218,7 @@ def plotDeblendFamily(*args, **kwargs):
     X = plotDeblendFamilyPre(*args, **kwargs)
     plotDeblendFamilyReal(*X, **kwargs)
 
-# Preprocessing: returns _mockSources for the parent and kids
+# Preprocessing: returns _MockSources for the parent and kids
 
 
 def plotDeblendFamilyPre(mi, parent, kids, dkids, srcs, sigma1, ellipses=True, maskbit=None, **kwargs):
@@ -239,14 +234,14 @@ def plotDeblendFamilyPre(mi, parent, kids, dkids, srcs, sigma1, ellipses=True, m
                                   ('SAT', 'base_PixelFlags_flag_saturated'),
                                   ('SAT-C', 'base_PixelFlags_flag_saturatedCenter'),
                                   ]]
-    p = _mockSource(parent, mi, psfkey, fluxkey, xkey, ykey, flagKeys, ellipses=ellipses, maskbit=maskbit)
-    ch = [_mockSource(kid, mi, psfkey, fluxkey, xkey, ykey, flagKeys,
+    p = _MockSource(parent, mi, psfkey, fluxkey, xkey, ykey, flagKeys, ellipses=ellipses, maskbit=maskbit)
+    ch = [_MockSource(kid, mi, psfkey, fluxkey, xkey, ykey, flagKeys,
                       ellipses=ellipses, maskbit=maskbit) for kid in kids]
-    dch = [_mockSource(kid, mi, psfkey, fluxkey, xkey, ykey, flagKeys,
+    dch = [_MockSource(kid, mi, psfkey, fluxkey, xkey, ykey, flagKeys,
                        ellipses=ellipses, maskbit=maskbit) for kid in dkids]
     return (p, ch, dch, sigma1)
 
-# Real thing: make plots given the _mockSources
+# Real thing: make plots given the _MockSources
 
 
 def plotDeblendFamilyReal(parent, kids, dkids, sigma1, plotb=False, idmask=None, ellipses=True,
@@ -419,8 +414,8 @@ def getExtent(bb, addHigh=1):
 def cutCatalog(cat, ndeblends, keepids=None, keepxys=None):
     fams = getFamilies(cat)
     if keepids:
-        #print 'Keeping ids:', keepids
-        #print 'parent ids:', [p.getId() for p,kids in fams]
+        # print 'Keeping ids:', keepids
+        # print 'parent ids:', [p.getId() for p,kids in fams]
         fams = [(p, kids) for (p, kids) in fams if p.getId() in keepids]
     if keepxys:
         keep = []
@@ -453,7 +448,7 @@ def readCatalog(sourcefn, heavypat, ndeblends=0, dataref=None,
         try:
             if not cat:
                 return None
-        except:
+        except Exception:
             return None
     else:
         if not os.path.exists(sourcefn):
@@ -494,7 +489,7 @@ def datarefToButler(dr):
     return dr.butlerSubset.butler
 
 
-class WrapperMapper(object):
+class WrapperMapper:
 
     def __init__(self, real):
         self.real = real
@@ -502,18 +497,18 @@ class WrapperMapper(object):
             if not x.startswith('bypass_'):
                 continue
 
-            class relay_bypass(object):
+            class RelayBypass:
 
                 def __init__(self, real, attr):
                     self.func = getattr(real, attr)
                     self.attr = attr
 
                 def __call__(self, *args):
-                    #print 'relaying', self.attr
-                    #print 'to', self.func
+                    # print('relaying', self.attr)
+                    # print('to', self.func)
                     return self.func(*args)
-            setattr(self, x, relay_bypass(self.real, x))
-            #print 'Wrapping', x
+            setattr(self, x, RelayBypass(self.real, x))
+            # print('Wrapping', x)
 
     def map(self, *args, **kwargs):
         print('Mapping', args, kwargs)

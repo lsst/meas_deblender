@@ -1,16 +1,13 @@
-from __future__ import print_function
-from __future__ import absolute_import
-from builtins import zip
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # noqa E402
 import pylab as plt
 import numpy as np
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.log
 
-from .utils import *
-from .suprime import *
+from .utils import footprintToImage, getExtent, get_sigma1, getFamilies, plotDeblendFamily, readCatalog
+from .suprime import getSuprimeDataref
 
 
 def main():
@@ -36,7 +33,8 @@ def main():
     parser.add_option('--ccd', dest='ccd', type=int, default=5, help='Suprimecam CCD number')
     parser.add_option('--prefix', dest='prefix', default='design-', help='plot filename prefix')
     parser.add_option('--suffix', dest='suffix', default=None, help='plot filename suffix (default: ".png")')
-    parser.add_option('--pat', dest='pat',
+    parser.add_option(
+        '--pat', dest='pat',
         help='Plot filename pattern: eg, "design-%(pid)04i-%(name).png"; overrides --prefix and --suffix')
     parser.add_option('--pdf', dest='pdf', action='store_true', default=False, help='save in PDF format?')
     parser.add_option('-v', dest='verbose', action='store_true')
@@ -268,10 +266,10 @@ def main():
 
         print('Running deblender with kwargs:', kwargs)
         res = deblend(fp, mi, psf, psf_fwhm, **kwargs)
-        #print 'got result with', [x for x in dir(res) if not x.startswith('__')]
-        #for pk in res.peaks:
-        #    print 'got peak with', [x for x in dir(pk) if not x.startswith('__')]
-        #    print '  deblend as psf?', pk.deblend_as_psf
+        # print('got result with', [x for x in dir(res) if not x.startswith('__')])
+        # for pk in res.peaks:
+        #     print('got peak with', [x for x in dir(pk) if not x.startswith('__')])
+        #     print('  deblend as psf?', pk.deblend_as_psf)
 
         # Find bounding-box of all templates.
         tbb = fp.getBBox()
@@ -341,11 +339,11 @@ def main():
             if opt.sec == 'median':
                 try:
                     med = pkres.median_filtered_template
-                except:
+                except Exception:
                     med = pkres.orig_template
 
                 for im, nm in [(pkres.orig_template, 'symm'), (med, 'med')]:
-                    #print 'im:', im
+                    # print('im:', im)
                     plt.clf()
                     myimshow(im.getArray(), extent=cext, **imargs)
                     plt.gray()
@@ -522,7 +520,7 @@ def main():
             # Fraction of flux assigned to this child.
             plt.clf()
             plt.imshow(frac, extent=cext, interpolation='nearest', origin='lower', vmin=0, vmax=1)
-            #plt.plot([x0,x0,x1,x1,x0], [y0,y1,y1,y0,y0], 'k-')
+            # plt.plot([x0,x0,x1,x1,x0], [y0,y1,y1,y0,y0], 'k-')
             plt.gray()
             plt.xticks([])
             plt.yticks([])
@@ -532,6 +530,7 @@ def main():
             savefig(pid, 'f%i' % (mapchild(k)))
 
             k += 1
+
 
 if __name__ == '__main__':
     main()

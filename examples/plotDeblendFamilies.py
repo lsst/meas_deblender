@@ -1,7 +1,5 @@
-from __future__ import print_function
-from builtins import range
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # noqa E402
 import pylab as plt
 
 import os
@@ -11,9 +9,9 @@ import lsst.daf.persistence as dafPersist
 import lsst.afw.detection as afwDet
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
-from lsst.meas.deblender.baseline import *
+from lsst.meas.deblender.baseline import deblend
 
-from astrometry.util.plotutils import *
+from astrometry.util.plotutils import PlotSequence
 
 import lsstDebug
 lsstDebug.Info('lsst.meas.deblender.baseline').psf = True
@@ -49,12 +47,12 @@ def foot_to_img(foot, img=None):
 
 def img_to_rgb(im, mn, mx):
     rgbim = np.clip((im-mn)/(mx-mn), 0., 1.)[:, :, np.newaxis].repeat(3, axis=2)
-    I = np.isnan(im)
+    imNans = np.isnan(im)
     for i in range(3):
-        rgbim[:, :, i][I] = (0.8, 0.8, 0.3)[i]
-    I = (im == 0)
+        rgbim[:, :, i][imNans] = (0.8, 0.8, 0.3)[i]
+    imZeros = (im == 0)
     for i in range(3):
-        rgbim[:, :, i][I] = (0.5, 0.5, 0.8)[i]
+        rgbim[:, :, i][imZeros] = (0.5, 0.5, 0.8)[i]
     return rgbim
 
 
@@ -77,9 +75,9 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
     else:
         ss = sources
 
-    #print 'Sources', ss
-    #print 'Calexp', calexp
-    #print dir(ss)
+    # print('Sources', ss)
+    # print('Calexp', calexp)
+    # print(dir(ss))
 
     srcs = {}
     families = {}
@@ -89,7 +87,7 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
         parent = src.getParent()
         if parent == 0:
             continue
-        if not parent in families:
+        if parent not in families:
             families[parent] = []
         families[parent].append(src)
         # print 'Source', src
@@ -136,8 +134,8 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
 
         parent = srcs[p]
         pid = parent.getId() & 0xffff
-        if len(pids) and not pid in pids:
-            #print 'Skipping pid', pid
+        if len(pids) and pid not in pids:
+            # print('Skipping pid', pid)
             continue
 
         if len(kids) < minsize:
@@ -218,7 +216,7 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
                 kfoot = kid.getFootprint()
                 print('kfoot:', kfoot)
                 print('heavy?', kfoot.isHeavy())
-                #print dir(kid)
+                # print(dir(kid))
                 kbb = kfoot.getBBox()
                 ky0, ky1, kx0, kx1 = kbb.getMinY(), kbb.getMaxY(), kbb.getMinX(), kbb.getMaxX()
                 kslc = slice(ky0, ky1+1), slice(kx0, kx1+1)
@@ -321,7 +319,7 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
 
                 plt.imshow(img_to_rgb(kimg.getArray(), mn, mx), extent=bb_to_ext(kbb), **ima)
 
-                #plt.imshow(kimg.getArray(), extent=bb_to_ext(kbb), **ima)
+                # plt.imshow(kimg.getArray(), extent=bb_to_ext(kbb), **ima)
 
                 plt.axis(ax)
 
@@ -334,14 +332,14 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
             plt.clf()
 
             ima = dict(interpolation='nearest', origin='lower', cmap='gray')
-            #vmin=0, vmax=kid.psfFitFlux)
+            # vmin=0, vmax=kid.psfFitFlux)
 
             plt.subplot(2, 4, 1)
-            #plt.title('fit psf 0')
-            #plt.imshow(kid.psfFitDebugPsf0Img.getArray(), **ima)
-            #plt.colorbar()
-            #plt.title('valid pixels')
-            #plt.imshow(kid.psfFitDebugValidPix, vmin=0, vmax=1, **ima)
+            # plt.title('fit psf 0')
+            # plt.imshow(kid.psfFitDebugPsf0Img.getArray(), **ima)
+            # plt.colorbar()
+            # plt.title('valid pixels')
+            # plt.imshow(kid.psfFitDebugValidPix, vmin=0, vmax=1, **ima)
             plt.title('weights')
             plt.imshow(kid.psfFitDebugWeight, vmin=0, **ima)
             plt.xticks([])
@@ -356,9 +354,9 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
             plt.colorbar()
 
             plt.subplot(2, 4, 2)
-            #plt.title('ramp weights')
-            #plt.imshow(kid.psfFitDebugRampWeight, vmin=0, vmax=1, **ima)
-            #plt.colorbar()
+            # plt.title('ramp weights')
+            # plt.imshow(kid.psfFitDebugRampWeight, vmin=0, vmax=1, **ima)
+            # plt.colorbar()
             sig = np.sqrt(kid.psfFitDebugVar.getArray())
             data = kid.psfFitDebugStamp.getArray()
             model = kid.psfFitDebugPsfModel.getArray()
@@ -413,9 +411,9 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
             mx = kid.psfFitDebugPsfModel.getArray().max()
 
             plt.subplot(2, 4, 3)
-            #plt.title('fit psf')
-            #plt.imshow(kid.psfFitDebugPsfImg.getArray(), **ima)
-            #plt.colorbar()
+            # plt.title('fit psf')
+            # plt.imshow(kid.psfFitDebugPsfImg.getArray(), **ima)
+            # plt.colorbar()
             # plt.title('variance')
             # plt.imshow(kid.psfFitDebugVar.getArray(), vmin=0, **ima)
             # plt.colorbar()
@@ -463,12 +461,12 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
 
             chi, dof = kid.psfFitBest
             plt.suptitle('PSF kid %i: flux %.1f, sky %.1f, sig1 %.1f' %
-                         (i, flux, sky, sig1)) #: chisq %g, dof %i' % (i, chi, dof))
+                         (i, flux, sky, sig1))  # : chisq %g, dof %i' % (i, chi, dof))
 
             ps.savefig()
 
-        #if ifam == 5:
-        #    break
+        # if ifam == 5:
+        #     break
 
 
 if __name__ == '__main__':

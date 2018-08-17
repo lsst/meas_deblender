@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # See COPYRIGHT file.
@@ -21,7 +20,6 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy as np
-from builtins import range
 
 import scarlet
 
@@ -29,10 +27,9 @@ import lsst.pex.exceptions
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.afw.geom as afwGeom
-from lsst.afw.image import PARENT
 
 # Import C++ routines
-from .baselineUtils import BaselineUtilsF as butils
+from .baselineUtils import BaselineUtilsF as bUtils
 
 
 def clipFootprintToNonzeroImpl(foot, image):
@@ -64,7 +61,7 @@ def clipFootprintToNonzeroImpl(foot, image):
     foot.removeOrphanPeaks()
 
 
-class DeblenderPlugin(object):
+class DeblenderPlugin:
     """Class to define plugins for the deblender.
 
     The new deblender executes a series of plugins specified by the user.
@@ -115,8 +112,10 @@ class DeblenderPlugin(object):
 
     def __str__(self):
         return ("<Deblender Plugin: func={0}, kwargs={1}".format(self.func.__name__, self.kwargs))
+
     def __repr__(self):
         return self.__str__()
+
 
 def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
     """Update the peak in each band with an error
@@ -151,6 +150,7 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
     for fidx, f in enumerate(filters):
         pkResult = debResult.deblendedParents[f].peaks[pk]
         getattr(pkResult, flag)()
+
 
 def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
                             sources=None, constraints=None, config=None, maxIter=100, bgScale=0.5,
@@ -250,7 +250,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
                                           monotonic=True,
                                           thresh=1.0,
                                           config=config)
-            for pk,peak in enumerate(peaks)
+            for pk, peak in enumerate(peaks)
         ]
 
     # When a footprint includes only non-detections
@@ -288,11 +288,11 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
 
         # Footprint must be inside the image
         if not imbb.contains(afwGeom.Point2I(cx, cy)):
-            _setPeakError(debResult, log, pk, cx, cy, debResult.filters, 
+            _setPeakError(debResult, log, pk, cx, cy, debResult.filters,
                           "peak center is not inside image", "setOutOfBounds")
             continue
         # Only save templates that have nonzero flux
-        if np.sum(src.morph)==0:
+        if np.sum(src.morph) == 0:
             _setPeakError(debResult, log, pk, cx, cy, debResult.filters,
                           "had no flux", "setFailedSymmetricTemplate")
             continue
@@ -329,6 +329,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
             pkResult.peak.setIx(icx)
             pkResult.peak.setIy(icy)
     return modified
+
 
 def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.5, tinyFootprintSize=2):
     """Fit a PSF + smooth background model (linear) to a small region around each peak
@@ -396,6 +397,7 @@ def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.
                             dp.img, dp.varimg, psfChisqCut1, psfChisqCut2, psfChisqCut2b, tinyFootprintSize)
             modified = modified or ispsf
     return modified
+
 
 def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
             img, varimg, psfChisqCut1, psfChisqCut2, psfChisqCut2b,
@@ -863,6 +865,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
 
     return ispsf
 
+
 def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=True):
     """Build a symmetric template for each peak in each filter
 
@@ -907,8 +910,8 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
                 pkres.setOutOfBounds()
                 continue
             log.trace('computing template for peak %i at (%i, %i)', pkres.pki, cx, cy)
-            timg, tfoot, patched = butils.buildSymmetricTemplate(dp.maskedImage, dp.fp, pk, dp.avgNoise,
-                                                       True, patchEdges)
+            timg, tfoot, patched = bUtils.buildSymmetricTemplate(dp.maskedImage, dp.fp, pk, dp.avgNoise,
+                                                                 True, patchEdges)
             if timg is None:
                 log.trace('Peak %i at (%i, %i): failed to build symmetric template', pkres.pki, cx, cy)
                 pkres.setFailedSymmetricTemplate()
@@ -922,6 +925,7 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
                 pkres.setOrigTemplate(timg, tfoot)
             pkres.setTemplate(timg, tfoot)
     return modified
+
 
 def rampFluxAtEdge(debResult, log, patchEdges=False):
     """Adjust flux on the edges of the template footprints.
@@ -956,7 +960,7 @@ def rampFluxAtEdge(debResult, log, patchEdges=False):
             if pkres.skip or pkres.deblendedAsPsf:
                 continue
             timg, tfoot = pkres.templateImage, pkres.templateFootprint
-            if butils.hasSignificantFluxAtEdge(timg, tfoot, 3*dp.avgNoise):
+            if bUtils.hasSignificantFluxAtEdge(timg, tfoot, 3*dp.avgNoise):
                 log.trace("Template %i has significant flux at edge: ramping", pkres.pki)
                 try:
                     (timg2, tfoot2, patched) = _handle_flux_at_edge(log, dp.psffwhm, timg, tfoot, dp.fp,
@@ -964,8 +968,8 @@ def rampFluxAtEdge(debResult, log, patchEdges=False):
                                                                     dp.y0, dp.y1, dp.psf, pkres.peak,
                                                                     dp.avgNoise, patchEdges)
                 except lsst.pex.exceptions.Exception as exc:
-                    if (isinstance(exc, lsst.pex.exceptions.InvalidParameterError)
-                            and "CoaddPsf" in str(exc)):
+                    if (isinstance(exc, lsst.pex.exceptions.InvalidParameterError) and
+                            "CoaddPsf" in str(exc)):
                         pkres.setOutOfBounds()
                         continue
                     raise
@@ -976,9 +980,9 @@ def rampFluxAtEdge(debResult, log, patchEdges=False):
                 modified = True
     return modified
 
+
 def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
-                         x0, x1, y0, y1, psf, pk, sigma1, patchEdges
-    ):
+                         x0, x1, y0, y1, psf, pk, sigma1, patchEdges):
     """Extend a template by the PSF to fill in the footprint.
 
     Using the PSF, a footprint that touches the edge is passed to the function
@@ -1049,7 +1053,7 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
     fpcopy.spans.clippedTo(maskedImage.getBBox()).copyMaskedImage(maskedImage, padim)
 
     # find pixels on the edge of the template
-    edgepix = butils.getSignificantEdgePixels(t1, tfoot, -1e6)
+    edgepix = bUtils.getSignificantEdgePixels(t1, tfoot, -1e6)
 
     # instantiate PSF image
     xc = int((x0 + x1)/2)
@@ -1089,10 +1093,10 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
 
     # Fill in the "padim" (which has the right variance and
     # mask planes) with the ramped pixels, outside the footprint
-    I = (padim.getImage().getArray() == 0)
-    padim.getImage().getArray()[I] = ramped.getArray()[I]
+    imZeros = (padim.getImage().getArray() == 0)
+    padim.getImage().getArray()[imZeros] = ramped.getArray()[imZeros]
 
-    t2, tfoot2, patched = butils.buildSymmetricTemplate(padim, fpcopy, pk, sigma1, True, patchEdges)
+    t2, tfoot2, patched = bUtils.buildSymmetricTemplate(padim, fpcopy, pk, sigma1, True, patchEdges)
 
     # This template footprint may extend outside the parent
     # footprint -- or the image.  Clip it.
@@ -1104,6 +1108,7 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
     t2 = t2.Factory(t2, tbb, afwImage.PARENT, True)
 
     return t2, tfoot2, patched
+
 
 def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
     """Applying median smoothing filter to the template images for every peak in every filter.
@@ -1140,7 +1145,7 @@ def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
                 # We want the output to go in "t1", so copy it into
                 # "inimg" for input
                 inimg = timg.Factory(timg, True)
-                butils.medianFilter(inimg, timg, medianFilterHalfsize)
+                bUtils.medianFilter(inimg, timg, medianFilterHalfsize)
                 # possible save this median-filtered template
                 pkres.setMedianFilteredTemplate(timg, tfoot)
             else:
@@ -1148,6 +1153,7 @@ def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
                           pkres.pki, timg.getWidth(), timg.getHeight(), filtsize, filtsize)
             pkres.setTemplate(timg, tfoot)
     return modified
+
 
 def makeTemplatesMonotonic(debResult, log):
     """Make the templates monotonic.
@@ -1179,9 +1185,10 @@ def makeTemplatesMonotonic(debResult, log):
             timg, tfoot = pkres.templateImage, pkres.templateFootprint
             pk = pkres.peak
             log.trace('Making template %i monotonic', pkres.pki)
-            butils.makeMonotonic(timg, pk)
+            bUtils.makeMonotonic(timg, pk)
             pkres.setTemplate(timg, tfoot)
     return modified
+
 
 def clipFootprintsToNonzero(debResult, log):
     """Clip non-zero spans in the template footprints for every peak in each filter.
@@ -1203,20 +1210,19 @@ def clipFootprintsToNonzero(debResult, log):
         Whether or not any templates were modified.
         This will be ``True`` as long as there is at least one source that is not flagged as a PSF.
     """
-    modified = False
     # Loop over all filters
     for fidx in debResult.filters:
         dp = debResult.deblendedParents[fidx]
         for peaki, pkres in enumerate(dp.peaks):
             if pkres.skip or pkres.deblendedAsPsf:
                 continue
-            modified = True
             timg, tfoot = pkres.templateImage, pkres.templateFootprint
             clipFootprintToNonzeroImpl(tfoot, timg)
             if not tfoot.getBBox().isEmpty() and tfoot.getBBox() != timg.getBBox(afwImage.PARENT):
                 timg = timg.Factory(timg, tfoot.getBBox(), afwImage.PARENT, True)
             pkres.setTemplate(timg, tfoot)
     return False
+
 
 def weightTemplates(debResult, log):
     """Weight the templates to best fit the observed image in each filter
@@ -1243,6 +1249,7 @@ def weightTemplates(debResult, log):
     for fidx in debResult.filters:
         _weightTemplates(debResult.deblendedParents[fidx])
     return False
+
 
 def _weightTemplates(dp):
     """Weight the templates to best match the parent Footprint in a single filter
@@ -1284,6 +1291,7 @@ def _weightTemplates(dp):
         pkres.templateImage *= X1[index]
         pkres.setTemplateWeight(X1[index])
         index += 1
+
 
 def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
     """Remove "degenerate templates"
@@ -1367,7 +1375,6 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
         if foundReject:
             keep = indexes[i]
             reject = indexes[rejectedIndex]
-            exitLoop = False
             if dp.peaks[keep].deblendedAsPsf and dp.peaks[reject].deblendedAsPsf is False:
                 keep = indexes[rejectedIndex]
                 reject = indexes[i]
@@ -1384,6 +1391,7 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
             dp.peaks[reject].degenerate = True
 
     return foundReject
+
 
 def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-to-peak',
                   strayFluxToPointSources='necessary', clipStrayFluxFraction=0.001,
@@ -1478,24 +1486,24 @@ def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-t
         strayopts = 0
         if strayFluxAssignment == 'trim':
             assignStrayFlux = False
-            strayopts |= butils.STRAYFLUX_TRIM
+            strayopts |= bUtils.STRAYFLUX_TRIM
         if assignStrayFlux:
-            strayopts |= butils.ASSIGN_STRAYFLUX
+            strayopts |= bUtils.ASSIGN_STRAYFLUX
             if strayFluxToPointSources == 'necessary':
-                strayopts |= butils.STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY
+                strayopts |= bUtils.STRAYFLUX_TO_POINT_SOURCES_WHEN_NECESSARY
             elif strayFluxToPointSources == 'always':
-                strayopts |= butils.STRAYFLUX_TO_POINT_SOURCES_ALWAYS
+                strayopts |= bUtils.STRAYFLUX_TO_POINT_SOURCES_ALWAYS
 
             if strayFluxAssignment == 'r-to-peak':
                 # this is the default
                 pass
             elif strayFluxAssignment == 'r-to-footprint':
-                strayopts |= butils.STRAYFLUX_R_TO_FOOTPRINT
+                strayopts |= bUtils.STRAYFLUX_R_TO_FOOTPRINT
             elif strayFluxAssignment == 'nearest-footprint':
-                strayopts |= butils.STRAYFLUX_NEAREST_FOOTPRINT
+                strayopts |= bUtils.STRAYFLUX_NEAREST_FOOTPRINT
 
-        portions, strayflux = butils.apportionFlux(dp.maskedImage, dp.fp, tmimgs, tfoots, sumimg, dpsf,
-                                        pkx, pky, strayopts, clipStrayFluxFraction)
+        portions, strayflux = bUtils.apportionFlux(dp.maskedImage, dp.fp, tmimgs, tfoots, sumimg, dpsf,
+                                                   pkx, pky, strayopts, clipStrayFluxFraction)
 
         # Shrink parent to union of children
         if strayFluxAssignment == 'trim':

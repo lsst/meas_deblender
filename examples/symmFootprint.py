@@ -39,9 +39,9 @@ def main():
         plt.gray()
         plt.savefig('sfoot3.png')
 
-        #plt.plot([364], [111], 'r.')
-        #plt.plot([367], [117], 'r.')
-        #plt.savefig('sfoot4.png')
+        # plt.plot([364], [111], 'r.')
+        # plt.plot([367], [117], 'r.')
+        # plt.savefig('sfoot4.png')
 
 
 def buildExample():
