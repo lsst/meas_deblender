@@ -42,7 +42,7 @@ DEFAULT_PLUGINS = [
 ]
 
 
-class DeblenderResult(object):
+class DeblenderResult:
     """Collection of objects in multiple bands for a single parent footprint
     """
 
@@ -147,7 +147,7 @@ class DeblenderResult(object):
                 self.deblendedParents[f].templateSum = templateSum
 
 
-class DeblendedParent(object):
+class DeblendedParent:
     """Deblender result of a single parent footprint, in a single band
 
     Convenience class to store useful objects used by the deblender for a single band,
@@ -225,7 +225,7 @@ class DeblendedParent(object):
         self.x1, self.y1 = self.bb.getMaxX(), self.bb.getMaxY()
 
 
-class MultiColorPeak(object):
+class MultiColorPeak:
     """Collection of single peak deblender results in multiple bands.
 
     There is one of these objects for each Peak in the footprint.
@@ -264,7 +264,7 @@ class MultiColorPeak(object):
         self.y = self.deblendedPeaks[self.filters[0]].peak.getFy()
 
 
-class DeblendedPeak(object):
+class DeblendedPeak:
     """Result of deblending a single Peak within a parent Footprint.
 
     There is one of these objects for each Peak in the Footprint.
@@ -750,7 +750,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     return debResult
 
 
-class CachingPsf(object):
+class CachingPsf:
     """Cache the PSF models
 
     In the PSF fitting code, we request PSF models for all peaks near

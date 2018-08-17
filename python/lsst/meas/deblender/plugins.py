@@ -62,7 +62,7 @@ def clipFootprintToNonzeroImpl(foot, image):
     foot.removeOrphanPeaks()
 
 
-class DeblenderPlugin(object):
+class DeblenderPlugin:
     """Class to define plugins for the deblender.
 
     The new deblender executes a series of plugins specified by the user.

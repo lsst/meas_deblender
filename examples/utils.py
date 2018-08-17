@@ -167,7 +167,7 @@ class DebugSourceMeasTask(measAlg.SourceMeasurementTask):
 # picklable, so in preprocessing we pull out the items we need for plotting, putting them in
 # a _MockSource object.
 
-class _MockSource(object):
+class _MockSource:
 
     def __init__(self, src, mi, psfkey, fluxkey, xkey, ykey, flagKeys, ellipses=True,
                  maskbit=None):
@@ -489,7 +489,7 @@ def datarefToButler(dr):
     return dr.butlerSubset.butler
 
 
-class WrapperMapper(object):
+class WrapperMapper:
 
     def __init__(self, real):
         self.real = real
@@ -497,7 +497,7 @@ class WrapperMapper(object):
             if not x.startswith('bypass_'):
                 continue
 
-            class RelayBypass(object):
+            class RelayBypass:
 
                 def __init__(self, real, attr):
                     self.func = getattr(real, attr)
