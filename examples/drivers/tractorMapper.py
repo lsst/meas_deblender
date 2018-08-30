@@ -95,8 +95,6 @@ class TractorMapper(Mapper):
         storagetype = None
         if path.endswith('.fits'):
             storagetype = 'FitsStorage'
-        elif path.endswith('.boost'):
-            storagetype = 'BoostStorage'
         elif path.endswith('.pickle'):
             storagetype = 'PickleStorage'
         return ButlerLocation(cname, pyname, storagetype, path, dataId)
