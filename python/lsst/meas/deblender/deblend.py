@@ -1,9 +1,10 @@
+# This file is part of meas_deblender.
 #
-# LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import math
 import numpy as np
 import time
@@ -199,8 +199,8 @@ class SourceDeblendTask(pipeBase.Task):
                                       doc='Deblender thought this source looked like a PSF')
         self.psfCenterKey = afwTable.Point2DKey.addFields(schema, 'deblend_psfCenter',
                                                           'If deblended-as-psf, the PSF centroid', "pixel")
-        self.psfFluxKey = schema.addField('deblend_psfFlux', type='D',
-                                          doc='If deblended-as-psf, the PSF flux')
+        self.psfFluxKey = schema.addField('deblend_psf_instFlux', type='D',
+                                          doc='If deblended-as-psf, the instrumental PSF flux', units='count')
         self.tooManyPeaksKey = schema.addField('deblend_tooManyPeaks', type='Flag',
                                                doc='Source had too many peaks; '
                                                'only the brightest were included')
@@ -809,8 +809,8 @@ class MultibandDeblendTask(pipeBase.Task):
         # TODO: Remove these whem the old deblender is removed
         self.psfCenterKey = afwTable.Point2DKey.addFields(schema, 'deblend_psfCenter',
                                                           'If deblended-as-psf, the PSF centroid', "pixel")
-        self.psfFluxKey = schema.addField('deblend_psfFlux', type='D',
-                                          doc='If deblended-as-psf, the PSF flux')
+        self.psfFluxKey = schema.addField('deblend_psf_instFlux', type='D',
+                                          doc='If deblended-as-psf, the instrumental PSF flux', units='count')
         self.deblendRampedTemplateKey = schema.addField(
             'deblend_rampedTemplate', type='Flag',
             doc=('This source was near an image edge and the deblender used '
