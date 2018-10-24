@@ -264,7 +264,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         log.warn(e.args[0])
         debResult.failed = True
         return False
-    except np.linalg.LinAlgError as e:
+    except np.linalg.LinAlgError:
         log.warn("Deblend failed catastrophically, most likely due to no signal in the footprint")
         debResult.failed = True
         return False
