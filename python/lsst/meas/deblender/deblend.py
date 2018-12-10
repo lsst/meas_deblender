@@ -174,6 +174,8 @@ class SourceDeblendTask(pipeBase.Task):
         """
         pipeBase.Task.__init__(self, **kwargs)
         self.schema = schema
+        self.toCopyFromParent = [item.key for item in self.schema
+                                 if item.field.getName().startswith("merge_footprint")]
         peakMinimalSchema = afwDet.PeakTable.makeMinimalSchema()
         if peakSchema is None:
             # In this case, the peakSchemaMapper will transfer nothing, but we'll still have one
@@ -377,6 +379,8 @@ class SourceDeblendTask(pipeBase.Task):
                 src.set(self.deblendSkippedKey, False)
                 child = srcs.addNew()
                 nchild += 1
+                for key in self.toCopyFromParent:
+                    child.set(key, src.get(key))
                 child.assign(heavy.getPeaks()[0], self.peakSchemaMapper)
                 child.setParent(src.getId())
                 child.setFootprint(heavy)
