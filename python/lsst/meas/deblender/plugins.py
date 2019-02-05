@@ -1383,8 +1383,8 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
                 keep = indexes[i]
             else:
                 if maxTemplate[rejectedIndex] > maxTemplate[i]:
-                        keep = indexes[rejectedIndex]
-                        reject = indexes[i]
+                    keep = indexes[rejectedIndex]
+                    reject = indexes[i]
             log.trace('Removing object with index %d : %f.  Degenerate with %d' % (reject, currentMax,
                                                                                    keep))
             dp.peaks[reject].skip = True
