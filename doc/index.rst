@@ -9,5 +9,4 @@ meas_deblender documentation preview
 .. toctree::
    :maxdepth: 1
 
-   meas_deblender/index
    lsst.meas.deblender/index
