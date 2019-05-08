@@ -30,6 +30,8 @@ from lsst.meas.algorithms.detection import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.meas.deblender as measDeb
 
+from lsst.meas.base import SincCoeffsD
+
 try:
     type(display)
 except NameError:
@@ -65,6 +67,7 @@ class IncludeTestCase(lsst.utils.tests.TestCase):
         del self.calexpOrig
         del self.calexp
 
+    @unittest.skipIf(SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
     def testInclude(self):
         schema = afwTable.SourceTable.makeMinimalSchema()
 
