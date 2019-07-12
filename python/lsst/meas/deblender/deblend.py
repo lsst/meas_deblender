@@ -296,12 +296,14 @@ class SourceDeblendTask(pipeBase.Task):
             if self.isLargeFootprint(fp):
                 src.set(self.tooBigKey, True)
                 self.skipParent(src, mi.getMask())
-                self.log.trace('Parent %i: skipping large footprint', int(src.getId()))
+                self.log.warn('Parent %i: skipping large footprint (area: %i)',
+                              int(src.getId()), int(fp.getArea()))
                 continue
             if self.isMasked(fp, exposure.getMaskedImage().getMask()):
                 src.set(self.maskedKey, True)
                 self.skipParent(src, mi.getMask())
-                self.log.trace('Parent %i: skipping masked footprint', int(src.getId()))
+                self.log.warn('Parent %i: skipping masked footprint (area: %i)',
+                              int(src.getId()), int(fp.getArea()))
                 continue
 
             nparents += 1
@@ -982,12 +984,14 @@ class MultibandDeblendTask(pipeBase.Task):
             if self.isLargeFootprint(foot):
                 src.set(self.tooBigKey, True)
                 self.skipParent(src, [mi.getMask() for mi in mMaskedImage])
-                self.log.trace('Parent %i: skipping large footprint', int(src.getId()))
+                self.log.warn('Parent %i: skipping large footprint (area: %i)',
+                              int(src.getId()), int(foot.getArea()))
                 continue
             if self.isMasked(foot, exposure.getMaskedImage().getMask()):
                 src.set(self.maskedKey, True)
                 self.skipParent(src, mi.getMask())
-                self.log.trace('Parent %i: skipping masked footprint', int(src.getId()))
+                self.log.trace('Parent %i: skipping masked footprint (area: %i)',
+                               int(src.getId()), int(foot.getArea()))
                 continue
             if len(peaks) > self.config.maxNumberOfPeaks:
                 src.set(self.tooManyPeaksKey, True)
