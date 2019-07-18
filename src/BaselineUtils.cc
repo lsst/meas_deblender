@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "lsst/log/Log.h"
+#include "lsst/geom.h"
 #include "lsst/meas/deblender/BaselineUtils.h"
 #include "lsst/pex/exceptions.h"
 #include "lsst/afw/geom/Span.h"
@@ -14,6 +15,7 @@ namespace image = lsst::afw::image;
 namespace det = lsst::afw::detection;
 namespace deblend = lsst::meas::deblender;
 namespace afwGeom = lsst::afw::geom;
+namespace geom = lsst::geom;
 
 template <typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
 const int deblend::BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>::ASSIGN_STRAYFLUX;
@@ -415,7 +417,7 @@ _find_stray_flux(det::Footprint const& foot,
 
     int ix0 = img.getX0();
     int iy0 = img.getY0();
-    afwGeom::Box2I sumbb = tsum->getBBox();
+    geom::Box2I sumbb = tsum->getBBox();
     int sumx0 = sumbb.getMinX();
     int sumy0 = sumbb.getMinY();
 
@@ -608,14 +610,14 @@ void
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 _sum_templates(std::vector<ImagePtrT> timgs,
                ImagePtrT tsum) {
-    afwGeom::Box2I sumbb = tsum->getBBox();
+    geom::Box2I sumbb = tsum->getBBox();
     int sumx0 = sumbb.getMinX();
     int sumy0 = sumbb.getMinY();
 
     // Compute  tsum = the sum of templates
     for (size_t i=0; i<timgs.size(); ++i) {
         ImagePtrT timg = timgs[i];
-        afwGeom::Box2I tbb = timg->getBBox();
+        geom::Box2I tbb = timg->getBBox();
         int tx0 = tbb.getMinX();
         int ty0 = tbb.getMinY();
         // To handle "ramped" templates that can extend outside the
@@ -730,7 +732,7 @@ apportionFlux(MaskedImageT const& img,
 
     int ix0 = img.getX0();
     int iy0 = img.getY0();
-    afwGeom::Box2I fbb = foot.getBBox();
+    geom::Box2I fbb = foot.getBBox();
 
     if (!tsum) {
         tsum = ImagePtrT(new ImageT(fbb.getDimensions()));
@@ -742,7 +744,7 @@ apportionFlux(MaskedImageT const& img,
                           "Template sum image MUST contain parent footprint");
     }
 
-    afwGeom::Box2I sumbb = tsum->getBBox();
+    geom::Box2I sumbb = tsum->getBBox();
     int sumx0 = sumbb.getMinX();
     int sumy0 = sumbb.getMinY();
 
@@ -757,7 +759,7 @@ apportionFlux(MaskedImageT const& img,
         portions.push_back(port);
 
         // Split flux = image * template / tsum
-        afwGeom::Box2I tbb = timg->getBBox();
+        geom::Box2I tbb = timg->getBBox();
         int tx0 = tbb.getMinX();
         int ty0 = tbb.getMinY();
         // As above
@@ -922,15 +924,15 @@ private:
  // Check symmetrizeFootprint by computing truth naively.
      // compute correct answer dumbly
      det::Footprint truefoot;
-     afwGeom::Box2I bbox = foot.getBBox();
+     geom::Box2I bbox = foot.getBBox();
      for (int y=bbox.getMinY(); y<=bbox.getMaxY(); y++) {
      for (int x=bbox.getMinX(); x<=bbox.getMaxX(); x++) {
      int dy = y - cy;
      int dx = x - cx;
      int x2 = cx - dx;
      int y2 = cy - dy;
-     if (foot.contains(afwGeom::Point2I(x,  y)) &&
-     foot.contains(afwGeom::Point2I(x2, y2))) {
+     if (foot.contains(geom::Point2I(x,  y)) &&
+     foot.contains(geom::Point2I(x2, y2))) {
      truefoot.addSpan(y, x, x);
      }
      }
@@ -1005,7 +1007,7 @@ symmetrizeFootprint(
             ++peakspan;
             sp = *peakspan;
             if (!sp.contains(cx, cy)) {
-                afwGeom::Box2I fbb = foot.getBBox();
+                geom::Box2I fbb = foot.getBBox();
                 LOGL_WARN(_log, "Failed to find span containing (%i,%i): nearest is %i, [%i,%i].  "
                           "Footprint bbox is [%i,%i],[%i,%i]",
                           cx, cy, sp.getY(), sp.getX0(), sp.getX1(),
@@ -1269,8 +1271,8 @@ buildSymmetricTemplate(
             // of the min pixel
 
             // We have already checked the bounding box, so this should always be satisfied
-            assert(theimg->getBBox(image::PARENT).contains(afwGeom::Point2I(fx, fy)));
-            assert(theimg->getBBox(image::PARENT).contains(afwGeom::Point2I(bx, by)));
+            assert(theimg->getBBox(image::PARENT).contains(geom::Point2I(fx, fy)));
+            assert(theimg->getBBox(image::PARENT).contains(geom::Point2I(bx, by)));
 
             // FIXME -- we could do this with image iterators instead.
             // But first profile to show that it's necessary and an
@@ -1291,12 +1293,12 @@ buildSymmetricTemplate(
         // Find spans whose mirrors fall outside the image bounds,
         // grow the footprint to include those spans, and plug in
         // their pixel values.
-        afwGeom::Box2I bb = sfoot->getBBox();
+        geom::Box2I bb = sfoot->getBBox();
 
         // Actually, it's not necessarily the IMAGE bounds that count
         //-- the footprint may not go right to the image edge.
-        //afwGeom::Box2I imbb = img.getBBox();
-        afwGeom::Box2I imbb = foot.getBBox();
+        //geom::Box2I imbb = img.getBBox();
+        geom::Box2I imbb = foot.getBBox();
 
         LOGL_DEBUG(_log, "Footprint touches EDGE: start bbox [%i,%i],[%i,%i]",
                    bb.getMinX(), bb.getMaxX(), bb.getMinY(), bb.getMaxY());
@@ -1308,13 +1310,13 @@ buildSymmetricTemplate(
             // mirrored coords
             int ym = cy + (cy - y);
             int xm = cx + (cx - x);
-            if (!imbb.contains(afwGeom::Point2I(xm, ym))) {
-                bb.include(afwGeom::Point2I(x, y));
+            if (!imbb.contains(geom::Point2I(xm, ym))) {
+                bb.include(geom::Point2I(x, y));
             }
             x = fwd->getX1();
             xm = cx + (cx - x);
-            if (!imbb.contains(afwGeom::Point2I(xm, ym))) {
-                bb.include(afwGeom::Point2I(x, y));
+            if (!imbb.contains(geom::Point2I(xm, ym))) {
+                bb.include(geom::Point2I(x, y));
             }
         }
         LOGL_DEBUG(_log, "Footprint touches EDGE: grown bbox [%i,%i],[%i,%i]",
@@ -1341,8 +1343,8 @@ buildSymmetricTemplate(
             int ym  = cy + (cy - y);
             int xm0 = cx + (cx - x0);
             int xm1 = cx + (cx - x1);
-            bool in0 = imbb.contains(afwGeom::Point2I(xm0, ym));
-            bool in1 = imbb.contains(afwGeom::Point2I(xm1, ym));
+            bool in0 = imbb.contains(geom::Point2I(xm0, ym));
+            bool in1 = imbb.contains(geom::Point2I(xm1, ym));
             if (in0 && in1) {
                 // both endpoints of the symmetric span are in bounds; nothing to do
                 continue;
