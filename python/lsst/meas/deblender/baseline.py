@@ -25,7 +25,7 @@ import numpy as np
 import lsst.pex.exceptions
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.math as afwMath
 
 from . import plugins
@@ -767,7 +767,7 @@ class CachingPsf:
         if im is not None:
             return im
         try:
-            im = self.psf.computeImage(afwGeom.Point2D(cx, cy))
+            im = self.psf.computeImage(geom.Point2D(cx, cy))
         except lsst.pex.exceptions.Exception:
             im = self.psf.computeImage()
         self.cache[(cx, cy)] = im

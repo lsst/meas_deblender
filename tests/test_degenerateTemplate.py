@@ -25,7 +25,7 @@ import numpy as np
 
 import lsst.utils.tests
 import lsst.afw.detection as afwDet
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 from lsst.meas.deblender.baseline import deblend
 import lsst.meas.algorithms as measAlg
@@ -54,7 +54,7 @@ class DegenerateTemplateTestCase(lsst.utils.tests.TestCase):
         '''
         H, W = 100, 100
 
-        fpbb = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Point2I(W - 1, H - 1))
+        fpbb = geom.Box2I(geom.Point2I(0, 0), geom.Point2I(W - 1, H - 1))
 
         afwimg = afwImage.MaskedImageF(fpbb)
         imgbb = afwimg.getBBox()
@@ -74,7 +74,7 @@ class DegenerateTemplateTestCase(lsst.utils.tests.TestCase):
         XY = [(x, 35.), (x, 65.), (50., 50.)]
         flux = 1e6
         for x, y in XY:
-            bim = blob_psf.computeImage(afwGeom.Point2D(x, y))
+            bim = blob_psf.computeImage(geom.Point2D(x, y))
             bbb = bim.getBBox()
             bbb.clip(imgbb)
 

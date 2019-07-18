@@ -26,7 +26,7 @@ import numpy as np
 
 import lsst.utils.tests
 import lsst.afw.detection as afwDet
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.meas.algorithms as measAlg
 from lsst.log import Log
@@ -78,8 +78,8 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
 
         # Create fake image...
         H, W = 100, 100
-        fpbb = afwGeom.Box2I(afwGeom.Point2I(0, 0),
-                             afwGeom.Point2I(W-1, H-1))
+        fpbb = geom.Box2I(geom.Point2I(0, 0),
+                          geom.Point2I(W-1, H-1))
         afwimg = afwImage.MaskedImageF(fpbb)
         imgbb = afwimg.getBBox()
         img = afwimg.getImage().getArray()
@@ -99,7 +99,7 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
         XY = [(50., 50.), (90., 50.)]
         flux = 1e6
         for x, y in XY:
-            bim = blob_psf.computeImage(afwGeom.Point2D(x, y))
+            bim = blob_psf.computeImage(geom.Point2D(x, y))
             bbb = bim.getBBox()
             bbb.clip(imgbb)
 
@@ -123,10 +123,10 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
         # set EDGE bit on edge pixels.
         margin = 5
         lo = imgbb.getMin()
-        lo.shift(afwGeom.Extent2I(margin, margin))
+        lo.shift(geom.Extent2I(margin, margin))
         hi = imgbb.getMax()
-        hi.shift(afwGeom.Extent2I(-margin, -margin))
-        goodbbox = afwGeom.Box2I(lo, hi)
+        hi.shift(geom.Extent2I(-margin, -margin))
+        goodbbox = geom.Box2I(lo, hi)
         print('Good bbox for setting EDGE pixels:', goodbbox)
         print('image bbox:', imgbb)
         edgebit = afwimg.getMask().getPlaneBitMask("EDGE")

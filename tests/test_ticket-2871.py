@@ -25,6 +25,7 @@ import unittest
 import lsst.utils.tests
 import lsst.afw.detection as afwDetection
 import lsst.afw.image as afwImage
+import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as algorithms
@@ -54,7 +55,7 @@ class DeblendTestCase(unittest.TestCase):
         # Required to be in image so we can evaluate the PSF; will put neighbour just outside
         xBad, yBad = 0, 0
         flux = 100.0
-        dims = afwGeom.Extent2I(128, 128)
+        dims = geom.Extent2I(128, 128)
 
         mi = afwImage.MaskedImageF(dims)
         mi.getVariance().set(1.0)
