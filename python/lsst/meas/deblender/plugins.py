@@ -27,6 +27,7 @@ import lsst.pex.exceptions
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 
 # Import C++ routines
 from .baselineUtils import BaselineUtilsF as bUtils
@@ -287,7 +288,7 @@ def buildMultibandTemplates(debResult, log, useWeights=False, usePsf=False,
         imbb = debResult.deblendedParents[debResult.filters[0]].img.getBBox()
 
         # Footprint must be inside the image
-        if not imbb.contains(afwGeom.Point2I(cx, cy)):
+        if not imbb.contains(geom.Point2I(cx, cy)):
             _setPeakError(debResult, log, pk, cx, cy, debResult.filters,
                           "peak center is not inside image", "setOutOfBounds")
             continue
@@ -461,7 +462,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
 
     # Make sure we haven't been given a substitute PSF that's nowhere near where we want, as may occur if
     # "Cannot compute CoaddPsf at point (xx,yy); no input images at that point."
-    if not pbb.contains(afwGeom.Point2I(int(cx), int(cy))):
+    if not pbb.contains(geom.Point2I(int(cx), int(cy))):
         pkres.setOutOfBounds()
         return
 
@@ -470,7 +471,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     ylo = int(np.floor(cy - R1))
     xhi = int(np.ceil(cx + R1))
     yhi = int(np.ceil(cy + R1))
-    stampbb = afwGeom.Box2I(afwGeom.Point2I(xlo, ylo), afwGeom.Point2I(xhi, yhi))
+    stampbb = geom.Box2I(geom.Point2I(xlo, ylo), geom.Point2I(xhi, yhi))
     stampbb.clip(fbb)
     xlo, xhi = stampbb.getMinX(), stampbb.getMaxX()
     ylo, yhi = stampbb.getMinY(), stampbb.getMaxY()
@@ -729,7 +730,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
 
         # Make sure we haven't been given a substitute PSF that's nowhere near where we want, as may occur if
         # "Cannot compute CoaddPsf at point (xx,yy); no input images at that point."
-        if not pbb2.contains(afwGeom.Point2I(int(cx + dx), int(cy + dy))):
+        if not pbb2.contains(geom.Point2I(int(cx + dx), int(cy + dy))):
             ispsf2 = False
         else:
             # clip image to bbox
@@ -905,7 +906,7 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
             modified = True
             pk = pkres.peak
             cx, cy = pk.getIx(), pk.getIy()
-            if not imbb.contains(afwGeom.Point2I(cx, cy)):
+            if not imbb.contains(geom.Point2I(cx, cy)):
                 log.trace('Peak center is not inside image; skipping %i', pkres.pki)
                 pkres.setOutOfBounds()
                 continue
@@ -1058,14 +1059,14 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
     # instantiate PSF image
     xc = int((x0 + x1)/2)
     yc = int((y0 + y1)/2)
-    psfim = psf.computeImage(afwGeom.Point2D(xc, yc))
+    psfim = psf.computeImage(geom.Point2D(xc, yc))
     pbb = psfim.getBBox()
     # shift PSF image to be centered on zero
     lx, ly = pbb.getMinX(), pbb.getMinY()
     psfim.setXY0(lx - xc, ly - yc)
     pbb = psfim.getBBox()
     # clip PSF to S, if necessary
-    Sbox = afwGeom.Box2I(afwGeom.Point2I(-S, -S), afwGeom.Extent2I(2*S+1, 2*S+1))
+    Sbox = geom.Box2I(geom.Point2I(-S, -S), geom.Extent2I(2*S+1, 2*S+1))
     if not Sbox.contains(pbb):
         # clip PSF image
         psfim = psfim.Factory(psfim, Sbox, afwImage.PARENT, True)

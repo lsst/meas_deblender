@@ -24,6 +24,7 @@ import unittest
 
 import lsst.utils.tests
 import lsst.afw.detection as afwDet
+import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 from lsst.meas.deblender.plugins import clipFootprintToNonzeroImpl
@@ -37,8 +38,8 @@ class ClipFootprintTestCase(lsst.utils.tests.TestCase):
     which occur inside a span will be preserved.
     '''
     def testClip(self):
-        im = afwImage.ImageI(afwGeom.Box2I(afwGeom.Point2I(-2, -2),
-                                           afwGeom.Extent2I(20, 20)))
+        im = afwImage.ImageI(geom.Box2I(geom.Point2I(-2, -2),
+                                        geom.Extent2I(20, 20)))
 
         span1 = afwGeom.SpanSet.fromShape(5, afwGeom.Stencil.BOX, (6, 6))
         span1.setImage(im, 20)

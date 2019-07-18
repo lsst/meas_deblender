@@ -30,6 +30,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.geom.ellipses as afwEll
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
@@ -390,7 +391,7 @@ class SourceDeblendTask(pipeBase.Task):
                 child.set(self.hasStrayFluxKey, peak.strayFlux is not None)
                 if peak.deblendedAsPsf:
                     (cx, cy) = peak.psfFitCenter
-                    child.set(self.psfCenterKey, afwGeom.Point2D(cx, cy))
+                    child.set(self.psfCenterKey, geom.Point2D(cx, cy))
                     child.set(self.psfFluxKey, peak.psfFitFlux)
                 child.set(self.deblendRampedTemplateKey, peak.hasRampedTemplate)
                 child.set(self.deblendPatchedTemplateKey, peak.patched)

@@ -25,6 +25,7 @@ import numpy as np
 
 import lsst.utils.tests
 import lsst.afw.detection as afwDet
+import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 from lsst.log import Log
@@ -93,7 +94,7 @@ class FitPsfTestCase(unittest.TestCase):
 
         fluxes = [10000., 5000., 5000.]
         for pk, f in zip(peaks, fluxes):
-            psfim = psf1.computeImage(afwGeom.Point2D(pk.getFx(), pk.getFy()))
+            psfim = psf1.computeImage(geom.Point2D(pk.getFx(), pk.getFy()))
             print('psfim x0,y0', psfim.getX0(), psfim.getY0())
             pbb = psfim.getBBox()
             print('pbb', pbb.getMinX(), pbb.getMaxX(), pbb.getMinY(), pbb.getMaxY())
