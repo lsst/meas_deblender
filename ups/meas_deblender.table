@@ -6,7 +6,6 @@ setupRequired(scons)
 setupRequired(sconsUtils)
 setupRequired(utils)
 setupRequired(pybind11)
-setupRequired(scarlet)
 
 setupOptional(matplotlib)
 setupOptional(testdata_deblender)
