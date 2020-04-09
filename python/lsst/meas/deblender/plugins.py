@@ -381,8 +381,8 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     del inpsfy
 
     def _overlap(xlo, xhi, xmin, xmax):
-        assert((xlo <= xmax) and (xhi >= xmin) and
-               (xlo <= xhi) and (xmin <= xmax))
+        assert((xlo <= xmax) and (xhi >= xmin)
+               and (xlo <= xhi) and (xmin <= xmax))
         xloclamp = max(xlo, xmin)
         Xlo = xloclamp - xlo
         xhiclamp = min(xhi, xmax)
@@ -414,8 +414,8 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     # shifted-by-minus-one.
     oldsx = (sx1, sx2, sx3, sx4)
     sx1, sx2, sx3, sx4 = _overlap(xlo, xhi, px0+1, px1-1)
-    psfsub = (psfarr[psf_y_slice, sx3 - dpx0 + 1: sx4 - dpx0 + 1] -
-              psfarr[psf_y_slice, sx3 - dpx0 - 1: sx4 - dpx0 - 1])/2.
+    psfsub = (psfarr[psf_y_slice, sx3 - dpx0 + 1: sx4 - dpx0 + 1]
+              - psfarr[psf_y_slice, sx3 - dpx0 - 1: sx4 - dpx0 - 1])/2.
     vsub = valid[sy1-ylo: sy2-ylo, sx1-xlo: sx2-xlo]
     A[indx[valid], I_dx] = psfsub[vsub]
     # revert x indices...
@@ -423,8 +423,8 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
 
     # PSF dy
     sy1, sy2, sy3, sy4 = _overlap(ylo, yhi, py0+1, py1-1)
-    psfsub = (psfarr[sy3 - dpy0 + 1: sy4 - dpy0 + 1, psf_x_slice] -
-              psfarr[sy3 - dpy0 - 1: sy4 - dpy0 - 1, psf_x_slice])/2.
+    psfsub = (psfarr[sy3 - dpy0 + 1: sy4 - dpy0 + 1, psf_x_slice]
+              - psfarr[sy3 - dpy0 - 1: sy4 - dpy0 - 1, psf_x_slice])/2.
     vsub = valid[sy1-ylo: sy2-ylo, sx1-xlo: sx2-xlo]
     A[indy[valid], I_dy] = psfsub[vsub]
 
@@ -587,8 +587,8 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
             pkres.psfFit3 = (chisqb, dofb)
 
     # Which one do we keep?
-    if (((ispsf1 and ispsf2) and (q2 < q1)) or
-            (ispsf2 and not ispsf1)):
+    if (((ispsf1 and ispsf2) and (q2 < q1))
+            or (ispsf2 and not ispsf1)):
         Xpsf = X2
         chisq = chisq2
         dof = dof2
@@ -788,8 +788,8 @@ def rampFluxAtEdge(debResult, log, patchEdges=False):
                                                                     dp.y0, dp.y1, dp.psf, pkres.peak,
                                                                     dp.avgNoise, patchEdges)
                 except lsst.pex.exceptions.Exception as exc:
-                    if (isinstance(exc, lsst.pex.exceptions.InvalidParameterError) and
-                            "CoaddPsf" in str(exc)):
+                    if (isinstance(exc, lsst.pex.exceptions.InvalidParameterError)
+                            and "CoaddPsf" in str(exc)):
                         pkres.setOutOfBounds()
                         continue
                     raise
