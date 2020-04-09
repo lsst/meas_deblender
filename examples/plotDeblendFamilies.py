@@ -391,11 +391,11 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
             # print 'valid', valid.shape, valid.dtype
             # print 'rw[valid]:', rw[valid]
 
-            myresid = np.sum(kid.psfFitDebugValidPix *
-                             kid.psfFitDebugRampWeight *
-                             ((kid.psfFitDebugStamp.getArray() -
-                               kid.psfFitDebugPsfModel.getArray()) /
-                              np.sqrt(kid.psfFitDebugVar.getArray()))**2)
+            myresid = np.sum(kid.psfFitDebugValidPix
+                             * kid.psfFitDebugRampWeight
+                             * ((kid.psfFitDebugStamp.getArray()
+                                - kid.psfFitDebugPsfModel.getArray())
+                                / np.sqrt(kid.psfFitDebugVar.getArray()))**2)
             print('myresid:', myresid)
 
             plt.subplot(2, 4, 8)
@@ -418,8 +418,8 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
             # plt.imshow(kid.psfFitDebugVar.getArray(), vmin=0, **ima)
             # plt.colorbar()
             plt.title('model+noise')
-            plt.imshow((kid.psfFitDebugPsfModel.getArray() +
-                        sig * np.random.normal(size=sig.shape))*valid,
+            plt.imshow((kid.psfFitDebugPsfModel.getArray()
+                        + sig * np.random.normal(size=sig.shape))*valid,
                        vmin=0, vmax=mx, **ima)
             plt.xticks([])
             plt.yticks([])
@@ -439,10 +439,10 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
             plt.yticks([])
             plt.colorbar()
 
-            chi = (kid.psfFitDebugValidPix *
-                   (kid.psfFitDebugStamp.getArray() -
-                    kid.psfFitDebugPsfModel.getArray()) /
-                   np.sqrt(kid.psfFitDebugVar.getArray()))
+            chi = (kid.psfFitDebugValidPix
+                   * (kid.psfFitDebugStamp.getArray()
+                      - kid.psfFitDebugPsfModel.getArray())
+                   / np.sqrt(kid.psfFitDebugVar.getArray()))
 
             plt.subplot(2, 4, 6)
             plt.title('fit psf chi')
