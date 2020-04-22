@@ -7,7 +7,6 @@
 #include "lsst/meas/deblender/BaselineUtils.h"
 #include "lsst/pex/exceptions.h"
 #include "lsst/afw/geom/Span.h"
-#include "lsst/afw/geom/Box.h"
 
 using std::lround;
 
