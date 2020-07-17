@@ -65,8 +65,7 @@ def gaussianPsf(W, H, fwhm):
 class RampEdgeTestCase(lsst.utils.tests.TestCase):
 
     def test1(self):
-        '''
-        In this test, we create a test image containing two blobs, one
+        """In this test, we create a test image containing two blobs, one
         of which is truncated by the edge of the image.
 
         We run the detection code to get realistic peaks and
@@ -74,7 +73,7 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
 
         We then test out the different edge treatments and assert that
         they do what they claim.  We also make plots, tests/edge*.png
-        '''
+        """
 
         # Create fake image...
         H, W = 100, 100

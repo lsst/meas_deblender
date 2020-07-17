@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["DEFAULT_PLUGINS", "DeblenderResult", "DeblendedParent", "MultiColorPeak",
+           "DeblendedPeak", "deblend", "newDeblend", "CachingPsf"]
+
 from collections import OrderedDict
 import numpy as np
 
@@ -47,7 +50,7 @@ class DeblenderResult:
 
     def __init__(self, footprint, mMaskedImage, psfs, psffwhms, log,
                  maxNumberOfPeaks=0, avgNoise=None):
-        """ Initialize a DeblededParent
+        """Initialize a DeblededParent
 
         Parameters
         ----------
@@ -71,6 +74,7 @@ class DeblenderResult:
             Average noise level in each ``maskedImage``.
             The default is ``None``, which estimates the noise from the median value of the
             variance plane of ``maskedImage`` for each filter.
+
         Returns
         -------
         None
@@ -135,7 +139,8 @@ class DeblenderResult:
         self.failed = False
 
     def getParentProperty(self, propertyName):
-        """Get the footprint in each filter"""
+        """Get the footprint in each filter
+        """
         return [getattr(dp, propertyName) for dp in self.deblendedParents]
 
     def setTemplateSums(self, templateSums, fidx=None):
@@ -373,7 +378,7 @@ class DeblendedPeak:
         return dof
 
     def getFluxPortion(self, strayFlux=True):
-        """!
+        """
         Return a HeavyFootprint containing the flux apportioned to this peak.
 
         @param[in]     strayFlux   include stray flux also?
@@ -455,7 +460,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
             getTemplateSum=False, clipStrayFluxFraction=0.001, clipFootprintToNonzero=True,
             removeDegenerateTemplates=False, maxTempDotProd=0.5
             ):
-    """Deblend a parent ``Footprint`` in a ``MaskedImageF``.
+    r"""Deblend a parent ``Footprint`` in a ``MaskedImageF``.
 
     Deblending assumes that ``footprint`` has multiple peaks, as it will still create a
     `PerFootprint` object with a list of peaks even if there is only one peak in the list.
@@ -468,13 +473,17 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         To test out newer functionality use ``newDeblend`` instead.
 
     Deblending involves several mandatory and optional steps:
+
     # Optional: If ``fitPsfs`` is True, find all peaks that are well-fit by a PSF + background model
+
         * Peaks that pass the cuts have their footprints modified to the PSF + background model
           and their ``deblendedAsPsf`` property set to ``True``.
         * Relevant parameters: ``psfChisqCut1``, ``psfChisqCut2``, ``psfChisqCut2b``,
           ``tinyFootprintSize``.
         * See the parameter descriptions for more.
+
     # Build a symmetric template for each peak not well-fit by the PSF model
+
         * Given ``maskedImageF``, ``footprint``, and a ``DeblendedPeak``, creates a symmetric
           template (``templateImage`` and ``templateFootprint``) around the peak
           for all peaks not flagged as ``skip`` or ``deblendedAsPsf``.
@@ -482,25 +491,37 @@ def deblend(footprint, maskedImage, psf, psffwhm,
           ``EDGE`` bit set, then ``footprint`` is grown to include spans whose
           symmetric mirror is outside of the image.
         * Relevant parameters: ``sigma1`` and ``patchEdges``.
+
     # Optional: If ``rampFluxAtEdge`` is True, adjust flux on the edges of the template footprints
+
         * Using the PSF, a peak ``Footprint`` with pixels on the edge of of ``footprint``
-          is grown by the psffwhm*1.5 and filled in with zeros.
+          is grown by the psffwhm\*1.5 and filled in with zeros.
         * The result is a new symmetric footprint template for the peaks near the edge.
         * Relevant parameter: ``patchEdges``.
+
     # Optionally (``medianSmoothTemplate=True``) filter the template images
+
         * Apply a median smoothing filter to all of the template images.
         * Relevant parameters: ``medianFilterHalfSize``
+
     # Optional: If ``monotonicTemplate`` is True, make the templates monotonic.
+
         * The pixels in the templates are modified such that pixels
           further from the peak will have values smaller than those closer to the peak.
+
     # Optional: If ``clipFootprintToNonzero`` is True, clip non-zero spans in the template footprints
-        * Peak ``Footprint``s are clipped to the region in the image containing non-zero values
+
+        * Peak ``Footprint``\s are clipped to the region in the image containing non-zero values
           by dropping spans that are completely zero and moving endpoints to non-zero pixels
           (but does not split spans that have internal zeros).
+
     # Optional: If ``weightTemplates`` is True,  weight the templates to best fit the observed image
+
         * Re-weight the templates so that their linear combination
           best represents the observed ``maskedImage``
+
     # Optional: If ``removeDegenerateTempaltes`` is True, reconstruct shredded galaxies
+
         * If galaxies have substructure, such as face-on spirals, the process of identifying peaks can
           "shred" the galaxy into many pieces. The templates of shredded galaxies are typically quite
           similar because they represent the same galaxy, so we try to identify these "degenerate" peaks
@@ -509,7 +530,9 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         * If only one of the peaks is a PSF template, the other template is used,
           otherwise the one with the maximum template value is kept.
         * Relevant parameters: ``maxTempDotProduct``
+
     # Apportion flux to all of the peak templates
+
         * Divide the ``maskedImage`` flux amongst all of the templates based on the fraction of
           flux assigned to each ``tempalteFootprint``.
         * Leftover "stray flux" is assigned to peaks based on the other parameters.
@@ -525,7 +548,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     psf: `afw.detection.Psf`
         Psf of the ``maskedImage``
     psffwhm: `float`
-        FWHM of the ``maskedImage``'s ``psf``
+        FWHM of the ``maskedImage``\'s ``psf``
     psfChisqCut*: `float`, optional
         If ``fitPsfs==True``, all of the peaks are fit to the image PSF.
         ``psfChisqCut1`` is the maximum chi-squared-per-degree-of-freedom allowed for a peak to
@@ -579,17 +602,21 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         The default is True.
     strayFluxToPointSources: `string`
         Determines how stray flux is apportioned to point sources
+
         * ``never``: never apportion stray flux to point sources
         * ``necessary`` (default): point sources are included only if there are no extended sources nearby
         * ``always``: point sources are always included in the 1/(1+r^2) splitting
+
     strayFluxAssignment: `string`, optional
         Determines how stray flux is apportioned.
+
         * ``trim``: Trim stray flux and do not include in any footprints
         * ``r-to-peak`` (default): Stray flux is assigned based on (1/(1+r^2) from the peaks
         * ``r-to-footprint``: Stray flux is distributed to the footprints based on 1/(1+r^2) of the
           minimum distance from the stray flux to footprint
         * ``nearest-footprint``: Stray flux is assigned to the footprint with lowest L-1 (Manhattan)
           distance to the stray flux
+
     rampFluxAtEdge: `bool`, optional
         If True then extend footprints with excessive flux on the edges as described above.
         The default is False.
@@ -625,7 +652,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     Returns
     -------
     res: `PerFootprint`
-        Deblender result that contains a list of ``DeblendedPeak``s for each peak and (optionally)
+        Deblender result that contains a list of ``DeblendedPeak``\s for each peak and (optionally)
         the template sum.
     """
     avgNoise = sigma1
@@ -673,7 +700,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
 
 def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
                log=None, verbose=False, avgNoise=None, maxNumberOfPeaks=0):
-    """Deblend a parent ``Footprint`` in a ``MaskedImageF``.
+    r"""Deblend a parent ``Footprint`` in a ``MaskedImageF``.
 
     Deblending assumes that ``footprint`` has multiple peaks, as it will still create a
     `PerFootprint` object with a list of peaks even if there is only one peak in the list.
@@ -694,7 +721,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     psfs: `afw.detection.Psf` or list of Psfs
         Psf of the ``maskedImage``.
     psfFwhms: `float` or list of floats
-        FWHM of the ``maskedImage``'s ``psf``.
+        FWHM of the ``maskedImage``\'s ``psf``.
     log: `log.Log`, optional
         LSST logger for logging purposes.
         The default is ``None`` (no logging).
@@ -713,7 +740,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     Returns
     -------
     debResult: `DeblendedParent`
-        Deblender result that contains a list of ``MultiColorPeak``s for each peak and
+        Deblender result that contains a list of ``MultiColorPeak``\s for each peak and
         information that describes the footprint in all filters.
     """
     # Import C++ routines

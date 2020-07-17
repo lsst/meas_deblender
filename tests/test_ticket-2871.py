@@ -32,7 +32,8 @@ import lsst.meas.algorithms as algorithms
 
 
 class DeblendTestCase(unittest.TestCase):
-    """A test case for deblending"""
+    """A test case for deblending
+    """
 
     def checkDeblender(self):
         try:

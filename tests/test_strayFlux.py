@@ -64,13 +64,12 @@ def gaussianPsf(W, H, fwhm):
 class StrayFluxTestCase(lsst.utils.tests.TestCase):
 
     def test1(self):
-        '''
-        A simple example: three overlapping blobs (detected as 1
+        """A simple example: three overlapping blobs (detected as 1
         footprint with three peaks).  We artificially omit one of the
         peaks, meaning that its flux is "stray".  Assert that the
         stray flux assigned to the other two peaks accounts for all
         the flux in the parent.
-        '''
+        """
         H, W = 100, 100
 
         fpbb = geom.Box2I(geom.Point2I(0, 0),
@@ -258,9 +257,8 @@ class StrayFluxTestCase(lsst.utils.tests.TestCase):
         self.assertLess(absdiff, imgmax*1e-6)
 
     def test2(self):
-        '''
-        A 1-d example, to test the stray-flux assignment.
-        '''
+        """A 1-d example, to test the stray-flux assignment.
+        """
         H, W = 1, 100
 
         fpbb = geom.Box2I(geom.Point2I(0, 0),

@@ -47,11 +47,10 @@ def gaussianPsf(W, H, fwhm):
 class DegenerateTemplateTestCase(lsst.utils.tests.TestCase):
 
     def testPeakRemoval(self):
-        '''
-        A simple example: three overlapping blobs (detected as 1
+        """A simple example: three overlapping blobs (detected as 1
         footprint with three peaks).  Additional peaks are added near
         the blob peaks that should be identified as degenerate.
-        '''
+        """
         H, W = 100, 100
 
         fpbb = geom.Box2I(geom.Point2I(0, 0), geom.Point2I(W - 1, H - 1))
