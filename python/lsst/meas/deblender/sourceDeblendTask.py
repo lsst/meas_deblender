@@ -232,6 +232,21 @@ class SourceDeblendTask(pipeBase.Task):
         self.log.trace('Added keys to schema: %s', ", ".join(str(x) for x in (
                        self.nChildKey, self.psfKey, self.psfCenterKey, self.psfFluxKey,
                        self.tooManyPeaksKey, self.tooBigKey)))
+        self.peakCenter = afwTable.Point2DKey.addFields(schema, name="deblend_peak_center",
+                                                        doc="Center used to apply constraints in scarlet",
+                                                        unit="pixel")
+        self.peakIdKey = schema.addField("deblend_peakId", type=np.int32,
+                                         doc="ID of the peak in the parent footprint. "
+                                             "This is not unique, but the combination of 'parent'"
+                                             "and 'peakId' should be for all child sources. "
+                                             "Top level blends with no parents have 'peakId=0'")
+        self.nPeaksKey = schema.addField("deblend_nPeaks", type=np.int32,
+                                         doc="Number of initial peaks in the blend. "
+                                             "This includes peaks that may have been culled "
+                                             "during deblending or failed to deblend")
+        self.parentNPeaksKey = schema.addField("deblend_parentNPeaks", type=np.int32,
+                                               doc="Same as deblend_n_peaks, but the number of peaks "
+                                                   "in the parent footprint")
 
     @pipeBase.timeMethod
     def run(self, exposure, sources):
@@ -391,6 +406,20 @@ class SourceDeblendTask(pipeBase.Task):
                     child.set(self.psfFluxKey, peak.psfFitFlux)
                 child.set(self.deblendRampedTemplateKey, peak.hasRampedTemplate)
                 child.set(self.deblendPatchedTemplateKey, peak.patched)
+
+                # Set the position of the peak from the parent footprint
+                # This will make it easier to match the same source across
+                # deblenders and across observations, where the peak
+                # position is unlikely to change unless enough time passes
+                # for a source to move on the sky.
+                child.set(self.peakCenter, geom.Point2I(pks[j].getIx(), pks[j].getIy()))
+                child.set(self.peakIdKey, pks[j].getId())
+
+                # The children have a single peak
+                child.set(self.nPeaksKey, 1)
+                # Set the number of peaks in the parent
+                child.set(self.parentNPeaksKey, len(pks))
+
                 kids.append(child)
 
             # Child footprints may extend beyond the full extent of their parent's which
@@ -460,7 +489,21 @@ class SourceDeblendTask(pipeBase.Task):
         """
         fp = source.getFootprint()
         source.set(self.deblendSkippedKey, True)
-        source.set(self.nChildKey, len(fp.getPeaks()))  # It would have this many if we deblended them all
         if self.config.notDeblendedMask:
             mask.addMaskPlane(self.config.notDeblendedMask)
             fp.spans.setMask(mask, mask.getPlaneBitMask(self.config.notDeblendedMask))
+
+        # Set the center of the parent
+        bbox = fp.getBBox()
+        centerX = int(bbox.getMinX()+bbox.getWidth()/2)
+        centerY = int(bbox.getMinY()+bbox.getHeight()/2)
+        source.set(self.peakCenter, geom.Point2I(centerX, centerY))
+        # There are no deblended children, so nChild = 0
+        source.set(self.nChildKey, 0)
+        # But we also want to know how many peaks that we would have
+        # deblended if the parent wasn't skipped.
+        source.set(self.nPeaksKey, len(fp.peaks))
+        # Top level parents are not a detected peak, so they have no peakId
+        source.set(self.peakIdKey, 0)
+        # Top level parents also have no parentNPeaks
+        source.set(self.parentNPeaksKey, 0)
