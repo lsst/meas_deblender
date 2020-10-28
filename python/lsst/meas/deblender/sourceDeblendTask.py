@@ -232,7 +232,7 @@ class SourceDeblendTask(pipeBase.Task):
         self.log.trace('Added keys to schema: %s', ", ".join(str(x) for x in (
                        self.nChildKey, self.psfKey, self.psfCenterKey, self.psfFluxKey,
                        self.tooManyPeaksKey, self.tooBigKey)))
-        self.peakCenter = afwTable.Point2DKey.addFields(schema, name="deblend_peak_center",
+        self.peakCenter = afwTable.Point2IKey.addFields(schema, name="deblend_peak_center",
                                                         doc="Center used to apply constraints in scarlet",
                                                         unit="pixel")
         self.peakIdKey = schema.addField("deblend_peakId", type=np.int32,
