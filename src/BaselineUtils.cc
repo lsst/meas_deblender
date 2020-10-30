@@ -488,7 +488,7 @@ _find_stray_flux(det::Footprint const& foot,
                 for (size_t i=0; i<tfoots.size(); ++i) {
                     contrib[i] = 0.0;
                 }
-                int i = nearest->get0(x, y);
+                int i = (*nearest)[geom::Point2I(x, y)];
                 contrib[i] = 1.0;
             } else {
                 // R_TO_PEAK
@@ -1276,14 +1276,14 @@ buildSymmetricTemplate(
             // FIXME -- we could do this with image iterators instead.
             // But first profile to show that it's necessary and an
             // improvement.
-            ImagePixelT pixf = theimg->get0(fx, fy);
-            ImagePixelT pixb = theimg->get0(bx, by);
+            ImagePixelT pixf = (*theimg)[geom::Point2I(fx, fy)];
+            ImagePixelT pixb = (*theimg)[geom::Point2I(bx, by)];
             ImagePixelT pix = std::min(pixf, pixb);
             if (minZero) {
                 pix = std::max(pix, static_cast<ImagePixelT>(0));
             }
-            targetimg->set0(fx, fy, pix);
-            targetimg->set0(bx, by, pix);
+            (*targetimg)[geom::Point2I(fx, fy)] = pix;
+            (*targetimg)[geom::Point2I(bx, by)] = pix;
 
         }
     }
