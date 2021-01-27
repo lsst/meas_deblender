@@ -1,13 +1,14 @@
-import matplotlib
-matplotlib.use('Agg')  # noqa E402
 import pylab as plt
 import numpy as np
-import lsst.afw.image as afwImage
-import lsst.afw.detection as afwDet
-import lsst.log
+import matplotlib
+matplotlib.use('Agg')
 
-from .utils import footprintToImage, getExtent, get_sigma1, getFamilies, plotDeblendFamily, readCatalog
-from .suprime import getSuprimeDataref
+import lsst.afw.image as afwImage  # noqa E402
+import lsst.afw.detection as afwDet  # noqa E402
+import lsst.log  # noqa E402
+
+from .utils import footprintToImage, getExtent, get_sigma1, getFamilies, plotDeblendFamily, readCatalog  # noqa E402
+from .suprime import getSuprimeDataref  # noqa E402
 
 
 def main():
