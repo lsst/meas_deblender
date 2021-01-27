@@ -1,19 +1,19 @@
-import matplotlib
-matplotlib.use('Agg')  # noqa E402
+import numpy as np
+import os
 import pylab as plt
 
-import os
-import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 
-import lsst.daf.persistence as dafPersist
-import lsst.afw.detection as afwDet
-import lsst.afw.image as afwImage
-import lsst.afw.table as afwTable
-from lsst.meas.deblender.baseline import deblend
+import lsst.daf.persistence as dafPersist  # noqa E402
+import lsst.afw.detection as afwDet  # noqa E402
+import lsst.afw.image as afwImage  # noqa E402
+import lsst.afw.table as afwTable  # noqa E402
+from lsst.meas.deblender.baseline import deblend  # noqa E402
 
-from astrometry.util.plotutils import PlotSequence
+from astrometry.util.plotutils import PlotSequence  # noqa E402
 
-import lsstDebug
+import lsstDebug  # noqa E402
 lsstDebug.Info('lsst.meas.deblender.baseline').psf = True
 
 
