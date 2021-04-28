@@ -139,6 +139,26 @@ class SourceDeblendConfig(pexConfig.Config):
     medianSmoothTemplate = pexConfig.Field(dtype=bool, default=True,
                                            doc="Apply a smoothing filter to all of the template images")
 
+    # Testing options
+    # Some obs packages and ci packages run the full pipeline on a small
+    # subset of data to test that the pipeline is functioning properly.
+    # This is not meant as scientific validation, so it can be useful
+    # to only run on a small subset of the data that is large enough to
+    # test the desired pipeline features but not so long that the deblender
+    # is the tall pole in terms of execution times.
+    useCiLimits = pexConfig.Field(
+        dtype=bool, default=False,
+        doc="Limit the number of sources deblended for CI to prevent long build times")
+    ciDeblendChildRange = pexConfig.ListField(
+        dtype=int, default=[2, 10],
+        doc="Only deblend parent Footprints with a number of peaks in the (inclusive) range indicated."
+            "If `useCiLimits==False` then this parameter is ignored.")
+    ciNumParentsToDeblend = pexConfig.Field(
+        dtype=int, default=10,
+        doc="Only use the first `ciNumParentsToDeblend` parent footprints with a total peak count "
+            "within `ciDebledChildRange`. "
+            "If `useCiLimits==False` then this parameter is ignored.")
+
 ## \addtogroup LSST_task_documentation
 ## \{
 ## \page SourceDeblendTask
@@ -278,6 +298,31 @@ class SourceDeblendTask(pipeBase.Task):
 
         @return None
         """
+        # Cull footprints if required by ci
+        if self.config.useCiLimits:
+            self.log.info(f"Using CI catalog limits, "
+                          f"the original number of sources to deblend was {len(srcs)}.")
+            # Select parents with a number of children in the range
+            # config.ciDeblendChildRange
+            minChildren, maxChildren = self.config.ciDeblendChildRange
+            nPeaks = np.array([len(src.getFootprint().peaks) for src in srcs])
+            childrenInRange = np.where((nPeaks >= minChildren) & (nPeaks <= maxChildren))[0]
+            if len(childrenInRange) < self.config.ciNumParentsToDeblend:
+                raise ValueError("Fewer than ciNumParentsToDeblend children were contained in the range "
+                                 "indicated by ciDeblendChildRange. Adjust this range to include more "
+                                 "parents.")
+            # Keep all of the isolated parents and the first
+            # `ciNumParentsToDeblend` children
+            parents = nPeaks == 1
+            children = np.zeros((len(srcs),), dtype=bool)
+            children[childrenInRange[:self.config.ciNumParentsToDeblend]] = True
+            srcs = srcs[parents | children]
+            # We need to update the IdFactory, otherwise the the source ids
+            # will not be sequential
+            idFactory = srcs.getIdFactory()
+            maxId = np.max(srcs["id"])
+            idFactory.notify(maxId)
+
         self.log.info("Deblending %d sources" % len(srcs))
 
         from lsst.meas.deblender.baseline import deblend
