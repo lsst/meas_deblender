@@ -23,20 +23,20 @@ namespace lsst {
 
             public:
                 typedef typename lsst::afw::image::MaskedImage<ImagePixelT, MaskPixelT, VariancePixelT> MaskedImageT;
-                typedef typename PTR(lsst::afw::image::MaskedImage<ImagePixelT, MaskPixelT, VariancePixelT>) MaskedImagePtrT;
+                typedef typename std::shared_ptr<lsst::afw::image::MaskedImage<ImagePixelT, MaskPixelT, VariancePixelT>> MaskedImagePtrT;
                 typedef typename lsst::afw::image::Image<ImagePixelT> ImageT;
-                typedef typename PTR(lsst::afw::image::Image<ImagePixelT>) ImagePtrT;
+                typedef typename std::shared_ptr<lsst::afw::image::Image<ImagePixelT>> ImagePtrT;
                 typedef typename lsst::afw::image::Mask<MaskPixelT> MaskT;
-                typedef typename PTR(lsst::afw::image::Mask<MaskPixelT>) MaskPtrT;
+                typedef typename std::shared_ptr<lsst::afw::image::Mask<MaskPixelT>> MaskPtrT;
 
                 typedef typename lsst::afw::detection::Footprint FootprintT;
-                typedef typename PTR(lsst::afw::detection::Footprint) FootprintPtrT;
+                typedef typename std::shared_ptr<lsst::afw::detection::Footprint> FootprintPtrT;
                 typedef typename lsst::afw::detection::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT> HeavyFootprintT;
 
-                typedef typename PTR(lsst::afw::detection::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT>) HeavyFootprintPtrT;
+                typedef typename std::shared_ptr<lsst::afw::detection::HeavyFootprint<ImagePixelT, MaskPixelT, VariancePixelT>> HeavyFootprintPtrT;
 
                 static
-                PTR(lsst::afw::detection::Footprint)
+                std::shared_ptr<lsst::afw::detection::Footprint>
                 symmetrizeFootprint(lsst::afw::detection::Footprint const& foot,
                                     int cx, int cy);
 
@@ -70,10 +70,10 @@ namespace lsst {
 
                 // swig doesn't seem to understand std::vector<MaskedImagePtrT>...
                 static
-                std::vector<typename PTR(lsst::afw::image::MaskedImage<ImagePixelT, MaskPixelT, VariancePixelT>)>
+                std::vector<typename std::shared_ptr<lsst::afw::image::MaskedImage<ImagePixelT, MaskPixelT, VariancePixelT>>>
                 apportionFlux(MaskedImageT const& img,
                               lsst::afw::detection::Footprint const& foot,
-                              std::vector<typename PTR(lsst::afw::image::Image<ImagePixelT>)> templates,
+                              std::vector<typename std::shared_ptr<lsst::afw::image::Image<ImagePixelT>>> templates,
                               std::vector<std::shared_ptr<lsst::afw::detection::Footprint> > templ_footprints,
                               //
                               ImagePtrT templ_sum,
