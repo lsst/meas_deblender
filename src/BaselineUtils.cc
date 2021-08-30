@@ -41,7 +41,7 @@ static bool span_compare(afwGeom::Span const & sp1,
 }
 
 namespace {
-    void nearestFootprint(std::vector<PTR(det::Footprint)> const& foots,
+    void nearestFootprint(std::vector<std::shared_ptr<det::Footprint>> const& foots,
                           std::shared_ptr<image::Image<std::uint16_t>> argmin,
                           std::shared_ptr<image::Image<std::uint16_t>> dist)
     {
@@ -362,7 +362,7 @@ makeMonotonic(
 }
 
 static double _get_contrib_r_to_footprint(int x, int y,
-                                          PTR(det::Footprint) tfoot) {
+                                          std::shared_ptr<det::Footprint> tfoot) {
     double minr2 = 1e12;
     for (afwGeom::Span const & sp : *(tfoot->getSpans())) {
         int mindx;
@@ -395,7 +395,7 @@ _find_stray_flux(det::Footprint const& foot,
                  ImagePtrT tsum,
                  MaskedImageT const& img,
                  int strayFluxOptions,
-                 std::vector<PTR(det::Footprint)> tfoots,
+                 std::vector<std::shared_ptr<det::Footprint>> tfoots,
                  std::vector<bool> const& ispsf,
                  std::vector<int>  const& pkx,
                  std::vector<int>  const& pky,
@@ -408,7 +408,7 @@ _find_stray_flux(det::Footprint const& foot,
 
     // when doing stray flux: the footprints and pixels, which we'll
     // combine into the return 'strays' HeavyFootprint at the end.
-    std::vector<PTR(det::Footprint) > strayfoot;
+    std::vector<std::shared_ptr<det::Footprint> > strayfoot;
     std::vector<std::vector<afwGeom::Span>> straySpans(tfoots.size());
     std::vector<std::vector<ImagePixelT> > straypix;
     std::vector<std::vector<MaskPixelT> > straymask;
@@ -421,7 +421,7 @@ _find_stray_flux(det::Footprint const& foot,
     int sumy0 = sumbb.getMinY();
 
     for (size_t i=0; i<tfoots.size(); ++i) {
-        strayfoot.push_back(PTR(det::Footprint)());
+        strayfoot.push_back(std::shared_ptr<det::Footprint>());
         straypix.push_back(std::vector<ImagePixelT>());
         straymask.push_back(std::vector<MaskPixelT>());
         strayvar.push_back(std::vector<VariancePixelT>());
@@ -430,17 +430,17 @@ _find_stray_flux(det::Footprint const& foot,
     bool always = (strayFluxOptions & STRAYFLUX_TO_POINT_SOURCES_ALWAYS);
 
     typedef std::uint16_t itype;
-    PTR(image::Image<itype>) nearest;
+    std::shared_ptr<image::Image<itype>> nearest;
 
     if (strayFluxOptions & STRAYFLUX_NEAREST_FOOTPRINT) {
         // Compute the map of which footprint is closest to each
         // pixel in the bbox.
         typedef std::uint16_t dtype;
-        PTR(image::Image<dtype>) dist(new image::Image<dtype>(sumbb));
-        nearest = PTR(image::Image<itype>)(new image::Image<itype>(sumbb));
+        std::shared_ptr<image::Image<dtype>> dist(new image::Image<dtype>(sumbb));
+        nearest = std::shared_ptr<image::Image<itype>>(new image::Image<itype>(sumbb));
 
-        std::vector<PTR(det::Footprint)> templist;
-        std::vector<PTR(det::Footprint)>* footlist = &tfoots;
+        std::vector<std::shared_ptr<det::Footprint>> templist;
+        std::vector<std::shared_ptr<det::Footprint>>* footlist = &tfoots;
 
         if (!always && ispsf.size()) {
             // create a temp list that has empty footprints in place
@@ -688,12 +688,12 @@ _sum_templates(std::vector<ImagePtrT> timgs,
 
  */
 template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
-std::vector<typename PTR(image::MaskedImage<ImagePixelT, MaskPixelT, VariancePixelT>)>
+std::vector<typename std::shared_ptr<image::MaskedImage<ImagePixelT, MaskPixelT, VariancePixelT>>>
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 apportionFlux(MaskedImageT const& img,
               det::Footprint const& foot,
               std::vector<ImagePtrT> timgs,
-              std::vector<PTR(det::Footprint)> tfoots,
+              std::vector<std::shared_ptr<det::Footprint>> tfoots,
               ImagePtrT tsum,
               std::vector<bool> const& ispsf,
               std::vector<int>  const& pkx,
@@ -970,7 +970,7 @@ private:
  the AND of the two symmetric halves.
  */
 template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
-PTR(lsst::afw::detection::Footprint)
+std::shared_ptr<lsst::afw::detection::Footprint>
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 symmetrizeFootprint(
     det::Footprint const& foot,
@@ -996,7 +996,7 @@ symmetrizeFootprint(
         if (!sp.contains(cx, cy)) {
             LOGL_WARN(_log,
                 "Failed to find span containing (%i,%i): before the beginning of this footprint", cx, cy);
-            return PTR(det::Footprint)();
+            return std::shared_ptr<det::Footprint>();
         }
     } else {
         --peakspan;
@@ -1011,7 +1011,7 @@ symmetrizeFootprint(
                           "Footprint bbox is [%i,%i],[%i,%i]",
                           cx, cy, sp.getY(), sp.getX0(), sp.getX1(),
                           fbb.getMinX(), fbb.getMaxX(), fbb.getMinY(), fbb.getMaxY());
-                return PTR(det::Footprint)();
+                return std::shared_ptr<det::Footprint>();
             }
         }
     }
@@ -1184,8 +1184,8 @@ symmetrizeFootprint(
  pixel values are stored.
  */
 template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
-std::pair<typename PTR(lsst::afw::image::Image<ImagePixelT>),
-          typename PTR(lsst::afw::detection::Footprint) >
+std::pair<typename std::shared_ptr<lsst::afw::image::Image<ImagePixelT>>,
+          typename std::shared_ptr<lsst::afw::detection::Footprint> >
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 buildSymmetricTemplate(
     MaskedImageT const& img,
@@ -1384,7 +1384,7 @@ template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
 bool
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 hasSignificantFluxAtEdge(ImagePtrT img,
-                         PTR(det::Footprint) sfoot,
+                         std::shared_ptr<det::Footprint> sfoot,
                          ImagePixelT thresh) {
 
     LOG_LOGGER _log = LOG_GET("meas.deblender.hasSignificantFluxAtEdge");
@@ -1417,7 +1417,7 @@ template<typename ImagePixelT, typename MaskPixelT, typename VariancePixelT>
 std::shared_ptr<det::Footprint>
 deblend::BaselineUtils<ImagePixelT,MaskPixelT,VariancePixelT>::
 getSignificantEdgePixels(ImagePtrT img,
-                         PTR(det::Footprint) sfoot,
+                         std::shared_ptr<det::Footprint> sfoot,
                          ImagePixelT thresh) {
     LOG_LOGGER _log = LOG_GET("meas.deblender.getSignificantEdgePixels");
 
