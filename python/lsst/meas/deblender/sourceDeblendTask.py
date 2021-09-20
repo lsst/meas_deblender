@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ['SourceDeblendConfig', 'SourceDeblendTask']
+
 import math
 import numpy as np
 
@@ -33,8 +35,6 @@ import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
 
 logger = lsst.log.Log.getLogger("meas.deblender.deblend")
-
-__all__ = 'SourceDeblendConfig', 'SourceDeblendTask'
 
 
 class SourceDeblendConfig(pexConfig.Config):

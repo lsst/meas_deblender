@@ -45,40 +45,34 @@ DEFAULT_PLUGINS = [
 
 
 class DeblenderResult:
-    """Collection of objects in multiple bands for a single parent footprint
+    r"""Collection of objects in multiple bands for a single parent footprint.
+
+    Parameters
+    ----------
+    footprint: `afw.detection.Footprint`
+        Parent footprint to deblend. While `maskedImages`, `psfs`,
+        and `psffwhms` are lists of objects, one for each band,
+        `footprint` is a single parent footprint (from a `mergedDet`)
+        this is used for all bands.
+    mMaskedImage: `MaskedImage`\ s or `MultibandMaskedImage`
+        Masked image containing the ``footprint`` in each band.
+    psfs: list of `afw.detection.Psf`s
+        Psf of the ``maskedImage`` for each band.
+    psffwhm: list of `float`s
+        FWHM of the ``maskedImage``'s ``psf`` in each band.
+    maxNumberOfPeaks: `int`, optional
+        If positive, the maximum number of peaks to deblend.
+        If the total number of peaks is greater than ``maxNumberOfPeaks``,
+        then only the first ``maxNumberOfPeaks`` sources are deblended.
+        The default is 0, which deblends all of the peaks.
+    avgNoise: `float`or list of `float`s, optional
+        Average noise level in each ``maskedImage``.
+        The default is ``None``, which estimates the noise from the median value of the
+        variance plane of ``maskedImage`` for each filter.
     """
 
     def __init__(self, footprint, mMaskedImage, psfs, psffwhms, log,
                  maxNumberOfPeaks=0, avgNoise=None):
-        """Initialize a DeblededParent
-
-        Parameters
-        ----------
-        footprint: `afw.detection.Footprint`
-            Parent footprint to deblend. While `maskedImages`, `psfs`,
-            and `psffwhms` are lists of objects, one for each band,
-            `footprint` is a single parent footprint (from a `mergedDet`)
-            this is used for all bands.
-        mMaskedImage: `MaskedImage`s or `MultibandMaskedImage`
-            Masked image containing the ``footprint`` in each band.
-        psfs: list of `afw.detection.Psf`s
-            Psf of the ``maskedImage`` for each band.
-        psffwhm: list of `float`s
-            FWHM of the ``maskedImage``'s ``psf`` in each band.
-        maxNumberOfPeaks: `int`, optional
-            If positive, the maximum number of peaks to deblend.
-            If the total number of peaks is greater than ``maxNumberOfPeaks``,
-            then only the first ``maxNumberOfPeaks`` sources are deblended.
-            The default is 0, which deblends all of the peaks.
-        avgNoise: `float`or list of `float`s, optional
-            Average noise level in each ``maskedImage``.
-            The default is ``None``, which estimates the noise from the median value of the
-            variance plane of ``maskedImage`` for each filter.
-
-        Returns
-        -------
-        None
-        """
         # Check if this is collection of footprints in multiple bands or a single footprint
         if not isinstance(mMaskedImage, afwImage.MultibandMaskedImage):
             mMaskedImage = [mMaskedImage]
@@ -156,35 +150,33 @@ class DeblendedParent:
 
     Convenience class to store useful objects used by the deblender for a single band,
     such as the maskedImage, psf, etc as well as the results from the deblender.
+
+    Parameters
+    ----------
+    filterName: `str`
+        Name of the filter used for `maskedImage`
+    footprint: list of `afw.detection.Footprint`s
+        Parent footprint to deblend in each band.
+    maskedImages: list of `afw.image.MaskedImageF`s
+        Masked image containing the ``footprint`` in each band.
+    psf: list of `afw.detection.Psf`s
+        Psf of the ``maskedImage`` for each band.
+    psffwhm: list of `float`s
+        FWHM of the ``maskedImage``'s ``psf`` in each band.
+    avgNoise: `float`or list of `float`s, optional
+        Average noise level in each ``maskedImage``.
+        The default is ``None``, which estimates the noise from the median value of the
+        variance plane of ``maskedImage`` for each filter.
+    maxNumberOfPeaks: `int`, optional
+        If positive, the maximum number of peaks to deblend.
+        If the total number of peaks is greater than ``maxNumberOfPeaks``,
+        then only the first ``maxNumberOfPeaks`` sources are deblended.
+        The default is 0, which deblends all of the peaks.
+    debResult: `DeblenderResult`
+        The ``DeblenderResult`` that contains this ``DeblendedParent``.
     """
     def __init__(self, filterName, footprint, maskedImage, psf, psffwhm, avgNoise,
                  maxNumberOfPeaks, debResult):
-        """Create a DeblendedParent to store a deblender result
-
-        Parameters
-        ----------
-        filterName: `str`
-            Name of the filter used for `maskedImage`
-        footprint: list of `afw.detection.Footprint`s
-            Parent footprint to deblend in each band.
-        maskedImages: list of `afw.image.MaskedImageF`s
-            Masked image containing the ``footprint`` in each band.
-        psf: list of `afw.detection.Psf`s
-            Psf of the ``maskedImage`` for each band.
-        psffwhm: list of `float`s
-            FWHM of the ``maskedImage``'s ``psf`` in each band.
-        avgNoise: `float`or list of `float`s, optional
-            Average noise level in each ``maskedImage``.
-            The default is ``None``, which estimates the noise from the median value of the
-            variance plane of ``maskedImage`` for each filter.
-        maxNumberOfPeaks: `int`, optional
-            If positive, the maximum number of peaks to deblend.
-            If the total number of peaks is greater than ``maxNumberOfPeaks``,
-            then only the first ``maxNumberOfPeaks`` sources are deblended.
-            The default is 0, which deblends all of the peaks.
-        debResult: `DeblenderResult`
-            The ``DeblenderResult`` that contains this ``DeblendedParent``.
-        """
         self.filter = filterName
         self.fp = footprint
         self.maskedImage = maskedImage
@@ -233,25 +225,17 @@ class MultiColorPeak:
     """Collection of single peak deblender results in multiple bands.
 
     There is one of these objects for each Peak in the footprint.
+
+    Parameters
+    ----------
+    peaks: `dict` of `afw.detection.PeakRecord`
+        Each entry in ``peaks`` is a peak record for the same peak in a different band
+    pki: int
+        Index of the peak in `parent.peaks`
+    parent: `DeblendedParent`
+        DeblendedParent object that contains the peak as a child.
     """
-
     def __init__(self, peaks, pki, parent):
-        """Create a collection for deblender results in each band.
-
-        Parameters
-        ----------
-        peaks: `dict` of `afw.detection.PeakRecord`
-            Each entry in ``peaks`` is a peak record for the same peak in a different band
-        pki: int
-            Index of the peak in `parent.peaks`
-        parent: `DeblendedParent`
-            DeblendedParent object that contains the peak as a child.
-
-        Returns
-        -------
-        None
-
-        """
         self.filters = list(peaks.keys())
         self.deblendedPeaks = peaks
         self.parent = parent
@@ -272,26 +256,19 @@ class DeblendedPeak:
     """Result of deblending a single Peak within a parent Footprint.
 
     There is one of these objects for each Peak in the Footprint.
+
+    Parameters
+    ----------
+    peak: `afw.detection.PeakRecord`
+        Peak object in a single band from a peak record
+    pki: `int`
+        Index of the peak in `multiColorPeak.parent.peaks`
+    parent: `DeblendedParent`
+        Parent in the same filter that contains the peak
+    multiColorPeak: `MultiColorPeak`
+        Object containing the same peak in multiple bands
     """
-
     def __init__(self, peak, pki, parent, multiColorPeak=None):
-        """Initialize a new deblended peak in a single filter band
-
-        Parameters
-        ----------
-        peak: `afw.detection.PeakRecord`
-            Peak object in a single band from a peak record
-        pki: `int`
-            Index of the peak in `multiColorPeak.parent.peaks`
-        parent: `DeblendedParent`
-            Parent in the same filter that contains the peak
-        multiColorPeak: `MultiColorPeak`
-            Object containing the same peak in multiple bands
-
-        Returns
-        -------
-        None
-        """
         # Peak object
         self.peak = peak
         # int, peak index number
@@ -495,7 +472,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     # Optional: If ``rampFluxAtEdge`` is True, adjust flux on the edges of the template footprints
 
         * Using the PSF, a peak ``Footprint`` with pixels on the edge of of ``footprint``
-          is grown by the psffwhm\*1.5 and filled in with zeros.
+          is grown by the psffwhm*1.5 and filled in with zeros.
         * The result is a new symmetric footprint template for the peaks near the edge.
         * Relevant parameter: ``patchEdges``.
 
@@ -511,7 +488,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
 
     # Optional: If ``clipFootprintToNonzero`` is True, clip non-zero spans in the template footprints
 
-        * Peak ``Footprint``\s are clipped to the region in the image containing non-zero values
+        * Peak ``Footprint``\ s are clipped to the region in the image containing non-zero values
           by dropping spans that are completely zero and moving endpoints to non-zero pixels
           (but does not split spans that have internal zeros).
 
@@ -652,7 +629,7 @@ def deblend(footprint, maskedImage, psf, psffwhm,
     Returns
     -------
     res: `PerFootprint`
-        Deblender result that contains a list of ``DeblendedPeak``\s for each peak and (optionally)
+        Deblender result that contains a list of ``DeblendedPeak``\ s for each peak and (optionally)
         the template sum.
     """
     avgNoise = sigma1
@@ -728,7 +705,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     verbose: `bool`, optional
         Whether or not to show a more verbose output.
         The default is ``False``.
-    avgNoise: `float`or list of `float`s, optional
+    avgNoise: `float`or list of `float`\ s, optional
         Average noise level in each ``maskedImage``.
         The default is ``None``, which estimates the noise from the median value of the
         variance plane of ``maskedImage`` for each filter.
@@ -740,7 +717,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     Returns
     -------
     debResult: `DeblendedParent`
-        Deblender result that contains a list of ``MultiColorPeak``\s for each peak and
+        Deblender result that contains a list of ``MultiColorPeak``\ s for each peak and
         information that describes the footprint in all filters.
     """
     # Import C++ routines

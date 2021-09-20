@@ -240,7 +240,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
             img, varimg, psfChisqCut1, psfChisqCut2, psfChisqCut2b,
             tinyFootprintSize=2,
             ):
-    """Fit a PSF + smooth background model (linear) to a small region
+    r"""Fit a PSF + smooth background model (linear) to a small region
     around a peak.
 
     See fitPsfs for a more thorough description, including all
@@ -264,10 +264,10 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
             Catalog of peaks contained in the parent footprint.
     peaksF: list of `afw.geom.Point2D`
         List of floating point coordinates of all of the peaks.
-    psf: list of `afw.detection.Psf`s
+    psf: list of `afw.detection.Psf`\ s
         Psf of the ``maskedImage`` for each band.
-    psffwhm: list pf `float`s
-        FWHM of the ``maskedImage``'s ``psf`` in each band.
+    psffwhm: list pf `float`\ s
+        FWHM of the ``maskedImage``\ 's ``psf`` in each band.
     img: `afw.image.ImageF`
         The image that contains the footprint.
     varimg: `afw.image.ImageF`
@@ -770,8 +770,8 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
 def rampFluxAtEdge(debResult, log, patchEdges=False):
     r"""Adjust flux on the edges of the template footprints.
 
-    Using the PSF, a peak ``Footprint`` with pixels on the edge of
-    ``footprint`` is grown by the ``psffwhm``\*1.5 and filled in
+    Using the PSF, a peak ``~afw.detection.Footprint`` with pixels on the edge
+    of ``footprint`` is grown by the ``psffwhm*1.5`` and filled in
     with ramped pixels. The result is a new symmetric footprint
     template for the peaks near the edge.
 
@@ -1041,7 +1041,7 @@ def makeTemplatesMonotonic(debResult, log):
 def clipFootprintsToNonzero(debResult, log):
     r"""Clip non-zero spans in the template footprints for every peak in each filter.
 
-    Peak ``Footprint``\s are clipped to the region in the image containing
+    Peak ``Footprint``\ s are clipped to the region in the image containing
     non-zero values by dropping spans that are completely zero and moving
     endpoints to non-zero pixels (but does not split spans that have
     internal zeros).
