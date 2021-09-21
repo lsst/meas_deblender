@@ -19,6 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["DeblenderPlugin", "fitPsfs", "buildSymmetricTemplates", "rampFluxAtEdge",
+           "medianSmoothTemplates", "makeTemplatesMonotonic", "clipFootprintsToNonzero",
+           "weightTemplates", "reconstructTemplates", "apportionFlux"]
+
 import numpy as np
 
 import lsst.pex.exceptions
@@ -32,12 +36,13 @@ from .baselineUtils import BaselineUtilsF as bUtils
 
 
 def clipFootprintToNonzeroImpl(foot, image):
-    '''
-     Clips the given *Footprint* to the region in the *Image*
-     containing non-zero values.  The clipping drops spans that are
-     totally zero, and moves endpoints to non-zero; it does not
-     split spans that have internal zeros.
-    '''
+    """Clips the given *Footprint* to the region in the *Image*
+    containing non-zero values.
+
+    The clipping drops spans that are
+    totally zero, and moves endpoints to non-zero; it does not
+    split spans that have internal zeros.
+    """
     x0 = image.getX0()
     y0 = image.getY0()
     xImMax = x0 + image.getDimensions().getX()
@@ -64,9 +69,9 @@ class DeblenderPlugin:
     """Class to define plugins for the deblender.
 
     The new deblender executes a series of plugins specified by the user.
-    Each plugin defines the function to be executed, the keyword arguments required by the function,
-    and whether or not certain portions of the deblender might need to be rerun as a result of
-    the function.
+    Each plugin defines the function to be executed, the keyword arguments
+    required by the function, and whether or not certain portions of the
+    deblender might need to be rerun as a result of the function.
     """
     def __init__(self, func, onReset=None, maxIterations=50, **kwargs):
         """Initialize a deblender plugin
@@ -74,19 +79,23 @@ class DeblenderPlugin:
         Parameters
         ----------
         func: `function`
-            Function to run when the plugin is executed. The function should always take
-            `debResult`, a `DeblenderResult` that stores the deblender result, and
-            `log`, an `lsst.log`, as the first two arguments, as well as any additional
-            keyword arguments (that must be specified in ``kwargs``).
-            The function should also return ``modified``, a `bool` that tells the deblender whether
+            Function to run when the plugin is executed.
+            The function should always take
+            `debResult`, a `DeblenderResult` that stores the deblender result,
+            and `log`, an `lsst.log`, as the first two arguments, as well as
+            any additional keyword arguments (that must
+            be specified in ``kwargs``). The function should also return
+            ``modified``, a `bool` that tells the deblender whether
             or not any templates have been modified by the function.
-            If ``modified==True``, the deblender will go back to step ``onReset``,
-            unless the has already been run ``maxIterations``.
+            If ``modified==True``, the deblender will go back to step
+            ``onReset``, unless the has already been run ``maxIterations``.
         onReset: `int`
-            Index of the deblender plugin to return to if ``func`` modifies any templates.
-            The default is ``None``, which does not re-run any plugins.
+            Index of the deblender plugin to return to if ``func`` modifies
+            any templates. The default is ``None``, which does not re-run
+            any plugins.
         maxIterations: `int`
-            Maximum number of times the deblender will reset when the current plugin
+            Maximum number of times the deblender will reset when
+            the current plugin
             returns ``True``.
         """
         self.func = func
@@ -99,7 +108,8 @@ class DeblenderPlugin:
     def run(self, debResult, log):
         """Execute the current plugin
 
-        Once the plugin has finished, check to see if part of the deblender must be executed again.
+        Once the plugin has finished, check to see if part of the deblender
+        must be executed again.
         """
         log.trace("Executing %s", self.func.__name__)
         reset = self.func(debResult, log, **self.kwargs)
@@ -152,15 +162,18 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
 
 
 def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.5, tinyFootprintSize=2):
-    """Fit a PSF + smooth background model (linear) to a small region around each peak
+    """Fit a PSF + smooth background model (linear) to a small region
+    around each peak.
 
-    This function will iterate over all filters in deblender result but does not compare
-    results across filters.
-    DeblendedPeaks that pass the cuts have their templates modified to the PSF + background model
-    and their ``deblendedAsPsf`` property set to ``True``.
+    This function will iterate over all filters in deblender result but does
+    not compare results across filters.
+    DeblendedPeaks that pass the cuts have their templates modified to the
+    PSF + background model and their ``deblendedAsPsf`` property set
+    to ``True``.
 
-    This will likely be replaced in the future with a function that compares the psf chi-squared cuts
-    so that peaks flagged as point sources will be considered point sources in all bands.
+    This will likely be replaced in the future with a function that compares
+    the psf chi-squared cuts so that peaks flagged as point sources will be
+    considered point sources in all bands.
 
     Parameters
     ----------
@@ -169,29 +182,33 @@ def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.
     log: `log.Log`
         LSST logger for logging purposes.
     psfChisqCut*: `float`, optional
-        ``psfChisqCut1`` is the maximum chi-squared-per-degree-of-freedom allowed for a peak to
-        be considered a PSF match without recentering.
+        ``psfChisqCut1`` is the maximum chi-squared-per-degree-of-freedom
+        allowed for a peak to be considered a PSF match without recentering.
         A fit is also made that includes terms to recenter the PSF.
-        ``psfChisqCut2`` is the same as ``psfChisqCut1`` except it determines the restriction on the
-        fit that includes recentering terms.
-        If the peak is a match for a re-centered PSF, the PSF is repositioned at the new center and
+        ``psfChisqCut2`` is the same as ``psfChisqCut1`` except it
+        determines the restriction on the fit that includes
+        recentering terms.
+        If the peak is a match for a re-centered PSF, the PSF is
+        repositioned at the new center and
         the peak footprint is fit again, this time to the new PSF.
-        If the resulting chi-squared-per-degree-of-freedom is less than ``psfChisqCut2b`` then it
-        passes the re-centering algorithm.
-        If the peak passes both the re-centered and fixed position cuts, the better of the two is accepted,
-        but parameters for all three psf fits are stored in the ``DebldendedPeak``.
-        The default for ``psfChisqCut1``, ``psfChisqCut2``, and ``psfChisqCut2b`` is ``1.5``.
+        If the resulting chi-squared-per-degree-of-freedom is less than
+        ``psfChisqCut2b`` then it passes the re-centering algorithm.
+        If the peak passes both the re-centered and fixed position cuts,
+        the better of the two is accepted, but parameters for all three psf
+        fits are stored in the ``DebldendedPeak``.
+        The default for ``psfChisqCut1``, ``psfChisqCut2``, and
+        ``psfChisqCut2b`` is ``1.5``.
     tinyFootprintSize: `float`, optional
-        The PSF model is shrunk to the size that contains the original footprint.
-        If the bbox of the clipped PSF model for a peak is smaller than ``max(tinyFootprintSize,2)``
-        then ``tinyFootprint`` for the peak is set to ``True`` and the peak is not fit.
-        The default is 2.
+        The PSF model is shrunk to the size that contains the original
+        footprint. If the bbox of the clipped PSF model for a peak is
+        smaller than ``max(tinyFootprintSize,2)`` then ``tinyFootprint`` for
+        the peak is set to ``True`` and the peak is not fit. The default is 2.
 
     Returns
     -------
     modified: `bool`
-        If any templates have been assigned to PSF point sources then ``modified`` is ``True``,
-        otherwise it is ``False``.
+        If any templates have been assigned to PSF point sources then
+        ``modified`` is ``True``, otherwise it is ``False``.
     """
     from .baseline import CachingPsf
     modified = False
@@ -223,9 +240,11 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
             img, varimg, psfChisqCut1, psfChisqCut2, psfChisqCut2b,
             tinyFootprintSize=2,
             ):
-    """Fit a PSF + smooth background model (linear) to a small region around a peak.
+    r"""Fit a PSF + smooth background model (linear) to a small region
+    around a peak.
 
-    See fitPsfs for a more thorough description, including all parameters not described below.
+    See fitPsfs for a more thorough description, including all
+    parameters not described below.
 
     Parameters
     ----------
@@ -245,10 +264,10 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
             Catalog of peaks contained in the parent footprint.
     peaksF: list of `afw.geom.Point2D`
         List of floating point coordinates of all of the peaks.
-    psf: list of `afw.detection.Psf`s
+    psf: list of `afw.detection.Psf`\ s
         Psf of the ``maskedImage`` for each band.
-    psffwhm: list pf `float`s
-        FWHM of the ``maskedImage``'s ``psf`` in each band.
+    psffwhm: list pf `float`\ s
+        FWHM of the ``maskedImage``\ 's ``psf`` in each band.
     img: `afw.image.ImageF`
         The image that contains the footprint.
     varimg: `afw.image.ImageF`
@@ -689,9 +708,9 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
 def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=True):
     """Build a symmetric template for each peak in each filter
 
-    Given ``maskedImageF``, ``footprint``, and a ``DebldendedPeak``, creates a symmetric template
-    (``templateImage`` and ``templateFootprint``) around the peak for all peaks not flagged as
-    ``skip`` or ``deblendedAsPsf``.
+    Given ``maskedImageF``, ``footprint``, and a ``DebldendedPeak``, creates
+    a symmetric template (``templateImage`` and ``templateFootprint``) around
+    the peak for all peaks not flagged as ``skip`` or ``deblendedAsPsf``.
 
     Parameters
     ----------
@@ -700,14 +719,15 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
     log: `log.Log`
         LSST logger for logging purposes.
     patchEdges: `bool`, optional
-        If True and if the parent Footprint touches pixels with the ``EDGE`` bit set,
-        then grow the parent Footprint to include all symmetric templates.
+        If True and if the parent Footprint touches pixels with the
+        ``EDGE`` bit set, then grow the parent Footprint to include
+        all symmetric templates.
 
     Returns
     -------
     modified: `bool`
-        If any peaks are not skipped or marked as point sources, ``modified`` is ``True.
-        Otherwise ``modified`` is ``False``.
+        If any peaks are not skipped or marked as point sources,
+        ``modified`` is ``True. Otherwise ``modified`` is ``False``.
     """
     modified = False
     # Create the Templates for each peak in each filter
@@ -748,11 +768,12 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
 
 
 def rampFluxAtEdge(debResult, log, patchEdges=False):
-    """Adjust flux on the edges of the template footprints.
+    r"""Adjust flux on the edges of the template footprints.
 
-    Using the PSF, a peak ``Footprint`` with pixels on the edge of ``footprint``
-    is grown by the ``psffwhm``*1.5 and filled in with ramped pixels.
-    The result is a new symmetric footprint template for the peaks near the edge.
+    Using the PSF, a peak ``~afw.detection.Footprint`` with pixels on the edge
+    of ``footprint`` is grown by the ``psffwhm*1.5`` and filled in
+    with ramped pixels. The result is a new symmetric footprint
+    template for the peaks near the edge.
 
     Parameters
     ----------
@@ -761,14 +782,15 @@ def rampFluxAtEdge(debResult, log, patchEdges=False):
     log: `log.Log`
         LSST logger for logging purposes.
     patchEdges: `bool`, optional
-        If True and if the parent Footprint touches pixels with the ``EDGE`` bit set,
-        then grow the parent Footprint to include all symmetric templates.
+        If True and if the parent Footprint touches pixels with the
+        ``EDGE`` bit set, then grow the parent Footprint to include
+        all symmetric templates.
 
     Returns
     -------
     modified: `bool`
-        If any peaks have their templates modified to include flux at the edges,
-        ``modified`` is ``True``.
+        If any peaks have their templates modified to include flux at the
+        edges, ``modified`` is ``True``.
     """
     modified = False
     # Loop over all filters
@@ -805,8 +827,9 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
                          x0, x1, y0, y1, psf, pk, sigma1, patchEdges):
     """Extend a template by the PSF to fill in the footprint.
 
-    Using the PSF, a footprint that touches the edge is passed to the function
-    and is grown by the psffwhm*1.5 and filled in with ramped pixels.
+    Using the PSF, a footprint that touches the edge is passed to the
+    function and is grown by the psffwhm*1.5 and filled in with
+    ramped pixels.
 
     Parameters
     ----------
@@ -834,8 +857,8 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
         Estimated noise level in the image.
     patchEdges: `bool`
         If ``patchEdges==True`` and if the footprint touches pixels with the
-        ``EDGE`` bit set, then for spans whose symmetric mirror are outside the
-        image, the symmetric footprint is grown to include them and their
+        ``EDGE`` bit set, then for spans whose symmetric mirror are outside
+        the image, the symmetric footprint is grown to include them and their
         pixel values are stored.
 
     Results
@@ -845,8 +868,8 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
     tfoot2: `afw.detection.Footprint`
         Extended Footprint.
     patched: `bool`
-        If the footprint touches an edge pixel, ``patched`` will be set to ``True``.
-        Otherwise ``patched`` is ``False``.
+        If the footprint touches an edge pixel, ``patched`` will be set to
+        ``True``. Otherwise ``patched`` is ``False``.
     """
     log.trace('Found significant flux at template edge.')
     # Compute the max of:
@@ -931,7 +954,8 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
 
 
 def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
-    """Applying median smoothing filter to the template images for every peak in every filter.
+    """Applying median smoothing filter to the template images for every
+    peak in every filter.
 
     Parameters
     ----------
@@ -940,15 +964,18 @@ def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
     log: `log.Log`
         LSST logger for logging purposes.
     medianFilterHalfSize: `int`, optional
-        Half the box size of the median filter, i.e. a ``medianFilterHalfSize`` of 50 means that
-        each output pixel will be the median of  the pixels in a 101 x 101-pixel box in the input image.
-        This parameter is only used when ``medianSmoothTemplate==True``, otherwise it is ignored.
+        Half the box size of the median filter, i.e. a
+        ``medianFilterHalfSize`` of 50 means that each output pixel will
+        be the median of  the pixels in a 101 x 101-pixel box in the input
+        image. This parameter is only used when
+        ``medianSmoothTemplate==True``, otherwise it is ignored.
 
     Returns
     -------
     modified: `bool`
         Whether or not any templates were modified.
-        This will be ``True`` as long as there is at least one source that is not flagged as a PSF.
+        This will be ``True`` as long as there is at least one source that
+        is not flagged as a PSF.
     """
     modified = False
     # Loop over all filters
@@ -978,8 +1005,8 @@ def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
 def makeTemplatesMonotonic(debResult, log):
     """Make the templates monotonic.
 
-    The pixels in the templates are modified such that pixels further from the peak will
-    have values smaller than those closer to the peak.
+    The pixels in the templates are modified such that pixels further
+    from the peak will have values smaller than those closer to the peak.
 
     Parameters
     ----------
@@ -992,7 +1019,8 @@ def makeTemplatesMonotonic(debResult, log):
     -------
     modified: `bool`
         Whether or not any templates were modified.
-        This will be ``True`` as long as there is at least one source that is not flagged as a PSF.
+        This will be ``True`` as long as there is at least one source that
+        is not flagged as a PSF.
     """
     modified = False
     # Loop over all filters
@@ -1011,11 +1039,12 @@ def makeTemplatesMonotonic(debResult, log):
 
 
 def clipFootprintsToNonzero(debResult, log):
-    """Clip non-zero spans in the template footprints for every peak in each filter.
+    r"""Clip non-zero spans in the template footprints for every peak in each filter.
 
-    Peak ``Footprint``s are clipped to the region in the image containing non-zero values
-    by dropping spans that are completely zero and moving endpoints to non-zero pixels
-    (but does not split spans that have internal zeros).
+    Peak ``Footprint``\ s are clipped to the region in the image containing
+    non-zero values by dropping spans that are completely zero and moving
+    endpoints to non-zero pixels (but does not split spans that have
+    internal zeros).
 
     Parameters
     ----------
@@ -1028,7 +1057,8 @@ def clipFootprintsToNonzero(debResult, log):
     -------
     modified: `bool`
         Whether or not any templates were modified.
-        This will be ``True`` as long as there is at least one source that is not flagged as a PSF.
+        This will be ``True`` as long as there is at least one source that
+        is not flagged as a PSF.
     """
     # Loop over all filters
     for fidx in debResult.filters:
@@ -1047,9 +1077,10 @@ def clipFootprintsToNonzero(debResult, log):
 def weightTemplates(debResult, log):
     """Weight the templates to best fit the observed image in each filter
 
-    This function re-weights the templates so that their linear combination best represents
-    the observed image in that filter.
-    In the future it may be useful to simultaneously weight all of the filters together.
+    This function re-weights the templates so that their linear combination
+    best represents the observed image in that filter.
+    In the future it may be useful to simultaneously weight all of the
+    filters together.
 
     Parameters
     ----------
@@ -1061,8 +1092,9 @@ def weightTemplates(debResult, log):
     Returns
     -------
     modified: `bool`
-        ``weightTemplates`` does not actually modify the ``Footprint`` templates other than
-        to add a weight to them, so ``modified`` is always ``False``.
+        ``weightTemplates`` does not actually modify the ``Footprint``
+        templates other than to add a weight to them, so ``modified``
+        is always ``False``.
     """
     # Weight the templates by doing a least-squares fit to the image
     log.trace('Weighting templates')
@@ -1072,7 +1104,8 @@ def weightTemplates(debResult, log):
 
 
 def _weightTemplates(dp):
-    """Weight the templates to best match the parent Footprint in a single filter
+    """Weight the templates to best match the parent Footprint in a single
+    filter
 
     This includes weighting both regular templates and point source templates
 
@@ -1116,13 +1149,14 @@ def _weightTemplates(dp):
 def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
     """Remove "degenerate templates"
 
-    If galaxies have substructure, such as face-on spirals, the process of identifying peaks can
-    "shred" the galaxy into many pieces. The templates of shredded galaxies are typically quite
-    similar because they represent the same galaxy, so we try to identify these "degenerate" peaks
+    If galaxies have substructure, such as face-on spirals, the process of
+    identifying peaks can "shred" the galaxy into many pieces. The templates
+    of shredded galaxies are typically quite similar because they represent
+    the same galaxy, so we try to identify these "degenerate" peaks
     by looking at the inner product (in pixel space) of pairs of templates.
-    If they are nearly parallel, we only keep one of the peaks and reject the other.
-    If only one of the peaks is a PSF template, the other template is used,
-    otherwise the one with the maximum template value is kept.
+    If they are nearly parallel, we only keep one of the peaks and reject
+    the other. If only one of the peaks is a PSF template, the other template
+    is used, otherwise the one with the maximum template value is kept.
 
     Parameters
     ----------
@@ -1131,8 +1165,8 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
     log: `log.Log`
         LSST logger for logging purposes.
     maxTempDotProd: `float`, optional
-        All dot products between templates greater than ``maxTempDotProd`` will result in one
-        of the templates removed.
+        All dot products between templates greater than ``maxTempDotProd``
+        will result in one of the templates removed.
 
     Returns
     -------
@@ -1218,8 +1252,8 @@ def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-t
                   getTemplateSum=False):
     """Apportion flux to all of the peak templates in each filter
 
-    Divide the ``maskedImage`` flux amongst all of the templates based on the fraction of
-    flux assigned to each ``template``.
+    Divide the ``maskedImage`` flux amongst all of the templates based
+    on the fraction of flux assigned to each ``template``.
     Leftover "stray flux" is assigned to peaks based on the other parameters.
 
     Parameters
@@ -1229,36 +1263,46 @@ def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-t
     log: `log.Log`
         LSST logger for logging purposes.
     assignStrayFlux: `bool`, optional
-        If True then flux in the parent footprint that is not covered by any of the
-        template footprints is assigned to templates based on their 1/(1+r^2) distance.
+        If True then flux in the parent footprint that is not covered by any
+        of the template footprints is assigned to templates based on
+        their 1/(1+r^2) distance.
         How the flux is apportioned is determined by ``strayFluxAssignment``.
     strayFluxAssignment: `string`, optional
         Determines how stray flux is apportioned.
+
         * ``trim``: Trim stray flux and do not include in any footprints
-        * ``r-to-peak`` (default): Stray flux is assigned based on (1/(1+r^2) from the peaks
-        * ``r-to-footprint``: Stray flux is distributed to the footprints based on 1/(1+r^2) of the
-          minimum distance from the stray flux to footprint
-        * ``nearest-footprint``: Stray flux is assigned to the footprint with lowest L-1 (Manhattan)
-          distance to the stray flux
+        * ``r-to-peak`` (default): Stray flux is assigned based on
+          (1/(1+r^2) from the peaks
+        * ``r-to-footprint``: Stray flux is distributed to the footprints
+          based on 1/(1+r^2) of the minimum distance from the stray flux
+          to footprint
+        * ``nearest-footprint``: Stray flux is assigned to the footprint
+          with lowest L-1 (Manhattan) distance to the stray flux
+
     strayFluxToPointSources: `string`, optional
         Determines how stray flux is apportioned to point sources
+
         * ``never``: never apportion stray flux to point sources
-        * ``necessary`` (default): point sources are included only if there are no extended sources nearby
-        * ``always``: point sources are always included in the 1/(1+r^2) splitting
+        * ``necessary`` (default): point sources are included only if there
+          are no extended sources nearby
+        * ``always``: point sources are always included in
+          the 1/(1+r^2) splitting
+
     clipStrayFluxFraction: `float`, optional
         Minimum stray-flux portion.
-        Any stray-flux portion less than ``clipStrayFluxFraction`` is clipped to zero.
+        Any stray-flux portion less than ``clipStrayFluxFraction`` is
+        clipped to zero.
     getTemplateSum: `bool`, optional
-        As part of the flux calculation, the sum of the templates is calculated.
-        If ``getTemplateSum==True`` then the sum of the templates is stored in the result
-        (a `DeblendedFootprint`).
+        As part of the flux calculation, the sum of the templates is
+        calculated. If ``getTemplateSum==True`` then the sum of the
+        templates is stored in the result (a `DeblendedFootprint`).
 
     Returns
     -------
     modified: `bool`
-        Apportion flux always modifies the templates, so ``modified`` is always ``True``.
-        However, this should likely be the final step and it is unlikely that
-        any deblender plugins will be re-run.
+        Apportion flux always modifies the templates, so ``modified`` is
+        always ``True``. However, this should likely be the final step and
+        it is unlikely that any deblender plugins will be re-run.
     """
     validStrayPtSrc = ['never', 'necessary', 'always']
     validStrayAssign = ['r-to-peak', 'r-to-footprint', 'nearest-footprint', 'trim']

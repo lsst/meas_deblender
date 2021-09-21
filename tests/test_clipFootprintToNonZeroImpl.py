@@ -31,12 +31,11 @@ from lsst.meas.deblender.plugins import clipFootprintToNonzeroImpl
 
 
 class ClipFootprintTestCase(lsst.utils.tests.TestCase):
-    '''
-    This is s a test to verify that clipping footprints to a non-zero region
+    """This is s a test to verify that clipping footprints to a non-zero region
     works as intended. It is expected that spans which contain leading or
     trailing zeros will be trimmed as to not include these values, while zeros
     which occur inside a span will be preserved.
-    '''
+    """
     def testClip(self):
         im = afwImage.ImageI(geom.Box2I(geom.Point2I(-2, -2),
                                         geom.Extent2I(20, 20)))

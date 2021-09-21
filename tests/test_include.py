@@ -39,7 +39,7 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 
 
 class IncludeTestCase(lsst.utils.tests.TestCase):
-    """ Test case for DM-1738: test that include method successfully
+    """Test case for DM-1738: test that include method successfully
     expands footprint to include the union of itself and all others provided.
 
     In the current version of meas_deblender, children's Footprints can extend outside
@@ -54,7 +54,6 @@ class IncludeTestCase(lsst.utils.tests.TestCase):
 
     See data/ticket1738_noInclude.png or data/ticket1738_noInclude.fits for a visual
     of this pathology).
-
     """
 
     def setUp(self):
