@@ -44,8 +44,8 @@ else:
     print('"doPlot" not set -- not making plots.  To enable plots, edit', __file__)
 
 # Lower the level to Log.DEBUG to see debug messages
-Log.getLogger('meas.deblender.symmetrizeFootprint').setLevel(Log.INFO)
-Log.getLogger('meas.deblender.symmetricFootprint').setLevel(Log.INFO)
+Log.getLogger('lsst.meas.deblender.symmetrizeFootprint').setLevel(Log.INFO)
+Log.getLogger('lsst.meas.deblender.symmetricFootprint').setLevel(Log.INFO)
 
 
 def imExt(img):

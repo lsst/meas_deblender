@@ -24,7 +24,6 @@ __all__ = ['SourceDeblendConfig', 'SourceDeblendTask']
 import math
 import numpy as np
 
-import lsst.log
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.math as afwMath
@@ -34,8 +33,6 @@ import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
 from lsst.utils.timer import timeMethod
-
-logger = lsst.log.Log.getLogger("meas.deblender.deblend")
 
 
 class SourceDeblendConfig(pexConfig.Config):
