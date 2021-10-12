@@ -743,7 +743,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
         if not debResult.failed:
             reset = debPlugins[step].run(debResult, log)
         else:
-            log.warn("Skipping steps {0}".format(debPlugins[step:]))
+            log.warning("Skipping steps %s", debPlugins[step:])
             return debResult
         if reset:
             step = debPlugins[step].onReset

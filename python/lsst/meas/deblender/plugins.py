@@ -155,7 +155,7 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
     -------
     None
     """
-    log.trace("Peak {0} at ({1},{2}):{3}".format(pk, cx, cy, msg))
+    log.trace("Peak %d at (%f,%f):%s", pk, cx, cy, msg)
     for fidx, f in enumerate(filters):
         pkResult = debResult.deblendedParents[f].peaks[pk]
         getattr(pkResult, flag)()
@@ -382,7 +382,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     NP = valid.sum()
 
     if NP == 0:
-        log.warn('Skipping peak at (%.1f, %.1f): no unmasked pixels nearby', cx, cy)
+        log.warning('Skipping peak at (%.1f, %.1f): no unmasked pixels nearby', cx, cy)
         pkres.setNoValidPixels()
         return
 
@@ -511,7 +511,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
         # X2 is with decenter
         X2, r2, rank2, s2 = np.linalg.lstsq(Aw, bw, rcond=-1)
     except np.linalg.LinAlgError as e:
-        log.warn("Failed to fit PSF to child: %s", e)
+        log.warning("Failed to fit PSF to child: %s", e)
         pkres.setPsfFitFailed()
         return
 
@@ -1239,8 +1239,8 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
                 if maxTemplate[rejectedIndex] > maxTemplate[i]:
                     keep = indexes[rejectedIndex]
                     reject = indexes[i]
-            log.trace('Removing object with index %d : %f.  Degenerate with %d' % (reject, currentMax,
-                                                                                   keep))
+            log.trace('Removing object with index %d : %f.  Degenerate with %d',
+                      reject, currentMax, keep)
             dp.peaks[reject].skip = True
             dp.peaks[reject].degenerate = True
 
