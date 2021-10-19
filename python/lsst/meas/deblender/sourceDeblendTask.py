@@ -33,6 +33,7 @@ import lsst.afw.geom.ellipses as afwEll
 import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
+from lsst.utils.timer import timeMethod
 
 logger = lsst.log.Log.getLogger("meas.deblender.deblend")
 
@@ -262,7 +263,7 @@ class SourceDeblendTask(pipeBase.Task):
                                                doc="Same as deblend_n_peaks, but the number of peaks "
                                                    "in the parent footprint")
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure, sources):
         """Get the PSF from the provided exposure and then run deblend.
 
@@ -282,7 +283,7 @@ class SourceDeblendTask(pipeBase.Task):
         # https://dev.lsstcorp.org/trac/ticket/3030
         return psf.computeShape().getDeterminantRadius() * 2.35
 
-    @pipeBase.timeMethod
+    @timeMethod
     def deblend(self, exposure, srcs, psf):
         """Deblend.
 
