@@ -725,8 +725,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     if log is None:
         import lsst.log as lsstLog
 
-        component = 'lsst.meas_deblender.baseline'
-        log = lsstLog.Log.getLogger(component)
+        log = lsstLog.Log.getLogger(__name__)
 
         if verbose:
             log.setLevel(lsstLog.Log.TRACE)
