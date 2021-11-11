@@ -725,8 +725,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     if log is None:
         import lsst.log as lsstLog
 
-        component = 'meas_deblender.baseline'
-        log = lsstLog.Log.getLogger(component)
+        log = lsstLog.Log.getLogger(__name__)
 
         if verbose:
             log.setLevel(lsstLog.Log.TRACE)
@@ -743,7 +742,7 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
         if not debResult.failed:
             reset = debPlugins[step].run(debResult, log)
         else:
-            log.warn("Skipping steps {0}".format(debPlugins[step:]))
+            log.warning("Skipping steps %s", debPlugins[step:])
             return debResult
         if reset:
             step = debPlugins[step].onReset

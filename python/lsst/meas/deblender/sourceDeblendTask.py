@@ -24,7 +24,6 @@ __all__ = ['SourceDeblendConfig', 'SourceDeblendTask']
 import math
 import numpy as np
 
-import lsst.log
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.math as afwMath
@@ -34,8 +33,6 @@ import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
 from lsst.utils.timer import timeMethod
-
-logger = lsst.log.Log.getLogger("meas.deblender.deblend")
 
 
 class SourceDeblendConfig(pexConfig.Config):
@@ -325,7 +322,7 @@ class SourceDeblendTask(pipeBase.Task):
             maxId = np.max(srcs["id"])
             idFactory.notify(maxId)
 
-        self.log.info("Deblending %d sources" % len(srcs))
+        self.log.info("Deblending %d sources", len(srcs))
 
         from lsst.meas.deblender.baseline import deblend
 
@@ -355,14 +352,14 @@ class SourceDeblendTask(pipeBase.Task):
             if self.isLargeFootprint(fp):
                 src.set(self.tooBigKey, True)
                 self.skipParent(src, mi.getMask())
-                self.log.warn('Parent %i: skipping large footprint (area: %i)',
-                              int(src.getId()), int(fp.getArea()))
+                self.log.warning('Parent %i: skipping large footprint (area: %i)',
+                                 int(src.getId()), int(fp.getArea()))
                 continue
             if self.isMasked(fp, exposure.getMaskedImage().getMask()):
                 src.set(self.maskedKey, True)
                 self.skipParent(src, mi.getMask())
-                self.log.warn('Parent %i: skipping masked footprint (area: %i)',
-                              int(src.getId()), int(fp.getArea()))
+                self.log.warning('Parent %i: skipping masked footprint (area: %i)',
+                                 int(src.getId()), int(fp.getArea()))
                 continue
 
             nparents += 1
@@ -400,7 +397,7 @@ class SourceDeblendTask(pipeBase.Task):
                     src.set(self.deblendFailedKey, False)
             except Exception as e:
                 if self.config.catchFailures:
-                    self.log.warn("Unable to deblend source %d: %s" % (src.getId(), e))
+                    self.log.warning("Unable to deblend source %d: %s", src.getId(), e)
                     src.set(self.deblendFailedKey, True)
                     import traceback
                     traceback.print_exc()
@@ -485,8 +482,8 @@ class SourceDeblendTask(pipeBase.Task):
             # print('Deblending parent id', src.getId(), 'took', time.clock() - t0)
 
         n1 = len(srcs)
-        self.log.info('Deblended: of %i sources, %i were deblended, creating %i children, total %i sources'
-                      % (n0, nparents, n1-n0, n1))
+        self.log.info('Deblended: of %i sources, %i were deblended, creating %i children, total %i sources',
+                      n0, nparents, n1-n0, n1)
 
     def preSingleDeblendHook(self, exposure, srcs, i, fp, psf, psf_fwhm, sigma1):
         pass

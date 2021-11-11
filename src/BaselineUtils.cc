@@ -726,7 +726,7 @@ apportionFlux(MaskedImageT const& img,
     // the apportioned flux return value
     std::vector<MaskedImagePtrT> portions;
 
-    LOG_LOGGER _log = LOG_GET("meas.deblender.apportionFlux");
+    LOG_LOGGER _log = LOG_GET("lsst.meas.deblender.apportionFlux");
     bool findStrayFlux = (strayFluxOptions & ASSIGN_STRAYFLUX);
 
     int ix0 = img.getX0();
@@ -980,7 +980,7 @@ symmetrizeFootprint(
     sfoot->setPeakSchema(foot.getPeaks().getSchema());
     afwGeom::SpanSet const & spans = *foot.getSpans();
 
-    LOG_LOGGER _log = LOG_GET("meas.deblender.symmetrizeFootprint");
+    LOG_LOGGER _log = LOG_GET("lsst.meas.deblender.symmetrizeFootprint");
 
     // Find the Span containing the peak.
     afwGeom::Span target(cy, cx, cx);
@@ -1203,7 +1203,7 @@ buildSymmetricTemplate(
     int cx = peak.getIx();
     int cy = peak.getIy();
 
-    LOG_LOGGER _log = LOG_GET("meas.deblender.symmetricFootprint");
+    LOG_LOGGER _log = LOG_GET("lsst.meas.deblender.symmetricFootprint");
 
     if (!img.getBBox(image::PARENT).contains(foot.getBBox())) {
         throw LSST_EXCEPT(lsst::pex::exceptions::LengthError, "Image too small for footprint");
@@ -1387,7 +1387,7 @@ hasSignificantFluxAtEdge(ImagePtrT img,
                          std::shared_ptr<det::Footprint> sfoot,
                          ImagePixelT thresh) {
 
-    LOG_LOGGER _log = LOG_GET("meas.deblender.hasSignificantFluxAtEdge");
+    LOG_LOGGER _log = LOG_GET("lsst.meas.deblender.hasSignificantFluxAtEdge");
 
     // Find edge template pixels with significant flux -- perhaps
     // because their symmetric pixels were outside the footprint?
