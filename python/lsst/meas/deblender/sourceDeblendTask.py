@@ -275,10 +275,8 @@ class SourceDeblendTask(pipeBase.Task):
         assert sources.getSchema() == self.schema
         self.deblend(exposure, sources, psf)
 
-    def _getPsfFwhm(self, psf, bbox):
-        # It should be easier to get a PSF's fwhm;
-        # https://dev.lsstcorp.org/trac/ticket/3030
-        return psf.computeShape().getDeterminantRadius() * 2.35
+    def _getPsfFwhm(self, psf, position):
+        return psf.computeShape(position).getDeterminantRadius() * 2.35
 
     @timeMethod
     def deblend(self, exposure, srcs, psf):
@@ -363,8 +361,8 @@ class SourceDeblendTask(pipeBase.Task):
                 continue
 
             nparents += 1
-            bb = fp.getBBox()
-            psf_fwhm = self._getPsfFwhm(psf, bb)
+            center = fp.getCentroid()
+            psf_fwhm = self._getPsfFwhm(psf, center)
 
             self.log.trace('Parent %i: deblending %i peaks', int(src.getId()), len(pks))
 
