@@ -364,6 +364,15 @@ class SourceDeblendTask(pipeBase.Task):
             center = fp.getCentroid()
             psf_fwhm = self._getPsfFwhm(psf, center)
 
+            if not (psf_fwhm > 0):
+                if self.config.catchFailures:
+                    self.log.warning("Unable to deblend source %d: because PSF FWHM=%f is invalid.",
+                                     src.getId(), psf_fwhm)
+                    src.set(self.deblendFailedKey, True)
+                    continue
+                else:
+                    raise ValueError(f"PSF at {center} has an invalid FWHM value of {psf_fwhm}")
+
             self.log.trace('Parent %i: deblending %i peaks', int(src.getId()), len(pks))
 
             self.preSingleDeblendHook(exposure, srcs, i, fp, psf, psf_fwhm, sigma1)
