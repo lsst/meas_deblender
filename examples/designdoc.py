@@ -213,7 +213,7 @@ def main():
         if hasattr(psf, 'getFwhm'):
             psf_fwhm = psf.getFwhm(xc, yc)
         else:
-            psf_fwhm = psf.computeShape().getDeterminantRadius() * 2.35
+            psf_fwhm = psf.computeShape(psf.getAveragePosition()).getDeterminantRadius() * 2.35
 
         # Each section of the design doc runs the deblender with different args.
 
