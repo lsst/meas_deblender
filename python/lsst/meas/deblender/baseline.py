@@ -772,6 +772,6 @@ class CachingPsf:
         try:
             im = self.psf.computeImage(geom.Point2D(cx, cy))
         except lsst.pex.exceptions.Exception:
-            im = self.psf.computeImage()
+            im = self.psf.computeImage(self.psf.getAveragePosition())
         self.cache[(cx, cy)] = im
         return im

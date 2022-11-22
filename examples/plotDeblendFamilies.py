@@ -248,7 +248,7 @@ def makeplots(butler, dataId, ps, sources=None, pids=None, minsize=0,
         print()
         print('Re-running deblender...')
         psf = calexp.getPsf()
-        psf_fwhm = psf.computeShape().getDeterminantRadius() * 2.35
+        psf_fwhm = psf.computeShape(psf.getAveragePosition()).getDeterminantRadius() * 2.35
         deb = deblend(pfoot, calexp.getMaskedImage(), psf, psf_fwhm, verbose=True,
                       maxNumberOfPeaks=maxpeaks,
                       rampFluxAtEdge=True,
