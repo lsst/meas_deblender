@@ -110,7 +110,7 @@ class SourceDeblendConfig(pexConfig.Config):
     propagateAllPeaks = pexConfig.Field(dtype=bool, default=False,
                                         doc=('Guarantee that all peaks produce a child source.'))
     catchFailures = pexConfig.Field(
-        dtype=bool, default=False,
+        dtype=bool, default=True,
         doc=("If True, catch exceptions thrown by the deblender, log them, "
              "and set a flag on the parent, instead of letting them propagate up"))
     maskPlanes = pexConfig.ListField(dtype=str, default=["SAT", "INTRP", "NO_DATA"],
@@ -220,9 +220,8 @@ class SourceDeblendTask(pipeBase.Task):
         self.maskedKey = schema.addField('deblend_masked', type='Flag',
                                          doc='Parent footprint was predominantly masked')
 
-        if self.config.catchFailures:
-            self.deblendFailedKey = schema.addField('deblend_failed', type='Flag',
-                                                    doc="Deblending failed on source")
+        self.deblendFailedKey = schema.addField('deblend_failed', type='Flag',
+                                                doc="Deblending failed on source")
 
         self.deblendSkippedKey = schema.addField('deblend_skipped', type='Flag',
                                                  doc="Deblender skipped this source")
