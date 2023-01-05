@@ -110,9 +110,10 @@ class SourceDeblendConfig(pexConfig.Config):
     propagateAllPeaks = pexConfig.Field(dtype=bool, default=False,
                                         doc=('Guarantee that all peaks produce a child source.'))
     catchFailures = pexConfig.Field(
-        dtype=bool, default=False,
+        dtype=bool,
+        default=True,
         doc=("If True, catch exceptions thrown by the deblender, log them, "
-             "and set a flag on the parent, instead of letting them propagate up"))
+             "and set a flag on the parent, instead of letting them propagate up."))
     maskPlanes = pexConfig.ListField(dtype=str, default=["SAT", "INTRP", "NO_DATA"],
                                      doc="Mask planes to ignore when performing statistics")
     maskLimits = pexConfig.DictField(
