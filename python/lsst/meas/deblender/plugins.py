@@ -657,7 +657,7 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
         pkres.psfFitDebugStamp = img.Factory(img, stampbb, True)
         pkres.psfFitDebugValidPix = valid  # numpy array
         pkres.psfFitDebugVar = varimg.Factory(varimg, stampbb, True)
-        ww = np.zeros(valid.shape, np.float)
+        ww = np.zeros(valid.shape, np.float64)
         ww[valid] = w
         pkres.psfFitDebugWeight = ww  # numpy
         pkres.psfFitDebugRampWeight = rw
