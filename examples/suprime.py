@@ -33,11 +33,11 @@ def getSuprimeDataref(visit, ccd, single=True, rootdir=None, calibdir=None, outr
     for dr in dataRef:
         print('  ', dr)
     if single:
-        assert(len(dataRef) == 1)
+        assert len(dataRef) == 1
         # dataRef doesn't support indexing, but it does support iteration?
         dr = None
         for dr in dataRef:
             break
-        assert(dr)
+        assert dr
         return dr
     return dataRef

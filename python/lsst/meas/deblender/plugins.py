@@ -400,14 +400,13 @@ def _fitPsf(fp, fmask, pk, pkF, pkres, fbb, peaks, peaksF, log, psf, psffwhm,
     del inpsfy
 
     def _overlap(xlo, xhi, xmin, xmax):
-        assert((xlo <= xmax) and (xhi >= xmin)
-               and (xlo <= xhi) and (xmin <= xmax))
+        assert (xlo <= xmax) and (xhi >= xmin) and (xlo <= xhi) and (xmin <= xmax)
         xloclamp = max(xlo, xmin)
         Xlo = xloclamp - xlo
         xhiclamp = min(xhi, xmax)
         Xhi = Xlo + (xhiclamp - xloclamp)
-        assert(xloclamp >= 0)
-        assert(Xlo >= 0)
+        assert xloclamp >= 0
+        assert Xlo >= 0
         return (xloclamp, xhiclamp+1, Xlo, Xhi+1)
 
     A = np.zeros((NP, NT2))

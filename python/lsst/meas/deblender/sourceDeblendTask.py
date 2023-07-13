@@ -440,7 +440,7 @@ class SourceDeblendTask(pipeBase.Task):
                         if peak.psfFitCenter is None:
                             peak.psfFitCenter = (peak.peak.getIx(), peak.peak.getIy())
 
-                assert(len(heavy.getPeaks()) == 1)
+                assert len(heavy.getPeaks()) == 1
 
                 src.set(self.deblendSkippedKey, False)
                 child = srcs.addNew()
