@@ -156,9 +156,9 @@ class RampEdgeTestCase(lsst.utils.tests.TestCase):
             print('peaks:', len(fp.getPeaks()))
             for pk in fp.getPeaks():
                 print('  ', pk.getIx(), pk.getIy())
-        assert(len(fps) == 1)
+        assert len(fps) == 1
         fp = fps[0]
-        assert(len(fp.getPeaks()) == 2)
+        assert len(fp.getPeaks()) == 2
 
         ima = dict(interpolation='nearest', origin='lower',  # cmap='gray',
                    cmap='jet',

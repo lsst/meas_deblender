@@ -117,7 +117,7 @@ def main():
         for d in opt.drillxy:
             for dd in d.split(';'):
                 xy = dd.split(',')
-                assert(len(xy) == 2)
+                assert len(xy) == 2
                 keepxys.append((int(xy[0]), int(xy[1])))
         print('Keeping parents at xy', keepxys)
 
