@@ -46,7 +46,7 @@ void declareBaselineUtils(py::module& mod, const std::string& suffix) {
     using FootprintPtrT = std::shared_ptr<lsst::afw::detection::Footprint>;
     using Class = BaselineUtils<ImagePixelT, MaskPixelT, VariancePixelT>;
 
-    py::class_<Class, std::shared_ptr<Class>> cls(mod, ("BaselineUtils" + suffix).c_str());
+    py::class_<Class> cls(mod, ("BaselineUtils" + suffix).c_str());
     cls.def_static("symmetrizeFootprint", &Class::symmetrizeFootprint, "foot"_a, "cx"_a, "cy"_a);
     // The C++ function returns a std::pair return value but also takes a referenced boolean
     // (patchedEdges) that is modified by the function and used by the python API,
