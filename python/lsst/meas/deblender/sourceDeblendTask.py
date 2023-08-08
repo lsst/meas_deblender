@@ -90,9 +90,10 @@ class SourceDeblendConfig(pexConfig.Config):
     maxNumberOfPeaks = pexConfig.Field(dtype=int, default=0,
                                        doc=("Only deblend the brightest maxNumberOfPeaks peaks in the parent"
                                             " (<= 0: unlimited)"))
-    maxFootprintArea = pexConfig.Field(dtype=int, default=1000000,
+    maxFootprintArea = pexConfig.Field(dtype=int, default=10000,
                                        doc=("Maximum area for footprints before they are ignored as large; "
-                                            "non-positive means no threshold applied"))
+                                            "non-positive means no threshold applied."
+                                            " Default value is to prevent excessive memory usage."))
     maxFootprintSize = pexConfig.Field(dtype=int, default=0,
                                        doc=("Maximum linear dimension for footprints before they are ignored "
                                             "as large; non-positive means no threshold applied"))
