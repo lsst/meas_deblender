@@ -120,9 +120,10 @@ class SourceDeblendConfig(pexConfig.Config):
     maskLimits = pexConfig.DictField(
         keytype=str,
         itemtype=float,
-        default={},
+        default={"NO_DATA": 0.25},
         doc=("Mask planes with the corresponding limit on the fraction of masked pixels. "
-             "Sources violating this limit will not be deblended."),
+             "Sources violating this limit will not be deblended. "
+             "Default rejects sources in vignetted regions."),
     )
     weightTemplates = pexConfig.Field(
         dtype=bool, default=False,
