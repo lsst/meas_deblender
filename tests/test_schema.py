@@ -44,7 +44,10 @@ class SchemaTestCase(lsst.utils.tests.TestCase):
         schema = afwTable.SourceTable.makeMinimalSchema()
 
         # Create the detection task and process the data
-        detectionTask = SourceDetectionTask(schema=schema)
+        config = SourceDetectionTask.ConfigClass()
+        # Don't trust the variance plane for this data.
+        config.thresholdType = "stdev"
+        detectionTask = SourceDetectionTask(schema=schema, config=config)
         table = afwTable.SourceTable.make(schema)
         result = detectionTask.run(table, self.calexp)
         self.assertEqual(schema, result.sources.getSchema())

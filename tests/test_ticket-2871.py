@@ -72,6 +72,8 @@ class DeblendTestCase(unittest.TestCase):
 
         config = measDeb.SourceDeblendConfig()
         config.catchFailures = True
+        # We can't use this dict, because this test doesn't set a mask plane.
+        config.maskLimits = {}
         task = measDeb.SourceDeblendTask(schema, config=config)
 
         catalog = afwTable.SourceCatalog(schema)
