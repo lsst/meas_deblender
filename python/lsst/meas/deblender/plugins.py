@@ -82,8 +82,9 @@ class DeblenderPlugin:
             Function to run when the plugin is executed.
             The function should always take
             `debResult`, a `DeblenderResult` that stores the deblender result,
-            and `log`, an `lsst.log`, as the first two arguments, as well as
-            any additional keyword arguments (that must
+            and `log`, an `lsst.log.Logger` or
+            `lsst.utils.logging.LsstLogAdapter`, as the first two arguments,
+            as well as any additional keyword arguments (that must
             be specified in ``kwargs``). The function should also return
             ``modified``, a `bool` that tells the deblender whether
             or not any templates have been modified by the function.
@@ -136,7 +137,7 @@ def _setPeakError(debResult, log, pk, cx, cy, filters, msg, flag):
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     pk: int
         Number of the peak that failed
@@ -179,7 +180,7 @@ def fitPsfs(debResult, log, psfChisqCut1=1.5, psfChisqCut2=1.5, psfChisqCut2b=1.
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     psfChisqCut*: `float`, optional
         ``psfChisqCut1`` is the maximum chi-squared-per-degree-of-freedom
@@ -715,7 +716,7 @@ def buildSymmetricTemplates(debResult, log, patchEdges=False, setOrigTemplate=Tr
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log : `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     patchEdges: `bool`, optional
         If True and if the parent Footprint touches pixels with the
@@ -778,7 +779,7 @@ def rampFluxAtEdge(debResult, log, patchEdges=False):
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     patchEdges: `bool`, optional
         If True and if the parent Footprint touches pixels with the
@@ -832,7 +833,7 @@ def _handle_flux_at_edge(log, psffwhm, t1, tfoot, fp, maskedImage,
 
     Parameters
     ----------
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     psffwhm: `float`
         PSF FWHM in pixels.
@@ -960,7 +961,7 @@ def medianSmoothTemplates(debResult, log, medianFilterHalfsize=2):
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     medianFilterHalfSize: `int`, optional
         Half the box size of the median filter, i.e. a
@@ -1011,7 +1012,7 @@ def makeTemplatesMonotonic(debResult, log):
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
 
     Returns
@@ -1049,7 +1050,7 @@ def clipFootprintsToNonzero(debResult, log):
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
 
     Returns
@@ -1085,7 +1086,7 @@ def weightTemplates(debResult, log):
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
 
     Returns
@@ -1161,7 +1162,7 @@ def reconstructTemplates(debResult, log, maxTempDotProd=0.5):
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     maxTempDotProd: `float`, optional
         All dot products between templates greater than ``maxTempDotProd``
@@ -1259,7 +1260,7 @@ def apportionFlux(debResult, log, assignStrayFlux=True, strayFluxAssignment='r-t
     ----------
     debResult: `lsst.meas.deblender.baseline.DeblenderResult`
         Container for the final deblender results.
-    log: `log.Log`
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`
         LSST logger for logging purposes.
     assignStrayFlux: `bool`, optional
         If True then flux in the parent footprint that is not covered by any

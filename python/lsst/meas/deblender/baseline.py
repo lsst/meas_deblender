@@ -30,6 +30,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.detection as afwDet
 import lsst.geom as geom
 import lsst.afw.math as afwMath
+import lsst.utils.logging
 
 from . import plugins
 
@@ -558,11 +559,13 @@ def deblend(footprint, maskedImage, psf, psffwhm,
         If True, re-weight the templates so that their linear combination best represents
         the observed ``maskedImage``.
         The default is False.
-    log: `log.Log`, optional
+    log:`lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`, optional
         LSST logger for logging purposes.
-        The default is ``None`` (no logging).
+        If `None`, a default logger will be created named after this module.
     verbose: `bool`, optional
-        Whether or not to show a more verbose output.
+        Whether or not to show a more verbose output. This option only affects
+        the logger creeated internally and will not change the reporting level
+        of an externally-supplied logger.
         The default is ``False``.
     sigma1: `float`, optional
         Average noise level in ``maskedImage``.
@@ -699,11 +702,13 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
         Psf of the ``maskedImage``.
     psfFwhms: `float` or list of floats
         FWHM of the ``maskedImage``\'s ``psf``.
-    log: `log.Log`, optional
-        LSST logger for logging purposes.
-        The default is ``None`` (no logging).
+    log: `lsst.log.Logger` or `lsst.utils.logging.LsstLogAdapter`, optional
+        Logger for logging purposes. Must support a ``trace`` method.
+        If `None`, a default logger will be created named after this module.
     verbose: `bool`, optional
-        Whether or not to show a more verbose output.
+        Whether or not to show a more verbose output. This option only affects
+        the logger creeated internally and will not change the reporting level
+        of an externally-supplied logger.
         The default is ``False``.
     avgNoise: `float`or list of `float`\ s, optional
         Average noise level in each ``maskedImage``.
@@ -723,12 +728,12 @@ def newDeblend(debPlugins, footprint, mMaskedImage, psfs, psfFwhms,
     # Import C++ routines
 
     if log is None:
-        import lsst.log as lsstLog
-
-        log = lsstLog.Log.getLogger(__name__)
+        log = lsst.utils.logging.getLogger(__name__)
 
         if verbose:
-            log.setLevel(lsstLog.Log.TRACE)
+            log.setLevel(log.TRACE)
+        else:
+            log.setLevel(log.INFO)
 
     # get object that will hold our results
     debResult = DeblenderResult(footprint, mMaskedImage, psfs, psfFwhms, log,
