@@ -307,15 +307,17 @@ class SourceDeblendTask(pipeBase.Task):
             minChildren, maxChildren = self.config.ciDeblendChildRange
             nPeaks = np.array([len(src.getFootprint().peaks) for src in srcs])
             childrenInRange = np.where((nPeaks >= minChildren) & (nPeaks <= maxChildren))[0]
-            if len(childrenInRange) < self.config.ciNumParentsToDeblend:
-                raise ValueError("Fewer than ciNumParentsToDeblend children were contained in the range "
-                                 "indicated by ciDeblendChildRange. Adjust this range to include more "
-                                 "parents.")
+            numParentsToDeblend = self.config.ciNumParentsToDeblend
+            if len(childrenInRange) < numParentsToDeblend:
+                # Only use the top N instead of the full requested list.
+                if len(childrenInRange) == 0:
+                    raise ValueError("No children to deblend; cannot continue with CI testing.")
+                numParentsToDeblend = len(childrenInRange)
             # Keep all of the isolated parents and the first
             # `ciNumParentsToDeblend` children
             parents = nPeaks == 1
             children = np.zeros((len(srcs),), dtype=bool)
-            children[childrenInRange[:self.config.ciNumParentsToDeblend]] = True
+            children[childrenInRange[:numParentsToDeblend]] = True
             srcs = srcs[parents | children]
             # We need to update the IdFactory, otherwise the the source ids
             # will not be sequential
