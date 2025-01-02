@@ -275,7 +275,7 @@ class SourceDeblendTask(pipeBase.Task):
             SourceCatalog containing sources detected on this exposure.
         """
         psf = exposure.getPsf()
-        assert sources.getSchema() == self.schema
+        assert sources.getSchema().contains(self.schema), "runtime schema is not compatible with init schema"
         self.deblend(exposure, sources, psf)
 
     def _getPsfFwhm(self, psf, position):
