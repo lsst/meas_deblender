@@ -43,3 +43,4 @@ foot2.png
 sfoot3.png
 img.png
 examples/.ipynb_checkpoints/
+python/*.dist-info/
