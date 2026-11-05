@@ -1,0 +1,12 @@
+prefix=${pcfiledir}/../..
+includedir=${prefix}/include
+libdir=${prefix}/lib
+doxygen_tag=${prefix}/doc/meas_deblender.tag
+lsst_build_requires=boost_test
+
+Name: lsst_meas_deblender
+Description: LSST Science Pipelines deblender
+Version: @VERSION@
+Requires: lsst_afw lsst_meas_algorithms pybind11 python3
+Cflags: -I${includedir}
+Libs: -L${libdir} -lmeas_deblender
